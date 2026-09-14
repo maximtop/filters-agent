@@ -4,16 +4,19 @@ import type { Logger } from '../logger/logger';
 import { TurnStopReason } from './stop-reason';
 
 /**
- * The one gap this seam closes in pi's in-run retry classification: a Cloudflare origin status that
- * pi does not know is transient, and therefore never retries.
+ * The gaps this seam closes in pi's in-run retry classification: transient failures of the gateway
+ * path that pi does not recognize as transient, and therefore never retries.
  *
- * The gateway this runtime talks to sits behind Cloudflare, and Cloudflare answers an origin-side
- * fault with its own 52x/530 range rather than the origin's status. Pi classifies a failed turn
- * from the composed error MESSAGE against a fixed list of substrings, so a status it did not
+ * Pi classifies a failed turn from the composed error MESSAGE against a fixed list of substrings
+ * (`RETRYABLE_PROVIDER_ERROR_PATTERN` in `pi-ai`'s `dist/utils/retry.js`), so wording it did not
  * enumerate is simply not transient to it — and none of the `retry` settings pi exposes (`enabled`,
  * `maxRetries`, `baseDelayMs`, `provider.timeoutMs`) carries a predicate, a pattern, or a status
  * list. There is no supported hook; extending the decision means reaching into the session object
  * pi hands back.
+ *
+ * Two shapes are covered, each of them a live campaign run that lost a case to one hiccup: a
+ * Cloudflare origin status ahead of the message, and a transport-level stream fault the gateway
+ * relays from its upstream as prose. The patterns below carry their own evidence.
  *
  * `extendTransientGatewayRetry` is that reach, kept to one wrapped method in one module so the
  * whole vendor coupling is visible in one place when the pin moves.
@@ -22,6 +25,9 @@ import { TurnStopReason } from './stop-reason';
 /**
  * Leading HTTP status of a Cloudflare origin-side failure, as pi-ai composes a provider error for
  * the `openai-completions` API this runtime registers.
+ *
+ * The gateway this runtime talks to sits behind Cloudflare, and Cloudflare answers an origin-side
+ * fault with its own 52x/530 range rather than the origin's status.
  *
  * Why this set — 520 through 527, plus 530: pi-ai's own `RETRYABLE_PROVIDER_ERROR_PATTERN`
  * (`dist/utils/retry.js` of the pinned 0.84.1) enumerates transient HTTP statuses one literal at a
@@ -44,6 +50,39 @@ import { TurnStopReason } from './stop-reason';
 const TRANSIENT_GATEWAY_STATUS_PATTERN = /^\s*(?:52[0-7]|530)\b/u;
 
 /**
+ * Wording of a transport-level stream fault an OpenAI-compatible gateway relays from its upstream,
+ * anywhere in the composed message.
+ *
+ * Why this shape at all — a live campaign run was answered, at loop turn 51, with `Upstream error
+ * from Together: Stream error: h2 protocol error: error reading a body from connection`. There is
+ * no HTTP status in it: the gateway accepted the request, answered 200, and then faulted
+ * mid-stream, so the OpenAI SDK composes the message from the in-stream error chunk alone and the
+ * status-based pattern above cannot see it. None of pi's substrings match it either — its nearest
+ * entries are `connection.?error`, `connection.?lost` and `terminated`, and this text spells the
+ * connection failure the other way round. Pi ended the turn in error, the run sealed
+ * `provider-failure` after that single attempt, and 15 minutes of investigation went with it.
+ *
+ * Why these three phrases and nothing wider:
+ *
+ * - `stream error` — the gateway's own label for "the upstream stream broke", the part that is
+ *   independent of which upstream and which protocol failed.
+ * - `h2 protocol error` — HTTP/2 framing between gateway and upstream, a hop this run does not
+ *   control and cannot influence by changing the request.
+ * - `error reading a body from connection` — the body-read failure itself, the phrase pi's
+ *   `connection.?error` just misses.
+ *
+ * Every one of them names a hop that broke while carrying a request the gateway had already
+ * accepted, which is the definition of worth retrying: the same request sent again reaches a
+ * different replica. None of them can be produced by the content of a request, so no deterministic
+ * rejection is swept in — that is the whole reason the pattern enumerates phrases instead of
+ * matching a bare `stream` or `protocol`. Word-bounded and unanchored: the prose arrives behind a
+ * gateway prefix (`Upstream error from <vendor>:`) that no pattern should have to predict, and the
+ * bounds keep a phrase from matching inside a longer word.
+ */
+const UPSTREAM_STREAM_FAULT_PATTERN =
+    /\b(?:stream error|h2 protocol error|error reading a body from connection)\b/iu;
+
+/**
  * The pinned-vendor slice of pi's `AgentSession` this seam replaces.
  *
  * `_isRetryableError` is `private` in pi's `.d.ts`, so it is reachable only through a cast; naming
@@ -60,13 +99,14 @@ interface RetryDecidingSession {
 }
 
 /**
- * Decide whether a failed turn is a transient Cloudflare gateway failure pi does not recognize.
+ * Decide whether a failed turn is a transient gateway-path failure pi does not recognize.
  *
- * Deliberately narrow: only a turn that actually ended in a provider error with a message, only a
- * message whose LEADING status is in the Cloudflare origin range, and never a context overflow —
- * pi's rule that an overflow is handled by compaction rather than by retry is the one part of its
- * decision this seam must not override, so it is re-asserted here instead of being assumed
- * unreachable. `isContextOverflow` is called without a context window on purpose: its two
+ * Deliberately narrow, and the guards are shared by both patterns: only a turn that actually ended
+ * in a provider error with a message, only a message whose LEADING status is in the Cloudflare
+ * origin range or that names one of the enumerated upstream stream faults, and never a context
+ * overflow — pi's rule that an overflow is handled by compaction rather than by retry is the one
+ * part of its decision this seam must not override, so it is re-asserted here instead of being
+ * assumed unreachable. `isContextOverflow` is called without a context window on purpose: its two
  * window-dependent cases (a silently accepted overflow, a zero-output `length` stop) require a
  * non-error stop reason, which the first guard has already excluded.
  *
@@ -84,11 +124,14 @@ function isTransientGatewayFailure(message: AssistantMessage): boolean {
     if (isContextOverflow(message)) {
         return false;
     }
-    return TRANSIENT_GATEWAY_STATUS_PATTERN.test(errorMessage);
+    return (
+        TRANSIENT_GATEWAY_STATUS_PATTERN.test(errorMessage) ||
+        UPSTREAM_STREAM_FAULT_PATTERN.test(errorMessage)
+    );
 }
 
 /**
- * Extend one built session's retry decision with the transient gateway statuses pi does not know.
+ * Extend one built session's retry decision with the transient gateway failures pi does not know.
  *
  * This is a pinned-vendor seam against `@earendil-works/pi-coding-agent@0.84.1`: pi's retry
  * settings expose no predicate or pattern hook (see the module note), so the created session's own
