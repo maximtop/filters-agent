@@ -251,6 +251,14 @@ export interface SingleShotClient {
  */
 export interface SingleShotClientDefaults {
     /**
+     * Completion cap put on the wire (`max_completion_tokens`) for every call of this client unless
+     * a call passes its own. Without it a single-shot request carries no cap at all and the
+     * provider applies its own default, which a reasoning model's thinking exhausts before the
+     * answer: a live vision verdict ended `length` that way.
+     */
+    maxTokens?: number;
+
+    /**
      * Per-request HTTP deadline in milliseconds.
      */
     timeoutMs?: number;

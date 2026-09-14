@@ -110,23 +110,19 @@ export const DEFAULT_MODEL_MAX_OUTPUT_TOKENS = 384_000;
 /**
  * Completion cap registered for the VISION model when the configuration names none.
  *
- * Kept apart from the loop cap because the two roles were measured apart: 8,192 is the value proven
- * in-house against this gateway by github-knowledge-base's analyze package for exactly these
- * single-shot calls — a bounded JSON verdict over one screenshot, where a cap this size is never
- * the binding constraint — while the loop's cap governs open-ended thinking plus a terminal
- * payload. The gateway advertises `top_provider.max_completion_tokens: 65500` and `context_length:
- * 256000` for `gemini-3.7-flash` (read 2026-09-05), so this sits well inside the model's real
- * ceiling; a deployment that needs more sets `LLM_VISION_MAX_OUTPUT_TOKENS`.
+ * The same value as the loop's, deliberately: the cap is a ceiling, not a reservation, and a
+ * reasoning model spends it on thinking before the verdict. With a separate 8,192 cap a live run on
+ * `deepseek-v4.1-flash` (OpenRouter) ended a vision verdict with stop reason `length` — the model
+ * reasoned past the cap and the answer never came — while its single-shot calls as a whole spent
+ * 173k of 177k output tokens on reasoning. There is nothing to gain from bounding a verdict below
+ * the model's ceiling; a deployment that wants a lower one sets `LLM_VISION_MAX_OUTPUT_TOKENS`.
  *
- * Where it applies: this is the vision catalog entry's `maxTokens`. Pi puts a catalog cap on the
- * wire from its SIMPLE stream path (`buildBaseOptions`: `options.maxTokens ?? model.maxTokens`),
- * which is the agent loop's; the typed `complete` path the single-shot client calls sends only what
- * the call itself passes, and no single-shot caller passes one. So today a vision request carries
- * no `max_completion_tokens` at all and this value bounds the entry rather than the request — which
- * is the conservative order of events: the cap that IS always sent is the loop's, and that one is
- * the gateway's real ceiling.
+ * Where it applies: this is the vision catalog entry's `maxTokens`, and
+ * `createConfiguredSingleShotClient` sends it as `max_completion_tokens` on every single-shot
+ * request bound to that entry — pi's typed completion path sends only what a call passes, so
+ * without that a vision request carried no cap at all and the provider's own default applied.
  */
-export const DEFAULT_VISION_MAX_OUTPUT_TOKENS = 8_192;
+export const DEFAULT_VISION_MAX_OUTPUT_TOKENS = DEFAULT_MODEL_MAX_OUTPUT_TOKENS;
 
 /**
  * Reasoning effort every request carries when `LLM_REASONING_EFFORT` names none.

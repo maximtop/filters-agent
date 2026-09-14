@@ -90,6 +90,10 @@ export function createConfiguredSingleShotClient(
     const client = createSingleShotClient(runtime, model, {
         timeoutMs: llm.requestTimeoutMs,
         maxRetries: providerMaxRetries(llm),
+        // The role's configured completion cap, sent explicitly: pi's typed completion path sends
+        // only what the call passes, so without this a single-shot request carried no cap and the
+        // provider's own default cut a reasoning model's vision verdict at `length`.
+        maxTokens: model.maxTokens,
         // Configured here as well as on the loop sessions, so one setting governs every request the
         // run makes. It reaches the wire only for a model registered `reasoning: true`, so it is
         // inert on a client bound to the vision model and live on one bound to a reasoning model

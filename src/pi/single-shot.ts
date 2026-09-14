@@ -365,6 +365,7 @@ export function createSingleShotClient(
             runStructuredSingleShot(runtime, model, {
                 timeoutMs: defaults.timeoutMs,
                 maxRetries: defaults.maxRetries,
+                maxTokens: defaults.maxTokens,
                 reasoningEffort: defaults.reasoningEffort,
                 logger: defaults.logger,
                 ...options,
@@ -379,6 +380,7 @@ export function createSingleShotClient(
                 {
                     timeoutMs: defaults.timeoutMs,
                     maxRetries: defaults.maxRetries,
+                    maxTokens: defaults.maxTokens,
                     reasoningEffort: defaults.reasoningEffort,
                     ...options,
                 },
