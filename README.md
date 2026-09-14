@@ -40,7 +40,7 @@ When it runs against an issue, `filters-agent`:
 4. Label an issue `filters-agent` (or run the workflow manually with an issue number) to start a
    run.
 5. The report appears as a comment on the issue. The full run — report, traces, screenshots — is
-   uploaded as a workflow artifact; find it on the workflow run's Summary page.
+   uploaded as a workflow artifact; find it on the workflow run's Summary page. Preparation steps in an instruction run inside the action image, which provides `curl`, `jq`, `node`, `git` and `unzip`.
 
 Every job builds the action's own Docker image from scratch, including two browsers, before it
 can start — expect it to add several minutes ahead of the actual analysis.

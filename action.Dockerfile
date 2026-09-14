@@ -36,7 +36,7 @@ RUN corepack enable \
 # CRC-check it, so a broken tool fails the build instead of the first run. `git archive
 # --format=zip` uses git's built-in zip writer, so no `zip` package is added.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends git unzip ca-certificates \
+    && apt-get install -y --no-install-recommends git unzip ca-certificates curl jq \
     && rm -rf /var/lib/apt/lists/* \
     && git config --system --add safe.directory '*' \
     && git init /tmp/git-proof \

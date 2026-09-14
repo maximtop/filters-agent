@@ -13,6 +13,9 @@ The run loads its filter guidance at start from these role documents:
 
 ## Preparation
 
+The run image provides `curl`, `jq`, `node`, `git` and `unzip` for these steps; there is no
+`python`, `perl` or `wget`.
+
 launch: firefox
 
 uBlock Origin is installed into Firefox as a signed XPI, force-installed through enterprise
