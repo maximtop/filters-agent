@@ -381,6 +381,23 @@ export async function runAgenticFixCore(
         });
         const outcome = candidateSafety.outcome;
         const proposedCandidate = candidatePatchFromOutcome(outcome, config.repositoryPath);
+        // The rule an analysis-only run found and could not verify. It has no publication path by
+        // design; carrying it typed is what stops it from surviving only inside the reasoning
+        // prose, where the sarkisozleri.bbs.tr run left the rule a maintainer later landed.
+        const candidateForReview =
+            outcome.outcome === FixOutcomeKind.AnalysisOnly
+                ? outcome.candidateForReview
+                : undefined;
+        if (candidateForReview !== undefined) {
+            logger.info(
+                {
+                    rule: candidateForReview.rule,
+                    filePath: candidateForReview.placement?.filePath,
+                    unverifiedReason: candidateForReview.unverifiedReason,
+                },
+                'analysis-only run carries an unverified candidate for review',
+            );
+        }
         const artifacts = recorder.getArtifacts();
         const selectedValidation = selectCandidateValidation(artifacts, proposedCandidate);
         const validationEnvironment = selectedValidation?.validationArtifactId
@@ -660,6 +677,12 @@ export async function runAgenticFixCore(
         }
         if (candidatePatch && candidateVerified && candidateValidationEvidence) {
             finalResult.candidateValidationEvidence = candidateValidationEvidence;
+        }
+        // The analysis-only candidate travels only while the run publishes no patch, which is the
+        // schema invariant too. `assembleFixRunResult` clears `candidatePatch` on every status but
+        // patch_proposed, so the guard reads the assembled result rather than the verdict.
+        if (candidateForReview !== undefined && finalResult.candidatePatch === null) {
+            finalResult.candidateForReview = candidateForReview;
         }
         if (preparedExtensionProvenance) {
             finalResult.extensionProvenance = serializeAgentExtensionProvenance(

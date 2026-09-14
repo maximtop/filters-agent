@@ -76,12 +76,14 @@ export const TOOL_GUIDANCE: Readonly<Record<string, string>> = {
         'Refines the observed issue classification after new evidence without changing the locked environment or reported context.',
     [ToolName.LookupRuleGuidance]:
         'Returns bounded guidance from the pinned AdGuard KnowledgeBase and repository policy for a ' +
-        'rule topic, including the source SHA, file, and anchor citation. When a run serves the ' +
-        "instruction's own linked documents instead, a document too long to return whole comes back " +
-        'as the sections matching the topic plus an index of every heading it has — pass `query` ' +
-        'with the words naming what you need (a modifier such as `removeparam`, a selector such as ' +
-        '`:has`, a heading from the index) to narrow it to those sections, and call again for ' +
-        'another part of the same document.',
+        'rule topic, including the source SHA, file, and anchor citation. Syntax topics answer how ' +
+        'a rule is written; `policy` answers what this repository accepts, refuses or requires — ' +
+        'scope, anti-adblock and rewarded-ad gates, exceptions, quality bar — and `placement` ' +
+        "where a rule goes. When a run serves the instruction's own linked documents instead, a " +
+        'document too long to return whole comes back as the sections matching the topic plus an ' +
+        'index of every heading it has — pass `query` with the words naming what you need (a ' +
+        'modifier such as `removeparam`, a selector such as `:has`, a heading from the index) to ' +
+        'narrow it to those sections, and call again for another part of the same document.',
     [ToolName.ReportMissingInformation]:
         'Records exactly what the run instruction lacks. Call it the moment you find that a needed ' +
         'document, section, or fact is missing, naming the gap precisely: the bounded subject line ' +
@@ -143,7 +145,7 @@ export const TOOL_GUIDANCE: Readonly<Record<string, string>> = {
     [ToolName.GetDetail]:
         'Retrieves a byte-bounded filtered slice of a persisted artifact by ID. Use when a tool result says "Use get_detail() to inspect slices" — pass the artifact ID and optional filter (key path, limit) to inspect large results like DOM, HAR, ad-slot facts, or evaluate_js results.',
     [ToolName.FinishFix]:
-        'Finishes a fix run with one typed FixOutcome: the typed decision the operator publishes, or the analysis-only report of what blocked a rule. This is the only terminal channel of a fix run. Call exactly once, when the evidence verdict is established. A submission that fails validation is returned with the errors; correct and resubmit.',
+        'Finishes a fix run with one typed FixOutcome: the typed decision the operator publishes, or the analysis-only report of what blocked a rule. An analysis-only outcome carries `candidateForReview` when a rule passed lint and risk scoring and `apply_rule` did not reject it but no review confirmed it — the rule, its placement when resolved, and why it stayed unverified. This is the only terminal channel of a fix run. Call exactly once, when the evidence verdict is established. A submission that fails validation is returned with the errors; correct and resubmit.',
     [ToolName.SubmitAnalysis]:
         'Submits the complete analysis of the issue. This is the only terminal channel of an analyze run. Call exactly once, when the investigation is finished and the report is final. A submission that fails validation is returned with the errors; correct and resubmit.',
     [ToolName.SubmitReplayVerdict]:

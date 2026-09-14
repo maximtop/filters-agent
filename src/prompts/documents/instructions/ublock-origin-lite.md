@@ -111,6 +111,10 @@ fixable only by changing uBOL itself rather than the lists.
 
 {{rule}}
 
+### Candidate for review
+
+{{candidateForReview}}
+
 ### Executor and version
 
 {{executor}} {{executorVersion}}

@@ -29,6 +29,13 @@ export const RULE_GUIDANCE_TOPICS = [
     'exception',
     'compatibility',
     'placement',
+    // What this repository accepts, refuses or requires for a rule: scope, anti-adblock and
+    // rewarded-ad gates, exceptions, quality bar. Every topic above is about how a rule is
+    // written, so all of them but `placement` resolve to the syntax document; a run that asked
+    // `exception` and then `scriptlet` for uAssets' anti-adblock policy got syntax sections both
+    // times and filed report_missing_information saying the repository's CONTRIBUTING.md policy
+    // was unreachable (shellshock.io, run 34876667827).
+    'policy',
 ] as const;
 
 export const RuleGuidanceTopicSchema = v.picklist(RULE_GUIDANCE_TOPICS);

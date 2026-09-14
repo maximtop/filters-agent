@@ -143,6 +143,31 @@ const PREPARED_EXTENSION_SOURCE_LABELS: Record<PreparedExtensionSource, string> 
 };
 
 /**
+ * The unverified candidate an analysis-only run hands to a reviewer, as the report reads it.
+ */
+export interface ReportCandidateForReview {
+    /**
+     * The filter rule the run found and could not verify.
+     */
+    rule: string;
+
+    /**
+     * The filter file the rule would belong in, when the run resolved one.
+     */
+    placement?: {
+        /**
+         * Checkout-relative filter file path.
+         */
+        filePath: string;
+    };
+
+    /**
+     * Why validation did not confirm the rule.
+     */
+    unverifiedReason: string;
+}
+
+/**
  * The verified candidate fields the report shows, narrow so tests pass plain partial shapes.
  */
 export interface ReportCandidatePatch {
@@ -197,6 +222,11 @@ export interface ReportRunResultInput {
      * The proposed candidate and the filter file it lands in, or null when none was proposed.
      */
     candidatePatch?: ReportCandidatePatch | null;
+
+    /**
+     * The candidate an analysis-only run found and could not verify, when it carried one.
+     */
+    candidateForReview?: ReportCandidateForReview;
 
     /**
      * Provenance of the one extension build the run loaded, when it ran the prepared extension.
@@ -277,6 +307,12 @@ export interface ReportOutcomeSummary {
     rule: string;
 
     /**
+     * The unverified candidate an analysis-only run asks a reviewer to look at, absent when the run
+     * carried none.
+     */
+    candidateForReview?: ReportCandidateForReview;
+
+    /**
      * The filter file the rule lands in — the agreed "place in the list" reading.
      */
     listPlace: string;
@@ -343,6 +379,29 @@ function composeOutcomeReason(result: ReportRunResultInput): string {
  */
 function renderMissingInformationLine(entry: MissingInformationEntry): string {
     return `- ${renderUntrustedText(entry.subject)}: ${renderUntrustedText(entry.detail)}`;
+}
+
+/**
+ * Render the unverified candidate as the block its report section carries.
+ *
+ * The rule goes through the same code-span renderer the verified rule fill uses — it is repository
+ * content whose own syntax Markdown would otherwise read as formatting — while the placement path
+ * and the model-authored reason are escaped as untrusted text. The empty string when the run
+ * carried no such candidate is what lets the section drop out of the rendered body entirely.
+ *
+ * @param candidate - The candidate the run could not verify, or undefined when it carried none.
+ * @returns The block to fill the section with, or the empty string.
+ */
+function composeCandidateForReview(candidate: ReportCandidateForReview | undefined): string {
+    if (candidate === undefined) {
+        return '';
+    }
+    const lines = [renderUntrustedRuleCodeSpan(candidate.rule)];
+    if (candidate.placement !== undefined) {
+        lines.push('', renderUntrustedText(candidate.placement.filePath));
+    }
+    lines.push('', `Not verified: ${renderUntrustedText(candidate.unverifiedReason)}`);
+    return lines.join('\n');
 }
 
 /**
@@ -430,6 +489,9 @@ export function summarizeReportOutcome(
         }),
         symptom: composeSymptom(result, decision),
         rule: result.candidatePatch?.rule ?? '',
+        ...(result.candidateForReview === undefined
+            ? {}
+            : { candidateForReview: result.candidateForReview }),
         listPlace: result.candidatePatch?.filePath ?? '',
         executor:
             result.extensionProvenance === undefined
@@ -458,6 +520,7 @@ export function buildReportTemplateValues(summary: ReportOutcomeSummary): Report
         versionUpdateHint: renderUntrustedText(summary.versionUpdateHint),
         symptom: renderUntrustedText(summary.symptom),
         rule: renderUntrustedRuleCodeSpan(summary.rule),
+        candidateForReview: composeCandidateForReview(summary.candidateForReview),
         executor: summary.executor,
         executorVersion: summary.executorVersion,
         policyRationale: renderUntrustedText(summary.policyRationale),

@@ -123,6 +123,17 @@ export const GUIDANCE_SECTIONS: Record<RuleGuidanceTopic, readonly GuidanceSecti
             heading: 'Repository structure',
         },
     ],
+    policy: [
+        {
+            // The filter policy's acceptance criteria: what a rule must satisfy to be taken at
+            // all. No new anchor is invented for this topic — the one section pinned here is
+            // already resolved by `placement` at the pinned revision, and the startup check
+            // refuses the whole session when any pinned heading has disappeared upstream.
+            document: GuidanceDocumentRole.Policy,
+            anchor: 'common-criteria',
+            heading: 'Common criteria',
+        },
+    ],
 };
 
 /**

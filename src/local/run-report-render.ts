@@ -5,6 +5,7 @@ import { type PublicationOutcome } from '../types/publication-outcome';
 import type { LocalRunRecord } from './run-output';
 import {
     renderCandidate,
+    renderCandidateForReview,
     renderCandidateVisualReview,
     renderKnowledgeBaseProvenance,
     renderProfileScreenshots,
@@ -217,6 +218,7 @@ export function renderValidatedLocalAgentReport(
         ...renderEnvironmentSelection(parsed.result.environmentSelection),
         '',
         ...renderCandidate(parsed.result),
+        ...renderCandidateForReview(parsed.result),
         ...renderPendingPublication(parsed.result),
         '',
         ...renderCandidateVisualReview(parsed.result),

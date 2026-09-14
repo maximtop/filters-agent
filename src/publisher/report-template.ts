@@ -60,6 +60,7 @@ export const REPORT_TEMPLATE_FILL = {
     versionUpdateHint: '',
     symptom: '',
     rule: '',
+    candidateForReview: '',
     executor: '',
     executorVersion: '',
     policyRationale: '',
@@ -82,9 +83,9 @@ export type ReportTemplateValues = Record<ReportTemplateFill, string>;
 /**
  * The built-in fallback template: content-equivalent to well-formed instruction templates —
  * outcome, why the run ended as it did, the version-update hint when the reported version is
- * outdated and the defect does not reproduce, reproduced symptom, rule, executor and version,
- * policy rationale, place in the list, missing information block, and the link to the run
- * artifacts.
+ * outdated and the defect does not reproduce, reproduced symptom, rule, the unverified candidate an
+ * analysis-only run wants reviewed, executor and version, policy rationale, place in the list,
+ * missing information block, and the link to the run artifacts.
  */
 export const BUILT_IN_REPORT_TEMPLATE = [
     '{{outcome}}',
@@ -100,6 +101,10 @@ export const BUILT_IN_REPORT_TEMPLATE = [
     '## Rule',
     '',
     '{{rule}}',
+    '',
+    '## Candidate for review',
+    '',
+    '{{candidateForReview}}',
     '',
     '## Executor and version',
     '',

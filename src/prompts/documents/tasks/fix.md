@@ -43,6 +43,7 @@ If the browser is unavailable, failed, or yielded unusable evidence, choose the 
 `already_fixed_current` is valid only when the same reporter-defined target, including an annotated target, is present in the unfiltered control and absent with the prepared extension. Blocking unrelated ads does not prove the reported issue is fixed.
 Use the session-bound reporter symptom presence returned by structured full-page vision. If it is `absent` in both unfiltered and prepared sessions, choose `not_reproduced`, never `already_fixed_current`.
 Use the analysis-only outcome whenever evidence is incomplete or risk is too high.
+When a candidate passed lint and risk scoring and `apply_rule` did not reject it but could not verify it — an inconclusive review, a reported flow you could not reach, an environment limit — finish analysis-only WITH `candidateForReview`: the exact rule, its placement when you resolved one, and in `unverifiedReason` why validation did not confirm it (the review verdict and its page integrity, or what blocked the observation). A draft PR is still only for a verified candidate; this field is how an unverified one reaches a human instead of being lost in your reasoning.
 If `apply_rule` rejected candidates, include the exact representative validation artifact ID; never invent or rewrite an artifact ID.
 
 {{candidateConfirmation}}

@@ -58,6 +58,7 @@ export const INSTRUCTION_TOPIC_ROLES: Record<RuleGuidanceTopic, readonly Guidanc
     exception: [GuidanceDocumentRole.Syntax],
     compatibility: [GuidanceDocumentRole.Syntax],
     placement: [GuidanceDocumentRole.Policy, GuidanceDocumentRole.Contributing],
+    policy: [GuidanceDocumentRole.Policy, GuidanceDocumentRole.Contributing],
 };
 
 /**
@@ -94,6 +95,22 @@ export const INSTRUCTION_TOPIC_KEYWORDS: Record<RuleGuidanceTopic, readonly stri
     // Not a syntax topic: placement is answered by the policy and contributing documents, whose
     // sections are about where a rule goes rather than how it is written.
     placement: ['placement', 'section', 'file', 'structure', 'directory'],
+    // Also answered by the policy and contributing documents, but from their other half: the
+    // sections stating what the repository takes and what it turns away.
+    policy: [
+        'policy',
+        'accept',
+        'refuse',
+        'allowed',
+        'not allowed',
+        'scope',
+        'anti-adblock',
+        'detection',
+        'exception',
+        'criteria',
+        'quality',
+        'guidelines',
+    ],
 };
 
 /**

@@ -33,6 +33,7 @@ import {
     parseCandidateVisualReviewArtifactFilename,
     parseCandidateVisualReviewArtifactId,
 } from './candidate-artifact-identity';
+import { CandidateForReviewSchema } from './candidate-for-review';
 import { PhaseLabel } from './validation';
 import { MISSING_CATALOG_FILTER_REASON_VALUES } from './missing-catalog-filter-reason';
 import { RepositoryEditKind } from './repository-edit-kind';
@@ -879,6 +880,10 @@ const FixRunResultInvariantsSchema = v.pipe(
         configurationComparisonEvidence: v.optional(AgentConfigurationComparisonEvidenceSchema),
         candidateValidationEvidence: v.optional(AgentCandidateValidationEvidenceSchema),
         candidatePatch: v.nullable(CandidatePatchSchema),
+        // The candidate an analysis-only run found and could not verify. It travels beside
+        // `candidatePatch`, never instead of it: publication reads the patch and only the patch,
+        // so this field reaches the report and nothing else.
+        candidateForReview: v.optional(CandidateForReviewSchema),
         missingInformation: v.optional(
             v.pipe(
                 v.array(MissingInformationEntrySchema),
@@ -1371,6 +1376,10 @@ export const FixRunResultSchema: v.GenericSchema<
             result.configurationComparisonEvidence === undefined ||
             result.runStatus === 'configuration_specific',
         'Configuration comparison evidence belongs only to configuration_specific results.',
+    ),
+    v.check(
+        (result) => result.candidateForReview === undefined || result.candidatePatch === null,
+        'A candidate carried for review is by definition unverified and cannot accompany a patch.',
     ),
 );
 

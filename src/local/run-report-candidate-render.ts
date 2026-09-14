@@ -1,7 +1,8 @@
 /**
  * The candidate sections of the local agent report: the proposed edit and how it was reached, the
- * screenshot pairs factual validation rejected, the per-profile evidence, the visual review of the
- * candidate, the settings profiles the run applied, and the documentation revisions it cited.
+ * unverified candidate an analysis-only run asks a reviewer to look at, the screenshot pairs
+ * factual validation rejected, the per-profile evidence, the visual review of the candidate, the
+ * settings profiles the run applied, and the documentation revisions it cited.
  *
  * All pure `FixRunResult`/record-fragment -> `string[]` projections, called by `run-report-render`
  * and calling nothing back.
@@ -151,6 +152,34 @@ export function renderCandidate(result: FixRunResult): string[] {
         ...repositoryEditLines,
         `- Insertion point: \`${insertionPoint ?? 'n/a'}\``,
         ...anchorLines,
+        '- Rule:',
+        '',
+        '```adblock',
+        candidate.rule,
+        '```',
+    ];
+}
+
+/**
+ * Render the candidate an analysis-only run found and could not verify.
+ *
+ * Nothing is rendered when the run carried none: the section exists to surface a rule that has no
+ * other place in the report, so an empty one would promise a candidate the run never reached.
+ *
+ * @param result - Locked core run result.
+ * @returns Markdown lines for the unverified candidate, or no lines at all.
+ */
+export function renderCandidateForReview(result: FixRunResult): string[] {
+    const candidate = result.candidateForReview;
+    if (!candidate) {
+        return [];
+    }
+    return [
+        '',
+        '### Candidate for review',
+        '',
+        `- File: \`${candidate.placement?.filePath ?? 'n/a'}\``,
+        `- Not verified: ${candidate.unverifiedReason}`,
         '- Rule:',
         '',
         '```adblock',

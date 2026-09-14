@@ -2,6 +2,7 @@ import * as v from 'valibot';
 import { RuleProposalSchema } from '../types/rule-proposal';
 import { PolicyDecisionSchema } from '../types/policy';
 import { CANDIDATE_VALIDATION_ARTIFACT_ID_PATTERN } from '../types/candidate-artifact-identity';
+import { CandidateForReviewSchema } from '../types/candidate-for-review';
 
 /**
  * Explicit reason a propose-close outcome is safe to publish.
@@ -143,11 +144,17 @@ const PolicyBlockedOutcomeSchema = v.object({
 /**
  * Schema variant for an analysis-only outcome — risk is too high, the site is unreachable, or the
  * structured output could not be parsed. No GitHub writes.
+ *
+ * `candidateForReview` is the one place a rule may appear on this outcome: a candidate that passed
+ * lint and risk scoring and that `apply_rule` did not reject, but that no review confirmed. It is
+ * not a publication channel — the draft-PR outcome remains the only one — it is what keeps the
+ * run's best finding out of the prose and in a field a reader can act on.
  */
 const AnalysisOnlyOutcomeSchema = v.object({
     outcome: v.literal(FixOutcomeKind.AnalysisOnly),
     reasoning: v.string(),
     summary: SummarySchema,
+    candidateForReview: v.optional(CandidateForReviewSchema),
     rejectedCandidateValidationArtifactId: v.optional(
         v.pipe(v.string(), v.regex(CANDIDATE_VALIDATION_ARTIFACT_ID_PATTERN)),
     ),
