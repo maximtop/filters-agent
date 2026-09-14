@@ -6,6 +6,8 @@ The instruction, verbatim:
 
 {{instructionText}}
 
+{{preparationContext}}
+
 Documents the instruction links for rule guidance — the `lookup_rule_guidance` tool serves these instead of the built-in AdGuard KnowledgeBase:
 
 {{linkedDocuments}}

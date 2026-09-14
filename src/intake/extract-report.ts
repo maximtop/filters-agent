@@ -150,7 +150,21 @@ export async function extractReport(
     });
     if (result.kind === SingleShotResultKind.Parsed) {
         if (result.value.verdict === IntakeVerdict.FilterReport) {
-            return { kind: IntakeExtractionKind.Report, report: result.value.report };
+            const report = result.value.report;
+            // What the model made of the issue is otherwise invisible in the log: a run that
+            // investigated the wrong URL, or one whose reporter screenshots never reached the
+            // agent at all, could only be reconstructed from the report at the end of the run.
+            options.logger?.info(
+                {
+                    issueNumber: raw.number,
+                    siteUrlCount: report.siteUrls.length,
+                    siteUrls: report.siteUrls,
+                    screenshotCount: report.screenshots.length,
+                    screenshotUrls: report.screenshots.map((screenshot) => screenshot.url),
+                },
+                'issue extracted as a filter report',
+            );
+            return { kind: IntakeExtractionKind.Report, report };
         }
         options.logger?.info(
             { issueNumber: raw.number, reason: result.value.reason },

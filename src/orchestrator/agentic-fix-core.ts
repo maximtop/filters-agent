@@ -8,7 +8,7 @@ import { BrowserMode } from '../types/browser-mode';
 import { mkdirSync } from 'node:fs';
 import * as v from 'valibot';
 import { recordPreflightDiagnostic } from '../local/preflight-diagnostic-log';
-import { captureIssueScreenshots } from '../analyzer/site-analyzer';
+import { captureIssueScreenshots } from '../analyzer/issue-screenshot-capture';
 import type { CoreConfig } from '../config/config';
 import {
     EnvironmentAdapterLimitationCode,
@@ -293,7 +293,7 @@ export async function runAgenticFixCore(
         );
         const downloadedIssueScreenshots = await captureIssueScreenshots(
             facts.screenshots.filter((screenshot) => !localScreenshotUrls.has(screenshot.url)),
-            { artifactsDir: options.artifactsDir, recorder },
+            { artifactsDir: options.artifactsDir, recorder, logger },
         );
         const preloadedIssueScreenshots = [...localIssueScreenshots, ...downloadedIssueScreenshots];
         const issueAttachmentArtifactIds = recorder

@@ -91,6 +91,12 @@ export const PromptDocumentName = {
     FixTaskInstructionContext: 'tasks/instruction-context',
 
     /**
+     * Preparation-already-done note — the instruction context's `{{preparationContext}}` fill for
+     * an instruction whose preparation section the host performed before the session started.
+     */
+    FixTaskInstructionPreparationDone: 'tasks/instruction-preparation-done',
+
+    /**
      * Guidance of a full-vision rejection when a qualifying session already exists: finish the
      * capture there, do not relaunch. One guidance line per document line.
      */

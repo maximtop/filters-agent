@@ -31,6 +31,13 @@ import { resolveDeclaredBlockerFile } from './blocker-file-target';
 import { applicationInstructionContent } from './phase-application-flow-host';
 
 /**
+ * The errno a read raises for a path that does not exist — the one read failure of the declared
+ * user-filters file that is an expected state rather than a fault, because the host writes that
+ * file only when it applies a candidate.
+ */
+const FILE_ABSENT_ERRNO = 'ENOENT';
+
+/**
  * The run's leaf launch options, narrowed to what a prepared-extension launch needs.
  */
 export interface PreparedSessionLaunchHost {
@@ -106,8 +113,11 @@ export function preparedExtensionActualContext(
  *
  * The file is the host's own to maintain, so its absence is the expected state before the first
  * application writes it: empty content is the baseline ground state, which is exactly what a
- * missing file means. Every other read failure is logged with its error before the same empty
- * content is used, so a launch never silently serves stale filters.
+ * missing file means. An absent file is therefore an info line without an error object — every
+ * Firefox launch of a live run logged an `ENOENT` stack at warn before the run had written
+ * anything, which reads as a fault in the log and is not one. Every other read failure keeps its
+ * warn and its error before the same empty content is used, so a launch never silently serves stale
+ * filters.
  *
  * @param host - The run's leaf launch options.
  * @returns The file's content, or empty content when the run has not written it yet.
@@ -133,6 +143,13 @@ function declaredUserFiltersContent(host: PreparedSessionLaunchHost): string {
         );
         return content;
     } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === FILE_ABSENT_ERRNO) {
+            logger.info(
+                { targetPath },
+                'no user-filters file yet; launching with empty managed user filters',
+            );
+            return '';
+        }
         logger.warn(
             { err: error, targetPath },
             'the declared user-filters file could not be read; launching with empty managed user filters',

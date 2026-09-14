@@ -13,6 +13,7 @@ import { ToolName } from '../agent/tool-names';
 import type { ToolRegistry } from '../agent/tool-registry';
 import type { LlmConfig } from '../config/config';
 import type { LoadedInstruction } from '../knowledge/instruction-loader';
+import { extractPreparationSection } from '../knowledge/instruction-preparation';
 import { isIncorrectBlockingReport, type IssueFacts } from '../types/issue-facts';
 import type { TraceRecorder } from '../tracer/trace-recorder';
 import { createLogger, type Logger } from '../logger/logger';
@@ -150,9 +151,19 @@ export interface FixSessionOptions {
  * Render the fix task's run-instruction fill from one loaded instruction.
  *
  * The scaffolding prose (headings, the standing missing-information direction) lives in the
- * `tasks/instruction-context` document; this render only supplies the two data fills — the exact
- * instruction text and one roster line per linked document. Absent instruction keeps the fill '' so
- * built-in runs render as before.
+ * `tasks/instruction-context` document; this render only supplies its data fills — the exact
+ * instruction text, one roster line per linked document, and the preparation note. Absent
+ * instruction keeps the fill '' so built-in runs render as before.
+ *
+ * The instruction text rides the task verbatim because the instruction governs investigation and
+ * proposals, but its preparation section does not govern this session: the host runs that section
+ * in its own preparation session before any fix session exists (`prepareRunExtension` in
+ * `pre-run-preparation.ts`, called from the fix core before `AgentRuntime.create`), and it is
+ * skipped only for a run whose executor set consumes no extension build — where nothing would board
+ * a prepared build either. Either way the steps are unreachable from here: the fix surface
+ * advertises no shell or command execution at all. A live run read the section as its own to
+ * perform and spent the ending on `No shell tool for the run instruction's XPI preparation steps`,
+ * for an XPI the host had already downloaded, verified and force-installed.
  *
  * @param prompts - The session's prompt document loader.
  * @param instruction - The run instruction, or undefined for built-in mode.
@@ -168,9 +179,14 @@ function renderInstructionContext(
     const linkedDocuments = instruction.documents
         .map((document) => `- ${document.role} (${document.origin}): ${document.url}`)
         .join('\n');
+    const preparationContext =
+        extractPreparationSection(instruction.content) === undefined
+            ? ''
+            : prompts.render(PromptDocumentName.FixTaskInstructionPreparationDone);
     return prompts.render(PromptDocumentName.FixTaskInstructionContext, {
         instructionText: instruction.content,
         linkedDocuments,
+        preparationContext,
     });
 }
 
@@ -186,6 +202,14 @@ export async function runFixSession(options: FixSessionOptions): Promise<FixSess
     const latchState = { fired: false };
     const sink = createObservationSink();
     const preparedExtension = options.runtime.getPreparedExtension?.();
+    // The environment context follows the exact fact the tool surface follows: `select_environment`
+    // is advertised only while the registry holds it, and a sole-executor run — its environment
+    // locked at construction — never holds it. Rendering the selection-first framing there told the
+    // model to call a tool this session does not advertise, which a live run reported back as a
+    // `select_environment tool not advertised in this session` limitation instead of investigating.
+    const environmentLocked = !options.runtime.registry
+        .getToolNames()
+        .includes(ToolName.SelectEnvironment);
     const tools = buildFixSessionTools(
         {
             registry: options.runtime.registry,
@@ -213,9 +237,12 @@ export async function runFixSession(options: FixSessionOptions): Promise<FixSess
         terminalToolName: ToolName.FinishFix,
         renderTask: (prompts, terminalToolName) =>
             prompts.render(PromptDocumentName.FixTask, {
-                environmentContext: prompts.render(PromptDocumentName.FixContextSelectionFirst, {
-                    issueNumber: String(options.issueNumber),
-                }),
+                environmentContext: prompts.render(
+                    environmentLocked
+                        ? PromptDocumentName.FixContextPreOrchestrated
+                        : PromptDocumentName.FixContextSelectionFirst,
+                    { issueNumber: String(options.issueNumber) },
+                ),
                 terminalToolName,
                 targetingGuidance: prompts.render(
                     isIncorrectBlockingReport(options.facts.problemType)

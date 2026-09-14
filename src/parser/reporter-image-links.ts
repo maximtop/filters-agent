@@ -13,6 +13,66 @@ export const GITHUB_USER_IMAGE_HOSTS: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * Hostnames serving GitHub's issue-attachment endpoint, the one a reporter's pasted image lands on.
+ *
+ * Both spellings occur in issue bodies because GitHub renders whichever host the reporter's session
+ * used; they name the same endpoint, so a namespace check that knew only the bare host would drop
+ * every `www.` paste.
+ */
+const GITHUB_ATTACHMENT_HOSTS: ReadonlySet<string> = new Set(['github.com', 'www.github.com']);
+
+/**
+ * Path prefix under which GitHub serves one reporter attachment.
+ *
+ * The prefix, not the host alone, is what makes the URL a reporter image: `github.com` also serves
+ * every repository page, and only this namespace answers with attachment bytes.
+ */
+const GITHUB_ATTACHMENT_PATH_PREFIX = '/user-attachments/assets/';
+
+/**
+ * Host of the AdGuard reporting CDN that stores screenshots taken through the report form.
+ */
+const ADGUARD_SCREENSHOT_HOST = 'cdn.adguardcdn.com';
+
+/**
+ * Path prefix the AdGuard reporting CDN stores site-report screenshots under.
+ *
+ * Same reason as the GitHub prefix: the CDN serves far more than reporter evidence, and only this
+ * namespace holds it.
+ */
+const ADGUARD_SCREENSHOT_PATH_PREFIX = '/sitereports/';
+
+/**
+ * Determine whether a URL lies in a namespace that serves nothing but reporter-uploaded images.
+ *
+ * This is the single definition of "a reporter image host", shared by two callers with different
+ * questions: extraction asks it about an ordinary Markdown link's destination (beside its own
+ * image-suffix test), and the screenshot downloader in `src/analyzer/site-analyzer.ts` asks it
+ * about the first hop of a download, where it is the whole allowlist. A second copy of the list
+ * drifted once already — the downloader knew only the AdGuard CDN and silently dropped every
+ * GitHub-hosted reporter screenshot.
+ *
+ * @param url - An already parsed absolute URL.
+ * @returns Whether the URL belongs to a reporter image namespace.
+ */
+export function isReporterImageNamespace(url: URL): boolean {
+    const hostname = url.hostname.toLowerCase();
+    if (
+        GITHUB_ATTACHMENT_HOSTS.has(hostname) &&
+        url.pathname.startsWith(GITHUB_ATTACHMENT_PATH_PREFIX)
+    ) {
+        return true;
+    }
+    if (GITHUB_USER_IMAGE_HOSTS.has(hostname)) {
+        return true;
+    }
+    return (
+        hostname === ADGUARD_SCREENSHOT_HOST &&
+        url.pathname.startsWith(ADGUARD_SCREENSHOT_PATH_PREFIX)
+    );
+}
+
+/**
  * Image URL paired with its source offset for stable ordering.
  */
 interface IndexedReporterImage {
@@ -68,17 +128,7 @@ function isLikelyImageDestination(value: string): boolean {
     if (/\.(?:gif|jpe?g|png|webp)$/iu.test(url.pathname)) {
         return true;
     }
-    const hostname = url.hostname.toLowerCase();
-    if (
-        (hostname === 'github.com' || hostname === 'www.github.com') &&
-        url.pathname.startsWith('/user-attachments/assets/')
-    ) {
-        return true;
-    }
-    if (GITHUB_USER_IMAGE_HOSTS.has(hostname)) {
-        return true;
-    }
-    return hostname === 'cdn.adguardcdn.com' && url.pathname.startsWith('/sitereports/');
+    return isReporterImageNamespace(url);
 }
 
 /**
