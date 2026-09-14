@@ -2,6 +2,7 @@ import type { SearchQuery } from '../types/repo-context';
 import { DuplicateClass } from '../types/rule-proposal';
 import type { NormalizedRule } from './rule-normalizer';
 import { RuleKind } from './rule-normalizer';
+import { domainScopeCovers, hostnameAndParentSuffixes } from './domain-scope';
 
 /**
  * Build a synthetic candidate rule from a search query for comparison.
@@ -47,6 +48,9 @@ function candidateFromQuery(query: SearchQuery): Partial<NormalizedRule> | undef
 /**
  * Determine whether an explicitly scoped rule applies to the requested site domain.
  *
+ * Positive scopes cover the requested domain per {@link domainScopeCovers}, so an entity scope
+ * (`shellshock.*`) covers the requested domain under whichever public suffix it was reported on.
+ *
  * @param scopes - Normalized rule domain scopes, including possible `~` exclusions.
  * @param domain - Requested site domain.
  * @returns True when a positive scope covers the requested domain.
@@ -56,26 +60,8 @@ function domainScopesApply(scopes: string[], domain: string): boolean {
         if (scope.startsWith('~')) {
             return false;
         }
-        return domain === scope || domain.endsWith(`.${scope}`);
+        return domainScopeCovers(scope, domain);
     });
-}
-
-/**
- * Return a hostname and its meaningful parent hostnames for inventory matching.
- *
- * The final single-label suffix is excluded because matching every rule containing `com` or a
- * country-code suffix would make domain inventory unusably broad.
- *
- * @param domain - Requested site hostname.
- * @returns Hostname suffixes from most specific to least specific.
- */
-function domainAndParentHosts(domain: string): string[] {
-    const normalized = domain.trim().toLowerCase().replace(/\.$/u, '');
-    const labels = normalized.split('.').filter((label) => label.length > 0);
-    if (labels.length <= 1) {
-        return normalized.length > 0 ? [normalized] : [];
-    }
-    return labels.slice(0, -1).map((_label, index) => labels.slice(index).join('.'));
 }
 
 /**
@@ -98,7 +84,7 @@ function isDomainInventoryMatch(domain: string, existing: NormalizedRule): boole
         return false;
     }
     const pattern = existing.urlPattern.toLowerCase();
-    return domainAndParentHosts(normalizedDomain).some((host) => pattern.includes(host));
+    return hostnameAndParentSuffixes(normalizedDomain).some((host) => pattern.includes(host));
 }
 
 /**

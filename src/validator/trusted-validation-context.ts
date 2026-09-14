@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { domainScopeCovers } from '../repo/domain-scope';
 import { generatePlacementMap } from '../repo/placement-map';
 import { RuleKind, normalizeRule } from '../repo/rule-normalizer';
 
@@ -62,14 +63,18 @@ export interface TrustedValidationRequest {
 /**
  * Check whether a hostname falls within a positive or excluded AdGuard domain scope.
  *
+ * The scope itself and its subdomains match. A uBlock Origin entity scope (`shellshock.*`) matches
+ * the same registrable name under any public suffix, so an entity-scoped rule reaches the reported
+ * hostname and belongs in the baseline the local applicator measures against.
+ *
  * @param hostname - Lowercase hostname parsed from the reported URL.
  * @param rawScope - Normalized AdGuard domain token, optionally prefixed with `~` or `*.`.
- * @returns True when the hostname is the scope itself or one of its subdomains.
+ * @returns True when the hostname is covered by the scope.
  */
 function hostnameMatchesScope(hostname: string, rawScope: string): boolean {
     const withoutExclusion = rawScope.startsWith('~') ? rawScope.slice(1) : rawScope;
     const scope = withoutExclusion.startsWith('*.') ? withoutExclusion.slice(2) : withoutExclusion;
-    return scope.length > 0 && (hostname === scope || hostname.endsWith(`.${scope}`));
+    return domainScopeCovers(scope, hostname);
 }
 
 /**

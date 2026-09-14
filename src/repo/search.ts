@@ -9,6 +9,7 @@ import type {
 import type { DuplicateClass } from '../types/rule-proposal';
 import { RuleKind, normalizeRule, type NormalizedRule } from './rule-normalizer';
 import { classifyMatch } from './rule-classifier';
+import { domainScopeCovers, domainScopeSearchTerms, isEntityScope } from './domain-scope';
 
 /**
  * An intermediate search result, before the cross-filter reclassification pass.
@@ -86,12 +87,15 @@ interface DomainAffinityRank {
 /**
  * Return the final DNS label used as a bounded locale-affinity signal.
  *
+ * An entity scope (`shellshock.*`) stands for every public suffix at once, so it has no final label
+ * to compare and contributes no locale signal either way.
+ *
  * @param domain - Host-like cosmetic-rule domain scope.
  * @returns Lowercase final DNS label, or an empty string for unsupported scopes.
  */
 function finalDomainLabel(domain: string): string {
     const normalized = domain.toLowerCase().replace(/^~/u, '');
-    if (!/^[a-z0-9.-]+$/u.test(normalized)) {
+    if (isEntityScope(normalized) || !/^[a-z0-9.-]+$/u.test(normalized)) {
         return '';
     }
     return normalized.split('.').at(-1) ?? '';
@@ -122,9 +126,7 @@ function domainAffinityRank(
         : 0;
     const applies =
         positiveDomains.length === 0 ||
-        positiveDomains.some(
-            (domain) => normalizedDomain === domain || normalizedDomain.endsWith(`.${domain}`),
-        );
+        positiveDomains.some((domain) => domainScopeCovers(domain, normalizedDomain));
     return {
         applies: applies ? 1 : 0,
         sameLabelOnly: sameLabelCount > 0 && sameLabelCount === positiveDomains.length ? 1 : 0,
@@ -157,24 +159,6 @@ function compareDomainAffinity(
 }
 
 /**
- * Build raw-search terms for a queried hostname and each possible parent hostname.
- *
- * The final single-label suffix is omitted because it cannot identify a useful rule scope. The
- * normalized classifier remains authoritative, so broad substring hits are discarded later.
- *
- * @param domain - Hostname supplied by a domain search query.
- * @returns Lowercase hostname suffixes from most specific to least specific.
- */
-function domainSearchTerms(domain: string): string[] {
-    const normalized = domain.trim().toLowerCase().replace(/\.$/u, '');
-    const labels = normalized.split('.').filter((label) => label.length > 0);
-    if (labels.length <= 1) {
-        return normalized.length > 0 ? [normalized] : [];
-    }
-    return labels.slice(0, -1).map((_label, index) => labels.slice(index).join('.'));
-}
-
-/**
  * Determine whether a raw line is worth normalizing for a given query.
  *
  * Substring pre-filter for performance: the line must contain the query's domain / selector /
@@ -186,7 +170,7 @@ function domainSearchTerms(domain: string): string[] {
  */
 function preFilter(line: string, query: SearchQuery): boolean {
     const lower = line.toLowerCase();
-    if (query.domain && domainSearchTerms(query.domain).some((term) => lower.includes(term))) {
+    if (query.domain && domainScopeSearchTerms(query.domain).some((term) => lower.includes(term))) {
         return true;
     }
     if (query.selector && lower.includes(query.selector.toLowerCase())) {
