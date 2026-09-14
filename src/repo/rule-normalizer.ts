@@ -1,4 +1,9 @@
 import { RuleSyntaxKind } from '../types/rule-syntax-kind';
+import {
+    isAdGuardScriptletBody,
+    isUboScriptletBody,
+    scriptletNameFromBody,
+} from './scriptlet-syntax';
 
 /**
  * The kind of an AdGuard filter rule, inferred from its syntax.
@@ -78,7 +83,8 @@ export interface NormalizedRule {
     domains: string[];
 
     /**
-     * For scriptlet rules: the extracted scriptlet name.
+     * For scriptlet rules: the extracted scriptlet name. Absent when the rule injects no named
+     * scriptlet, as uBlock Origin's argument-less `#@#+js()` exception does.
      */
     scriptletName?: string;
 
@@ -218,7 +224,12 @@ export const COSMETIC_SEPARATORS = [
 /**
  * Infer the concrete syntax represented by a cosmetic separator.
  *
- * @param separator - The matched AdGuard cosmetic separator.
+ * Scriptlet injection is spelled two ways: AdGuard's dedicated `#%#` / `#@%#` separators plus a
+ * `//scriptlet(...)` body behind `#$#` / `#@$#`, and uBO's `+js(...)` body behind the plain
+ * element-hiding `##` / `#@#`. Both are the scriptlet syntax; the body decides wherever the
+ * separator alone cannot.
+ *
+ * @param separator - The matched cosmetic separator.
  * @param body - The normalized rule body after the separator.
  * @returns The actionable syntax kind.
  */
@@ -229,7 +240,8 @@ function syntaxKindForCosmeticSeparator(
     if (
         separator === '#%#' ||
         separator === '#@%#' ||
-        ((separator === '#$#' || separator === '#@$#') && /^\/\/scriptlet\s*\(/i.test(body))
+        ((separator === '#$#' || separator === '#@$#') && isAdGuardScriptletBody(body)) ||
+        ((separator === '##' || separator === '#@#') && isUboScriptletBody(body))
     ) {
         return RuleSyntaxKind.Scriptlet;
     }
@@ -357,17 +369,21 @@ export function normalizeRule(line: string): NormalizedRule {
         const syntaxKind = syntaxKindForCosmeticSeparator(sep, body);
         const isScriptlet = syntaxKind === RuleSyntaxKind.Scriptlet;
         if (isScriptlet) {
-            const match = body.match(/\/\/scriptlet\(\s*['"]([^'"]+)['"]/);
-            const scriptletName = match ? match[1] : undefined;
+            // A uBO rule stays in uBO spelling: the canonical string is what search results,
+            // placement and edits show a uAssets maintainer, so respelling `##+js(...)` as `#%#`
+            // would hand them a rule their own repository does not write. AdGuard's `#$#`
+            // scriptlet spelling still collapses onto `#%#`, as it always has.
+            const adGuardSeparator = isException ? '#@%#' : '#%#';
+            const canonicalSeparator = isUboScriptletBody(body) ? sep : adGuardSeparator;
             return {
-                canonical: `${domains.join(',')}${isException ? '#@%#' : '#%#'}${body}`,
+                canonical: `${domains.join(',')}${canonicalSeparator}${body}`,
                 kind: RuleKind.Scriptlet,
                 syntaxKind,
                 isException,
                 modifiers: [],
                 domains,
                 selector: body,
-                scriptletName,
+                scriptletName: scriptletNameFromBody(body),
             };
         }
         if (
