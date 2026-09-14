@@ -390,7 +390,8 @@ function composePolicyRationale(decision: ReportDecisionInput): string {
  * generation spelled as a version string.
  *
  * @param provenance - Prepared-extension provenance, or undefined when the run ran no extension.
- * @returns The version text, or the empty string when the run carried no provenance.
+ * @returns The version text, or the empty string when the run carried no provenance or its build
+ *   records no manifest generation (a Firefox signed XPI, whose manifest the host never reads).
  */
 function composeExecutorVersion(provenance: PreparedExtensionProvenance | undefined): string {
     if (provenance === undefined) {
@@ -398,6 +399,9 @@ function composeExecutorVersion(provenance: PreparedExtensionProvenance | undefi
     }
     if (provenance.extensionSourceTag !== undefined) {
         return provenance.extensionSourceTag;
+    }
+    if (provenance.manifestVersion === undefined) {
+        return '';
     }
     return provenance.manifestVersion === ExtensionManifestVersion.Mv3 ? 'MV3' : 'MV2';
 }

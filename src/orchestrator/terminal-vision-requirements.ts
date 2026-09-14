@@ -17,6 +17,7 @@ import type { PlaceholderValues } from '../prompts/template';
 import {
     analyzedCaptureArtifactCount,
     browserSessionVisionProgress,
+    sessionBaselineCredited,
     type AgentPageVisionCapture,
     type AgentRuntimeSessionState,
 } from './agent-runtime-session-evidence';
@@ -395,10 +396,11 @@ export function terminalVisionRequirements(
         const preparedStates = states.filter(
             (state) =>
                 state.extensionMode === ExtensionMode.Prepared &&
-                // The session's settings proof is the host read-back taken by the launch route's
-                // Baseline application (11-HITL Decision 1); launch-time settings evidence is
-                // retired, so the read-back record is what qualifies a prepared session here.
-                state.extensionBaselineReadBack !== undefined &&
+                // The session's baseline proof is the host read-back taken by the launch route's
+                // Baseline application (11-HITL Decision 1), or the list selection a declaring
+                // blocker's instruction supplied (32-AFK Decision 3); launch-time settings evidence
+                // is retired, so one of those two records is what qualifies a prepared session.
+                sessionBaselineCredited(state) &&
                 view.isTerminalCurrentPreparedState(state),
         );
         return [
@@ -460,7 +462,7 @@ export function hasCompleteTerminalVision(
             completeEnvironments.some(
                 (environment) =>
                     environment.extensionMode === ExtensionMode.Prepared &&
-                    environment.extensionBaselineReadBack !== undefined &&
+                    sessionBaselineCredited(environment) &&
                     view.isTerminalCurrentPreparedState(environment),
             )
         );

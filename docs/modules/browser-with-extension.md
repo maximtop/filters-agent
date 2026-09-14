@@ -84,7 +84,9 @@ from `browser.storage.managed`; filters arrive as a `userFilters` string of filt
 
 The policies file is built by `buildFirefoxPolicies({ extensionId, xpiPath, managedStorage })` —
 the managed storage passes through verbatim, so the uBO shape above is the caller's data. The
-result is handed to `BrowserSession.create` as `firefoxPolicies`; the executor instruction (issue 12) owns the actual filter content.
+result is handed to `BrowserSession.create` as `firefoxPolicies`; the run instruction owns the
+managed-storage document, and the host places the declared user-filters file's content into it at
+the key path the instruction named (`buildManagedStorageWithUserFilters`).
 
 ## Proving the block: the network-log seam vs the DOM
 
@@ -123,19 +125,85 @@ opens the state at the instruction's declared read and credits the phase only on
   set exactly, and user rules stay empty;
 - a `user-rules-file` or `managed-storage-file` read verifies the file at the declared path by
   content hash. Neither method can observe the enabled filter set, so phase B is credited on empty
-  user rules and phase C on the exact content alone; the application detail records what could not
-  be observed, and the enabled filter set is `null` — rendered as not observed, never an empty list.
+  user rules and phase C on the exact content alone, and the application detail records what could
+  not be observed. What the proof then reports as the enabled set depends on whether the executing
+  blocker declared one: the Chromium route leaves it `null` — rendered as not observed, never an
+  empty list — while the Firefox family reports the selection its instruction declared and the
+  browser applied at startup (see below).
 
-**File-backed application is not supported yet.** Preparation can write only inside its own
-workdir and is never told where the run's checkout is, and the application session carries page
-tools only — so no session in a run ever writes the file a `user-rules-file` or
-`managed-storage-file` declaration names, and the host would always read back a file the run
-itself never populated. Rather than discover that late, after paying for a whole investigation, a
-run whose instruction declares one of these two methods refuses immediately — before the
-repository checkout, the issue fetch, or any LLM call — naming the declared method and
-`InfrastructureFailureReason.FileBackedApplicationUnsupported`. The uBlock Origin and uBlock Origin
-Lite examples declare exactly these methods and so always refuse today; the built-in and Edge MV2
+**Which verification methods run today.** `extension-state` runs on the Chromium route: the host
+queries the running AdGuard extension over its own message transport. Of the file-backed methods
+exactly one pairing runs — `managed-storage-file` beside a `launch: firefox` declaration in the
+instruction's `## Preparation` section — and the host performs that application itself, because no
+model session can: preparation writes only inside its own workdir and never learns where the run's
+checkout is, and the application session carries page tools only. For that pairing the host writes
+the declared file (empty for the baseline goal, exactly the candidate line for the candidate goal),
+rebuilds the enterprise policies with the file's exact content at the declared key path, relaunches
+the browser — Firefox reads `policies.json` only at startup, so a running browser can never pick up
+new managed storage — and reads the file back through the file reader. The phase proof's detail
+names the file and the relaunch beside what the credit could not observe.
+
+Everything else file-backed still refuses before any paid work: `user-rules-file` names a file whose
+content only a Chromium blocker's own storage would carry (the uBlock Origin Lite example), and a
+`managed-storage-file` without a Firefox launch declaration names no policies to rebuild. Rather
+than discover that late, after paying for a whole investigation, such a run refuses immediately —
+before the repository checkout, the issue fetch, or any LLM call — naming the declared method, what
+a runnable declaration would have to say, and
+`InfrastructureFailureReason.FileBackedApplicationUnsupported`. The uBlock Origin example runs
+through A, B and C; the uBlock Origin Lite example always refuses; the built-in and Edge MV2
 instructions declare `extension-state`, which this limitation does not touch.
+
+**A Firefox run's launch family travels on the prepared extension.** `PreparedExtension.launch` is
+either the Chromium family (the unpacked directory and its manifest generation) or the Firefox
+family (the extension id, the signed XPI, the managed-storage document and the key path inside it
+that must hold the user filters). The preparation session declares the Firefox family in its
+terminal payload — it never writes a policies file — and every launch of the run takes its engine,
+its user-agent family and its extension channel from that descriptor
+(`src/browser/prepared-extension-launch.ts`), rebuilding the policies from the declaration plus the
+file's content at that moment.
+
+## What a uBlock Origin run in Firefox does
+
+One executor name (`browser_extension`), one adapter per launch family. A Firefox-family run never
+touches the AdGuard route's pieces — there is no unpacked root to lock, no bundled filter catalog to
+converge against and no `moz-extension://` page to drive — so it takes its own three seams:
+
+- **Its baseline is the instruction's list selection, not AdGuard's catalog.**
+  `src/environment/declared-filter-baseline.ts` reads the `selectedFilterLists` sitting beside the
+  declared user-filters key in the managed-storage document, unions in `user-filters` (without it
+  uBO applies no user rule at all), and reports them as `declared:<list>` keys. The environment
+  selection takes that decision instead of resolving the reported names — a uBO report names uBO's
+  own lists, which the official AdGuard catalog can never resolve — and the reporter's names are
+  compared against the selection for the report only: a covered name is silent, an uncovered one is
+  recorded, a subscription URL is a skipped source. Nothing refuses.
+- **Its launch baseline is the declaration itself.** `launchExtensionBaseline` credits a
+  Firefox-family session through `src/orchestrator/firefox-launch-baseline.ts`: the browser applied
+  the policies when it force-installed the XPI, which is what readiness means here, so the launch
+  reports `settingsVerified` with the exact `settingsEnabledLists` it ran with and says plainly that
+  the blocker exposes no host-readable live state. `sessionBaselineCredited` is the one predicate
+  every gate reads, so a session credited through either channel — the AdGuard read-back or this
+  declaration — may reach the filtering environment, and neither family is credited by the other's
+  evidence.
+- **Its phases come from `src/environment/firefox-extension-environment.ts`.** Preparation locks the
+  declared selection as the executable baseline with no resources and every list named
+  `unattributedListKeys` (no list file is ever opened, so nothing is claimed byte-proven). Phase A
+  launches the same Firefox build with no extension; B and C force-install the XPI and hand the
+  session to the host-side file application above. The phase proof records that read-back and adds
+  one thing: the enabled set is the declared selection, because a file read-back cannot observe it
+  and the declaration is what the browser applied. `packageVersion` and `manifestVersion` are the
+  `signed-xpi` marker — Firefox validates the archive itself and the host never unpacks it — and the
+  identity is in the proof's execution context (`uBlock0@raymondhill.net`, Playwright Firefox) and
+  the prepared-build provenance beside it. The run report names the same things: the blocker's id,
+  its XPI, and the declared list selection, never "AdGuard" or `Chromium + MV3 only`.
+
+**Placement works on the repository's own layout.** `generatePlacementMap` keys every `.txt` list
+file by its checkout-relative path in either layout; what the checkout's shape decides is how those
+files group into filters. A directory holding more than one list file directly at the top level is a
+container of independent lists — a uAssets-style `filters/*.txt` — so each file is its own list; one
+directory per filter, as AdguardFilters ships it (`BaseFilter/filter.txt`,
+`BaseFilter/sections/*.txt`), keeps naming its whole subtree after the directory. Without that a
+uAssets checkout collapsed into one filter with one section index: one placement target, no
+alternatives, and no cross-list selector classification.
 
 **Decision 2 — the AdGuard options-page driver is retired.** Its knowledge became the built-in
 instruction (`src/prompts/documents/instructions/adguard-extension.md`, which a run without its
@@ -172,7 +240,11 @@ Three properties of the recorded evidence follow:
   degraded accordingly: evaluation results can be influenced by page scripts.
 - **No `moz-extension://` access.** uBO's own pages cannot be opened or driven, so extension
   settings and version cannot be verified the way the Chromium reporter flow does. Verification
-  is the managed-storage contract plus observed filtering behavior.
+  is the managed-storage contract plus observed filtering behavior: the enabled set in a phase proof
+  is the declaration the browser applied, and the user-filter state is the declared file read back.
+- **A narrowed enabled set is refused.** The declared selection is applied whole at every browser
+  start, so there is no channel that would switch part of it off for one phase; a phase request
+  naming `enabledListKeys` is refused rather than answered with the whole selection.
 - **Signed XPIs only.** Firefox has no unpacked-directory equivalent of the Chromium load flag;
   `FirefoxEngine` rejects a non-empty `extensionPaths` with a configuration error,
   and Chromium-family engines conversely reject `firefoxPolicies`. Each family must use its own

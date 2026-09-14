@@ -47,23 +47,25 @@ can start — expect it to add several minutes ahead of the actual analysis.
 
 ## What works today
 
-Out of the box, the action investigates and verifies against the **built-in AdGuard Browser
-Extension** — that's what runs when your repository has no `.github/filters-agent/AGENTS.md` of
-its own.
+Out of the box, with no `.github/filters-agent/AGENTS.md` in your repository, the action
+investigates and verifies against the **built-in AdGuard Browser Extension** in Chromium.
 
-Three more browser and extension combinations exist as example run instructions (see
-`src/prompts/documents/instructions/`), but none of them completes a run yet in this MVP:
+An instruction file switches the run to another blocker. Three examples ship under
+`src/prompts/documents/instructions/`:
 
-- **uBlock Origin in Firefox** and **uBlock Origin Lite** apply their candidate rule through a
-  file the run's checkout would need to hold, and nothing in a run writes that file yet. A run
-  configured for either one refuses immediately — before it checks out your repository or spends
-  any LLM budget — rather than fail partway through.
+- **uBlock Origin in Firefox** runs end to end. The example declares `launch: firefox` and a
+  managed-storage user-filters file; the action force-installs the current signed uBO release
+  through Firefox enterprise policies, applies the candidate rule through that file, relaunches the
+  browser and reads the file back. Copy `ublock-origin-firefox.md` as your instruction and adjust
+  the list selection to the lists your repository publishes.
+- **uBlock Origin Lite** (Chromium) does not run yet: nothing in a run writes its rule file, so a
+  run configured for it refuses immediately, before it checks out your repository or spends any
+  LLM budget.
 - **The AdGuard Browser Extension (MV2 build) in Microsoft Edge** reads its state back the same
-  reliable way the built-in route does, but the action can't yet drive a real, branded Edge
-  browser to run it against.
+  way the built-in route does, but the action cannot yet drive a branded Edge browser.
 
 See [`docs/modules/browser-with-extension.md`](docs/modules/browser-with-extension.md) for the
-full detail behind each of these.
+detail behind each route.
 
 ## Inputs
 

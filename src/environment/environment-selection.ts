@@ -10,11 +10,10 @@ import {
     type ExecutorPreparationOutcome,
 } from './executor-preparation';
 import {
-    ExecutableFilterDecisionSchema,
-    NonExecutableFilterCode,
-    decideExecutableFilters,
-    type ExecutableFilterDecision,
-} from './official-filter-catalog';
+    SelectionFilterBaselineSchema,
+    type SelectionFilterBaseline,
+} from './declared-filter-baseline';
+import { NonExecutableFilterCode, decideExecutableFilters } from './official-filter-catalog';
 
 /**
  * Capability supported by one filtering environment.
@@ -476,7 +475,7 @@ export const EnvironmentSelectionSnapshotSchema = v.pipe(
         actual: v.nullable(ActualExecutionContextSchema),
         fidelityLimitations: v.pipe(v.array(FidelityLimitationSchema), v.maxLength(4)),
         capabilityLimits: v.pipe(v.array(CapabilityLimitSchema), v.maxLength(8)),
-        filterBaseline: v.optional(v.nullable(ExecutableFilterDecisionSchema)),
+        filterBaseline: v.optional(v.nullable(SelectionFilterBaselineSchema)),
         cliPreparation: v.optional(v.nullable(ExecutorPreparationSchema)),
     }),
     // The locked snapshot is correlated against its own descriptor rather than against any
@@ -533,8 +532,10 @@ export const EnvironmentSelectionSnapshotSchema = v.pipe(
     }, 'Selection provenance must remain bound to the locked environment.'),
     v.check(
         (snapshot) =>
-            snapshot.state !== 'ready' || snapshot.filterBaseline?.status === 'executable',
-        'A ready environment requires an executable official filter baseline.',
+            snapshot.state !== 'ready' ||
+            snapshot.filterBaseline?.status === 'executable' ||
+            snapshot.filterBaseline?.status === 'declared',
+        'A ready environment requires an executable official or declared filter baseline.',
     ),
 );
 
@@ -608,10 +609,11 @@ export interface AcceptedEnvironmentSelectionResponse {
     limitationCode: EnvironmentLimitationCode | null;
 
     /**
-     * Official identities the reported selection resolved to, or the finite reason it resolved to
-     * none. Null only for an unsupported product case, which reproduces no filtering at all.
+     * Official identities the reported selection resolved to, the selection the run's own
+     * instruction declared, or the finite reason the reported selection resolved to none. Null only
+     * for an unsupported product case, which reproduces no filtering at all.
      */
-    filterBaseline: ExecutableFilterDecision | null;
+    filterBaseline: SelectionFilterBaseline | null;
 }
 
 /**
@@ -679,6 +681,16 @@ export interface EnvironmentSelectionHostOptions {
      * Clock used for lock and rejected-request audit timestamps.
      */
     now?: () => string;
+
+    /**
+     * The executable baseline the run supplies instead of resolving the reported names against
+     * AdGuard's official catalog.
+     *
+     * Decision 1 of 32-AFK: a run whose blocker declares its own list selection resolves nothing —
+     * the declaration is the baseline, and the reporter's names are only compared against it. When
+     * the run supplies none, the reported selection is resolved as it always was.
+     */
+    filterBaseline?: SelectionFilterBaseline;
 }
 
 /**
@@ -774,9 +786,10 @@ export class EnvironmentSelectionHost {
     private readonly reported: EnvironmentSelectionSnapshot['reported'];
 
     /**
-     * Offline verdict on whether the reported filter selection has an executable official baseline.
+     * The run's executable filter baseline: the offline verdict on the reported selection, or the
+     * selection the run's own instruction declared.
      */
-    private readonly filterBaseline: ExecutableFilterDecision;
+    private readonly filterBaseline: SelectionFilterBaseline;
 
     /**
      * The first accepted selection, mutated only through bounded host methods.
@@ -831,7 +844,8 @@ export class EnvironmentSelectionHost {
             os: boundedContext(facts.os),
             browser: boundedContext(facts.browser),
         });
-        this.filterBaseline = decideExecutableFilters(facts.enabledFilters);
+        this.filterBaseline =
+            options.filterBaseline ?? decideExecutableFilters(facts.enabledFilters);
     }
 
     /**

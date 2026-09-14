@@ -17,6 +17,11 @@
 import * as v from 'valibot';
 import { resolve } from 'node:path';
 import { TOOL_GUIDANCE } from '../agent/tool-catalog';
+import {
+    ExtensionLaunchFamily,
+    FIREFOX_USER_FILTERS_KEY_PATH_MAX,
+    type FirefoxExtensionLaunch,
+} from '../environment/extension-launch';
 import { ToolName } from '../agent/tool-names';
 import type { LlmConfig } from '../config/config';
 import { createLogger, type Logger } from '../logger/logger';
@@ -30,6 +35,10 @@ import { launchModeSession } from '../session/mode-session';
 import { PromptDocumentName } from '../prompts/prompt-documents';
 import { recordTerminalTool, sealDetail, withExecutionRecording } from '../tracer/session-trace';
 import type { TraceRecorder } from '../tracer/trace-recorder';
+import {
+    PREPARATION_MANAGED_STORAGE_MAX_LENGTH,
+    readPreparationLaunchDeclaration,
+} from './preparation-launch-declaration';
 import {
     buildPreparationStepFailureGate,
     buildPreparationTools,
@@ -101,14 +110,41 @@ const PREPARATION_TERMINAL_COMMAND_MAX_LENGTH = 2_000;
 /**
  * The preparation session's terminal payload: the done/failed seal over the section's steps.
  *
- * `extensionDir` is required in effect for `done` — the core's wiring rejects a done payload
- * without a resolvable, existing directory — but stays optional in the schema so a missing
- * directory is the core's typed run failure naming it, not a schema bounce the model retries.
+ * `extensionDir` is required in effect for a `done` payload of the Chromium family — the core's
+ * wiring rejects a done payload without a resolvable, existing directory — but stays optional in
+ * the schema so a missing directory is the core's typed run failure naming it, not a schema bounce
+ * the model retries. The Firefox-family fields (31-AFK Decision 1) are optional for the same reason
+ * and for one more: the terminal's own host validation refuses an incomplete Firefox declaration by
+ * name, with guidance the model can act on inside its session.
  */
 export const PreparationTerminalSchema = v.strictObject({
     status: v.picklist(PREPARATION_TERMINAL_STATUS_VALUES),
     extensionDir: v.optional(
         v.pipe(v.string(), v.minLength(1), v.maxLength(PREPARATION_TERMINAL_FIELD_MAX_LENGTH)),
+    ),
+    launchFamily: v.optional(
+        v.pipe(v.string(), v.minLength(1), v.maxLength(PREPARATION_TERMINAL_FIELD_MAX_LENGTH)),
+    ),
+    extensionId: v.optional(
+        v.pipe(v.string(), v.minLength(1), v.maxLength(PREPARATION_TERMINAL_FIELD_MAX_LENGTH)),
+    ),
+    xpiPath: v.optional(
+        v.pipe(v.string(), v.minLength(1), v.maxLength(PREPARATION_TERMINAL_FIELD_MAX_LENGTH)),
+    ),
+    managedStorage: v.optional(
+        v.pipe(v.string(), v.minLength(1), v.maxLength(PREPARATION_MANAGED_STORAGE_MAX_LENGTH)),
+    ),
+    userFiltersKeyPath: v.optional(
+        v.pipe(
+            v.array(
+                v.pipe(
+                    v.string(),
+                    v.minLength(1),
+                    v.maxLength(PREPARATION_TERMINAL_FIELD_MAX_LENGTH),
+                ),
+            ),
+            v.maxLength(FIREFOX_USER_FILTERS_KEY_PATH_MAX),
+        ),
     ),
     failedCommand: v.optional(
         v.pipe(v.string(), v.minLength(1), v.maxLength(PREPARATION_TERMINAL_COMMAND_MAX_LENGTH)),
@@ -202,9 +238,16 @@ export interface PreparationSessionResult {
 
     /**
      * Absolute path of the payload-named extension directory, resolved inside this result's
-     * {@link PreparationSessionResult.workDir}; present only for accepted done payloads.
+     * {@link PreparationSessionResult.workDir}; present only for accepted done payloads of the
+     * Chromium family.
      */
     extensionDir?: string;
+
+    /**
+     * The validated Firefox launch declaration with its XPI path resolved absolute, for an accepted
+     * done payload that declared the Firefox family; absent for the Chromium family.
+     */
+    firefoxLaunch?: FirefoxExtensionLaunch;
 
     /**
      * The failing command of the latched first failure, or the payload's own record.
@@ -227,11 +270,13 @@ export interface PreparationSessionResult {
  *
  * @param gate - The latch the two step tools and this terminal share.
  * @param recorder - The run trace recorder.
+ * @param workDir - Absolute workdir a declared relative XPI path resolves against.
  * @returns The trace-wrapped terminal controller.
  */
 function buildPreparationTerminal(
     gate: PreparationStepFailureGate,
     recorder: TraceRecorder,
+    workDir: string,
 ): TerminalToolController<PreparationTerminal> {
     return recordTerminalTool(
         buildTerminalTool<PreparationTerminal>({
@@ -250,6 +295,18 @@ function buildPreparationTerminal(
                         fingerprint: 'preparation-step-failed-latched',
                     };
                 }
+                if (payload.status !== PreparationTerminalStatus.Done) {
+                    return undefined;
+                }
+                // The launch declaration is validated inside the session, so a malformed one is a
+                // refusal the model can act on rather than a typed run failure after the seal.
+                const declaration = readPreparationLaunchDeclaration(payload, workDir);
+                if ('reason' in declaration) {
+                    return {
+                        reason: declaration.reason,
+                        fingerprint: 'preparation-launch-declaration-unusable',
+                    };
+                }
                 return undefined;
             },
         }),
@@ -263,9 +320,9 @@ function buildPreparationTerminal(
  * @param outcome - The sealed pi outcome of the preparation session.
  * @param gate - The shared step-failure latch.
  * @param workDir - Absolute workdir the session ran in.
- * @returns A done payload becomes `done` with the resolved absolute extension directory; anything
- *   else is the typed failed status carrying the failing command from payload or latch plus the
- *   seal detail.
+ * @returns A done payload becomes `done` with the resolved absolute extension directory, or with
+ *   the validated Firefox launch declaration when it named that family; anything else is the typed
+ *   failed status carrying the failing command from payload or latch plus the seal detail.
  */
 function preparationResultFrom(
     outcome: TerminalOutcome<PreparationTerminal>,
@@ -274,12 +331,34 @@ function preparationResultFrom(
 ): PreparationSessionResult {
     if (outcome.kind === SealKind.Terminal) {
         const payload = outcome.payload;
-        if (payload.status === PreparationTerminalStatus.Done && payload.extensionDir) {
-            return {
-                status: PreparationTerminalStatus.Done,
-                workDir,
-                extensionDir: resolve(workDir, payload.extensionDir),
-            };
+        if (payload.status === PreparationTerminalStatus.Done) {
+            // One rule for the declaration: the terminal accepted this payload through exactly
+            // this read, so a refusal here can only mean the two disagreed — which is a wiring
+            // fault the failed status names rather than a shape to guess at.
+            const declaration = readPreparationLaunchDeclaration(payload, workDir);
+            if ('reason' in declaration) {
+                return {
+                    status: PreparationTerminalStatus.Failed,
+                    workDir,
+                    detail:
+                        'The accepted preparation payload carries a launch declaration the host ' +
+                        `cannot read: ${declaration.reason}`,
+                };
+            }
+            if (declaration.family === ExtensionLaunchFamily.Firefox) {
+                return {
+                    status: PreparationTerminalStatus.Done,
+                    workDir,
+                    firefoxLaunch: declaration.launch,
+                };
+            }
+            if (payload.extensionDir) {
+                return {
+                    status: PreparationTerminalStatus.Done,
+                    workDir,
+                    extensionDir: resolve(workDir, payload.extensionDir),
+                };
+            }
         }
         return {
             status: PreparationTerminalStatus.Failed,
@@ -324,7 +403,7 @@ export async function runPreparationSession(
     const tools: SessionToolSpec[] = adaptSessionTools(inputs, { guidance: TOOL_GUIDANCE }).map(
         (spec) => withExecutionRecording(spec, recorder),
     );
-    const terminal = buildPreparationTerminal(gate, recorder);
+    const terminal = buildPreparationTerminal(gate, recorder, workDir);
     const { outcome } = await launchModeSession<PreparationTerminal>({
         runtime: options.runtime,
         llm: options.llm,

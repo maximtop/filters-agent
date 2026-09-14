@@ -3,18 +3,19 @@ import { ModelRuntime } from '@earendil-works/pi-coding-agent';
 import type { LlmConfig } from '../config/config';
 
 /**
- * Pi runtime setup: turn application provider configuration into a ready pi model runtime — the
- * TokenGuard provider registered entirely in code over the OpenAI-completions API, credentials held
- * in an in-memory store, both model handles resolved, compatibility flags applied.
+ * Pi runtime setup: turn application provider configuration into a ready pi model runtime — an
+ * OpenAI-compatible provider registered entirely in code over the OpenAI-completions API,
+ * credentials held in an in-memory store, both model handles resolved, compatibility flags
+ * applied.
  */
 
 /**
- * Provider id the TokenGuard gateway is registered under inside the pi runtime.
+ * Provider id the configured OpenAI-compatible gateway is registered under inside the pi runtime.
  */
-export const TOKENGUARD_PROVIDER_ID = 'tokenguard';
+export const OPENAI_COMPATIBLE_PROVIDER_ID = 'openai-compatible';
 
 /**
- * Explicit zero rates registered with every TokenGuard catalog entry.
+ * Explicit zero rates registered with every catalog entry.
  *
  * Pi derives `Usage.cost` from these rates and this layer never reads that field: run cost is
  * priced by `usage-collector.ts` from the tracked, digest-pinned rate table, because a cost figure
@@ -24,13 +25,14 @@ export const TOKENGUARD_PROVIDER_ID = 'tokenguard';
 const UNPRICED_MODEL_COST = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } as const;
 
 /**
- * TokenGuard OpenAI-completions compatibility flags, applied to every registered model.
+ * OpenAI-completions compatibility flags for the configured gateway, applied to every registered
+ * model.
  *
  * `requiresReasoningContentOnAssistantMessages` replays `reasoning_content` on assistant history:
- * thinking-mode gateways behind TokenGuard hard-fail the following request without it (the bespoke
- * loop carried the same workaround). pi's URL auto-detection cannot fire here — the gateway host is
- * not `deepseek.com` — so the flag must be explicit, and it only takes effect on entries registered
- * with `reasoning: true`.
+ * some thinking-mode OpenAI-compatible gateways hard-fail the following request without it (the
+ * bespoke loop carried the same workaround). pi's URL auto-detection cannot fire here — the gateway
+ * host is not `deepseek.com` — so the flag must be explicit, and it only takes effect on entries
+ * registered with `reasoning: true`.
  *
  * `sendSessionAffinityHeaders` with `sessionAffinityFormat: 'openai'` attaches `session_id`,
  * `x-client-request-id`, and `x-session-affinity` headers whenever a caller passes a session id,
@@ -48,7 +50,7 @@ const UNPRICED_MODEL_COST = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
  * upstream accepts, and the two roles are equivalent to the gateway, so nothing is given up by
  * pinning it.
  */
-const TOKENGUARD_COMPAT = {
+const OPENAI_COMPATIBLE_COMPAT = {
     requiresReasoningContentOnAssistantMessages: true,
     sendSessionAffinityHeaders: true,
     sessionAffinityFormat: 'openai',
@@ -119,7 +121,8 @@ export interface PiRuntime {
 }
 
 /**
- * Register one extra text-only reasoning model on the TokenGuard provider and resolve it.
+ * Register one extra text-only reasoning model on the configured OpenAI-compatible provider and
+ * resolve it.
  *
  * The benchmark reviewer's model override (`reviewerModel`, defaulting to the configured reasoning
  * model) may name a slug outside the two configured models; the legacy provider sent any slug to
@@ -135,18 +138,20 @@ export interface PiRuntime {
  * @returns The resolved model handle.
  */
 export function registerAdditionalTextModel(runtime: PiRuntime, modelId: string): Model<Api> {
-    const existing = runtime.modelRuntime.getModel(TOKENGUARD_PROVIDER_ID, modelId);
+    const existing = runtime.modelRuntime.getModel(OPENAI_COMPATIBLE_PROVIDER_ID, modelId);
     if (existing) {
         return existing;
     }
-    const registration = runtime.modelRuntime.getRegisteredProviderConfig(TOKENGUARD_PROVIDER_ID);
+    const registration = runtime.modelRuntime.getRegisteredProviderConfig(
+        OPENAI_COMPATIBLE_PROVIDER_ID,
+    );
     if (!registration) {
         throw new PiModelLookupError(
-            `Invalid pi runtime configuration:\n  - model: provider ${TOKENGUARD_PROVIDER_ID} ` +
+            `Invalid pi runtime configuration:\n  - model: provider ${OPENAI_COMPATIBLE_PROVIDER_ID} ` +
                 'is not registered on this runtime',
         );
     }
-    runtime.modelRuntime.registerProvider(TOKENGUARD_PROVIDER_ID, {
+    runtime.modelRuntime.registerProvider(OPENAI_COMPATIBLE_PROVIDER_ID, {
         ...registration,
         models: [
             ...(registration.models ?? []),
@@ -158,7 +163,7 @@ export function registerAdditionalTextModel(runtime: PiRuntime, modelId: string)
                 cost: { ...UNPRICED_MODEL_COST },
                 contextWindow: runtime.reasoningModel.contextWindow,
                 maxTokens: runtime.reasoningModel.maxTokens,
-                compat: { ...TOKENGUARD_COMPAT },
+                compat: { ...OPENAI_COMPATIBLE_COMPAT },
             },
         ],
     });
@@ -179,11 +184,13 @@ export function registerAdditionalTextModel(runtime: PiRuntime, modelId: string)
  * @param config - Validated provider configuration.
  * @returns Both model entries with their configured limits and the shared compat flags.
  */
-function tokenguardModels(config: PiRuntimeConfig): NonNullable<ProviderRegistration['models']> {
+function openAiCompatibleModels(
+    config: PiRuntimeConfig,
+): NonNullable<ProviderRegistration['models']> {
     const shared = {
         cost: { ...UNPRICED_MODEL_COST },
         contextWindow: config.contextWindowTokens,
-        compat: { ...TOKENGUARD_COMPAT },
+        compat: { ...OPENAI_COMPATIBLE_COMPAT },
     };
     return [
         {
@@ -214,11 +221,11 @@ function tokenguardModels(config: PiRuntimeConfig): NonNullable<ProviderRegistra
  * @returns The resolved model handle.
  */
 function resolveModel(modelRuntime: ModelRuntime, modelId: string, field: string): Model<Api> {
-    const model = modelRuntime.getModel(TOKENGUARD_PROVIDER_ID, modelId);
+    const model = modelRuntime.getModel(OPENAI_COMPATIBLE_PROVIDER_ID, modelId);
     if (!model) {
         throw new PiModelLookupError(
             `Invalid pi runtime configuration:\n  - ${field}: model is not registered ` +
-                `with the ${TOKENGUARD_PROVIDER_ID} provider`,
+                `with the ${OPENAI_COMPATIBLE_PROVIDER_ID} provider`,
         );
     }
     return model;
@@ -239,13 +246,13 @@ export async function createPiRuntime(config: PiRuntimeConfig): Promise<PiRuntim
         modelsPath: null,
         credentials: new InMemoryCredentialStore(),
     });
-    modelRuntime.registerProvider(TOKENGUARD_PROVIDER_ID, {
-        name: 'TokenGuard',
+    modelRuntime.registerProvider(OPENAI_COMPATIBLE_PROVIDER_ID, {
+        name: 'OpenAI-compatible',
         baseUrl: config.baseUrl,
         api: 'openai-completions',
-        models: tokenguardModels(config),
+        models: openAiCompatibleModels(config),
     });
-    await modelRuntime.setRuntimeApiKey(TOKENGUARD_PROVIDER_ID, config.apiKey);
+    await modelRuntime.setRuntimeApiKey(OPENAI_COMPATIBLE_PROVIDER_ID, config.apiKey);
     return {
         modelRuntime,
         reasoningModel: resolveModel(modelRuntime, config.model, 'model'),

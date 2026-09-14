@@ -65,9 +65,12 @@ The target is relative to the run's checkout root; the host resolves it there. T
 the very one preparation created empty and the application steps appended to — one rule per line,
 the candidate appended last — and the host credits that file's exact content.
 
-File-backed application is not supported yet: no session in this run writes the file this
-declaration names, so a run loading this example refuses before any paid work, naming the
-declared method (see `docs/modules/browser-with-extension.md`).
+This declaration does not run today. The only file-backed application the host can perform is
+`managed-storage-file` beside a `launch: firefox` declaration — the uBO example, where the host
+maintains the declared file and rebuilds Firefox's enterprise policies around it. uBOL keeps its
+custom filters in Chromium-local storage the host cannot write, so a run loading this example
+refuses before any paid work, naming the declared method (see
+`docs/modules/browser-with-extension.md`).
 
 The credit names the maintained custom-filters file, not uBOL's own storage: uBOL keeps custom
 filters in its browser-local storage, which the host cannot read directly. The file is the source

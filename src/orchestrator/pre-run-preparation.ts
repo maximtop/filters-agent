@@ -28,6 +28,7 @@ import type { LoadedInstruction } from '../knowledge/instruction-loader';
 import { extractPreparationSection } from '../knowledge/instruction-preparation';
 import {
     loadPreparedExtensionFromDirectory,
+    loadPreparedFirefoxExtension,
     type PreparedExtension,
 } from '../local/prepared-extension';
 import {
@@ -73,6 +74,12 @@ export const PreRunPreparationFailureKind = {
      * The payload's extensionDir resolves outside the preparation session workdir.
      */
     PlacementEscapes: 'prepared_extension_dir_escapes_workdir',
+
+    /**
+     * A Firefox-family payload names a signed XPI the host cannot launch: the file is missing, or
+     * it resolves outside the preparation session workdir.
+     */
+    XpiPlacementInvalid: 'prepared_extension_xpi_invalid',
 
     /**
      * The pinned-release download, digest, unpack, or manifest placement failed; the message
@@ -199,21 +206,80 @@ function preparationSessionFailureDetail(result: PreparationSessionResult): stri
 }
 
 /**
- * Validate the preparation result and load the resulting directory as this run's extension.
+ * Test whether one resolved path names a position inside the preparation workdir.
+ *
+ * @param resolved - Absolute path resolved from the payload.
+ * @param workDir - The session's workdir the payload path must resolve inside.
+ * @returns Whether the path is the workdir itself or a position below it.
+ */
+function insideWorkdir(resolved: string, workDir: string): boolean {
+    return resolved === workDir || resolved.startsWith(`${workDir}/`);
+}
+
+/**
+ * Load the Firefox-family declaration of one preparation result as this run's extension.
+ *
+ * The signed XPI is the build, so the same containment rule the Chromium directory obeys applies to
+ * it: a payload naming an XPI outside the session workdir is refused before any browser launches
+ * with it.
+ *
+ * @param launch - The validated Firefox launch declaration the session sealed.
+ * @param workDir - The session's workdir the XPI must resolve inside.
+ * @param sectionSha256 - The preparation section digest, pinning the extension's source content.
+ * @returns The validated PreparedExtension with `Instruction` provenance.
+ * @throws When the XPI escapes the workdir, is missing, or is otherwise unlaunchable.
+ */
+async function loadInstructionPreparedFirefoxExtension(
+    launch: NonNullable<PreparationSessionResult['firefoxLaunch']>,
+    workDir: string,
+    sectionSha256: string,
+): Promise<PreparedExtension> {
+    if (!insideWorkdir(launch.xpiPath, workDir)) {
+        throw new PreRunPreparationError(
+            PreRunPreparationFailureKind.XpiPlacementInvalid,
+            `The preparation session's xpiPath "${launch.xpiPath}" resolves outside the ` +
+                `preparation workdir ${workDir}.`,
+        );
+    }
+    try {
+        return await loadPreparedFirefoxExtension(
+            launch,
+            PreparedExtensionSource.Instruction,
+            sectionSha256,
+        );
+    } catch (error) {
+        throw new PreRunPreparationError(
+            PreRunPreparationFailureKind.XpiPlacementInvalid,
+            `The preparation session's Firefox launch declaration is not launchable: ` +
+                `${error instanceof Error ? error.message : String(error)}`,
+            error,
+        );
+    }
+}
+
+/**
+ * Validate the preparation result and load what it named as this run's extension.
  *
  * @param result - The sealed preparation-session result.
  * @param workDir - The session's workdir the payload path must resolve inside.
  * @param sectionSha256 - The preparation section digest, pinning the extension's source content.
  * @returns The validated PreparedExtension with `Instruction` provenance.
- * @throws When the result names no directory.
- * @throws When the named directory resolves outside the workdir.
- * @throws When the directory is missing or unloadable.
+ * @throws When the result names neither a directory nor a Firefox launch declaration.
+ * @throws When the named directory or XPI resolves outside the workdir.
+ * @throws When the directory is missing or unloadable, or the XPI is not launchable.
  */
 async function loadInstructionPreparedExtension(
     result: PreparationSessionResult,
     workDir: string,
     sectionSha256: string,
 ): Promise<PreparedExtension> {
+    if (result.firefoxLaunch !== undefined) {
+        return await loadInstructionPreparedFirefoxExtension(
+            result.firefoxLaunch,
+            workDir,
+            sectionSha256,
+        );
+    }
     if (result.extensionDir === undefined) {
         throw new PreRunPreparationError(
             PreRunPreparationFailureKind.PlacementMissing,
@@ -223,7 +289,7 @@ async function loadInstructionPreparedExtension(
         );
     }
     const resolved = resolve(result.extensionDir);
-    if (resolved !== workDir && !resolved.startsWith(`${workDir}/`)) {
+    if (!insideWorkdir(resolved, workDir)) {
         throw new PreRunPreparationError(
             PreRunPreparationFailureKind.PlacementEscapes,
             `The preparation session's extensionDir "${result.extensionDir}" resolves outside ` +

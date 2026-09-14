@@ -14,6 +14,13 @@ export const BrowserDisplayName = {
      * environment selection's browser-approximation fidelity limitation.
      */
     CloakBrowserChromium: 'CloakBrowser Chromium',
+
+    /**
+     * The Playwright Firefox build a Firefox-family prepared extension is force-installed into
+     * through enterprise policies: the one route that drives a browser other than the stealth
+     * Chromium engine.
+     */
+    PlaywrightFirefox: 'Playwright Firefox',
 } as const;
 
 export const BROWSER_DISPLAY_NAME_VALUES = Object.values(BrowserDisplayName);

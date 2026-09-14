@@ -768,6 +768,14 @@ export type EnvironmentPhaseConfigurationResult =
            * proof so the run record says how the phase was credited.
            */
           detail?: string;
+
+          /**
+           * The session the phase must be observed over, when the application replaced the one it
+           * was handed. A host-performed file-backed application relaunches the browser so it reads
+           * the rebuilt enterprise policies at startup (31-AFK Decision 3), and the session it was
+           * handed is closed by then. Absent when the application left that session running.
+           */
+          session?: IBrowserSession;
       }
     | {
           /**
@@ -795,6 +803,13 @@ export type EnvironmentPhaseConfigurationResult =
            * Bounded detail naming the mismatch or the failure the read-back hit.
            */
           detail: string;
+
+          /**
+           * The session that is live now, when the application replaced the one it was handed
+           * before failing to verify: the phase never opens, but the environment must still close
+           * the session that is actually running rather than the one already closed.
+           */
+          session?: IBrowserSession;
       };
 
 /**
@@ -1256,6 +1271,20 @@ export class BrowserExtensionEnvironmentAdapter implements FilteringEnvironmentA
                 // after the parent deadline already fired.
                 ...(request.signal === undefined ? {} : { signal: request.signal }),
             });
+            // An application that had to relaunch the browser (the host-performed file-backed
+            // application: Firefox reads enterprise policies only at startup) hands back the
+            // session that is live now. It replaces the established one everywhere the phase uses
+            // it — the lease the validators observe and the registry that closes it — including on
+            // the failure paths below, where the session handed in is already closed.
+            const configured =
+                application.kind !== EnvironmentPhaseConfigurationOutcome.Refused &&
+                application.session !== undefined
+                    ? application.session
+                    : created.session;
+            if (configured !== created.session) {
+                created = { session: configured };
+                this.openLeases.set(leaseId, { leaseId, session: configured });
+            }
             if (application.kind === EnvironmentPhaseConfigurationOutcome.Refused) {
                 const phaseName = request.phase === PhaseLabel.C ? 'C' : 'B';
                 return {

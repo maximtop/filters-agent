@@ -2,8 +2,12 @@ import {
     BLOCKER_VERIFICATION_METHOD_VALUES,
     BlockerVerificationMethod,
 } from '../environment/environment-proofs';
+import { ExtensionLaunchFamily } from '../environment/extension-launch';
 import { sha256OfContent } from '../environment/rules-content';
-import { extractInstructionSection } from './instruction-preparation';
+import {
+    declaredExtensionLaunchFamily,
+    extractInstructionSection,
+} from './instruction-preparation';
 
 /**
  * Application-contract parsing of a run instruction.
@@ -279,18 +283,26 @@ export function parseRuleApplication(content: string): RuleApplicationParse {
 
 /**
  * Detail explaining why a run must refuse before any paid work, when the instruction's application
- * contract declares a file-backed verification method.
+ * contract declares a file-backed verification method the host cannot apply.
  *
- * No session in this run writes the file a `user-rules-file` or `managed-storage-file` read
- * declares: preparation writes only inside its own workdir, and the application session has page
- * tools only, so the host would always read back a file the run itself never populated — the phase
- * could never verify. This is the one gate every face calls at the earliest point it holds the
- * loaded instruction, before the issue is fetched, intake extraction runs, or any other paid work
- * starts, so a run that can never succeed never pays for one.
+ * One file-backed pairing runs today (31-AFK Decision 4): `managed-storage-file` beside a `launch:
+ * firefox` declaration in the preparation section. There the host itself maintains the declared
+ * file between phases — it writes the file, rebuilds the Firefox enterprise policies from the
+ * instruction's managed-storage declaration, relaunches the browser so it reads them at startup,
+ * and reads the file back. Every other file-backed declaration still has nobody who writes the file
+ * the read names: `user-rules-file` reaches a Chromium blocker whose own storage the host cannot
+ * write, and a `managed-storage-file` without a Firefox launch declaration names no policies to
+ * rebuild — so the host would always read back a file the run itself never populated and the phase
+ * could never verify.
+ *
+ * This is the one gate every face calls at the earliest point it holds the loaded instruction,
+ * before the issue is fetched, intake extraction runs, or any other paid work starts, so a run that
+ * can never succeed never pays for one.
  *
  * @param content - The run instruction's Markdown content.
- * @returns The refusal detail naming the declared method, or undefined when the instruction carries
- *   no application contract, or declares a method other than the two file-backed ones.
+ * @returns The refusal detail naming the declared method and what a runnable declaration would have
+ *   to say, or undefined when the instruction carries no application contract, declares a method
+ *   other than the two file-backed ones, or declares the one file-backed pairing that runs.
  */
 export function fileBackedApplicationRefusalDetail(content: string): string | undefined {
     const contract = parseRuleApplication(content);
@@ -304,9 +316,19 @@ export function fileBackedApplicationRefusalDetail(content: string): string | un
     ) {
         return undefined;
     }
+    if (
+        method === BlockerVerificationMethod.ManagedStorageFile &&
+        declaredExtensionLaunchFamily(content) === ExtensionLaunchFamily.Firefox
+    ) {
+        return undefined;
+    }
     return (
-        `The run instruction declares the file-backed verification method "${method}", but ` +
-        'file-backed application is not supported yet: no session in this run writes the file ' +
-        'the host would read back, so the phase could never verify.'
+        `The run instruction declares the file-backed verification method "${method}", which no ` +
+        'session or host step in this run can apply: the only file-backed application that runs ' +
+        `is "${BlockerVerificationMethod.ManagedStorageFile}" beside a ` +
+        `"launch: ${ExtensionLaunchFamily.Firefox}" declaration in the preparation section, where ` +
+        'the host maintains the declared file and rebuilds the enterprise policies around it. As ' +
+        'declared, the host would read back a file the run itself never populated, so the phase ' +
+        'could never verify.'
     );
 }

@@ -18,15 +18,20 @@ import {
     type EnvironmentPhaseConfigurationRequest,
     type ExtensionBaselineSettings,
 } from '../environment/browser-extension-environment';
-import { adguardListKey } from '../environment/filter-list-ref';
+import { ExtensionLaunchFamily } from '../environment/extension-launch';
+import { adguardListKey, type FilterListKey } from '../environment/filter-list-ref';
 import { normalizeRulesContent } from '../environment/rules-content';
-import { readPreparedExtensionManifest } from '../local/prepared-extension';
+import {
+    readPreparedExtensionManifest,
+    requireChromiumPreparedExtension,
+} from '../local/prepared-extension';
 import { createLogger, type Logger } from '../logger/logger';
 import type { ApplicationInstructionGap } from '../knowledge/instruction-application';
 import type { LoadedInstruction } from '../knowledge/instruction-loader';
 import { PhaseLabel } from '../types/validation';
 import { ApplicationGoalKind } from '../validator/phase-application-contract';
 import type { AgentRuntimeSessionState } from './agent-runtime-session-evidence';
+import { launchFirefoxDeclaredBaseline } from './firefox-launch-baseline';
 import { runApplication } from './phase-application-flow';
 import {
     applicationInstructionContent,
@@ -54,6 +59,12 @@ export const LaunchBaselineOutcomeKind = {
      * The host read the prepared settings back and the Baseline state matched them.
      */
     Verified: 'verified',
+
+    /**
+     * The session's baseline is the run instruction's own declaration, credited without a live
+     * state read: the family has none the host can read (32-AFK Decision 3).
+     */
+    Declared: 'declared',
 
     /**
      * The instruction's application contract refused before any model turn.
@@ -87,6 +98,22 @@ export type LaunchBaselineOutcome =
            * The complete host read-back the session's settings record is derived from.
            */
           readBack: AdGuardExtensionStateRead;
+      }
+    | {
+          /**
+           * Discriminator: the baseline is the instruction's own declared list selection.
+           */
+          kind: typeof LaunchBaselineOutcomeKind.Declared;
+
+          /**
+           * The executable list keys the session launched with.
+           */
+          listKeys: readonly FilterListKey[];
+
+          /**
+           * Bounded detail naming what the declaration credited and what it could not observe.
+           */
+          detail: string;
       }
     | {
           /**
@@ -134,6 +161,9 @@ export function launchBaselineSettingsFields(
     }
     return {
         ...(outcome.kind === LaunchBaselineOutcomeKind.Refused ? { settingsGap: outcome.gap } : {}),
+        ...(outcome.kind === LaunchBaselineOutcomeKind.Declared
+            ? { settingsEnabledLists: [...outcome.listKeys] }
+            : {}),
         settingsDetail: outcome.detail,
     };
 }
@@ -231,6 +261,28 @@ export async function launchExtensionBaseline(
 ): Promise<LaunchBaselineOutcome> {
     const logger = createLogger({ verbose: host.verbose });
     const extension = state.extension;
+    // The launch Baseline below is the AdGuard route's own settings proof: it pre-reads the live
+    // extension state, converges the requested filter set against the build's bundled catalog and
+    // credits the session from a state read-back. A Firefox-family build has none of those — no
+    // unpacked directory, no driveable extension page — so its baseline is the instruction's own
+    // declaration, applied by the browser when it force-installed the XPI (32-AFK Decision 3), and
+    // its phases are credited by the host-performed file-backed application between them.
+    if (extension && extension.launchFamily === ExtensionLaunchFamily.Firefox) {
+        const declared = launchFirefoxDeclaredBaseline(extension, logger);
+        if (declared === null) {
+            return {
+                kind: LaunchBaselineOutcomeKind.Unverified,
+                detail:
+                    `The ${extension.extensionId} launch declaration selects no filter list, so ` +
+                    'this session has no executable baseline to credit.',
+            };
+        }
+        return {
+            kind: LaunchBaselineOutcomeKind.Declared,
+            listKeys: declared.listKeys,
+            detail: declared.detail,
+        };
+    }
     if (!extension || !session.extensionContext) {
         const detail =
             'The prepared launch session carried no verified extension context, so the ' +
@@ -238,6 +290,10 @@ export async function launchExtensionBaseline(
         logger.warn({}, 'the launch Baseline application could not run');
         return { kind: LaunchBaselineOutcomeKind.Unverified, detail };
     }
+    const chromiumLaunch = requireChromiumPreparedExtension(
+        extension,
+        'The launch Baseline application',
+    );
     if (signal?.aborted) {
         const detail =
             'The launch deadline aborted before the Baseline application; no prepared settings ' +
@@ -249,7 +305,7 @@ export async function launchExtensionBaseline(
     host.applicationReadContexts.set(session, context);
     const readState = host.readAdGuardExtensionState ?? readAdGuardExtensionStateDefault;
     let preReadFailure: string | undefined;
-    const preRead = await readState(context, extension.manifestVersion).catch((error) => {
+    const preRead = await readState(context, chromiumLaunch.manifestVersion).catch((error) => {
         preReadFailure = error instanceof Error ? error.message : String(error);
         logger.error(
             { error: preReadFailure },
@@ -273,7 +329,7 @@ export async function launchExtensionBaseline(
         return { kind: LaunchBaselineOutcomeKind.Unverified, detail };
     }
     const baselineEnabledFilterIds = await convergeExpectedFilterIds(
-        extension.extensionPath,
+        chromiumLaunch.extensionPath,
         launchBaselineFilterIds(settings, preRead.optionsEnabledFilterIds) ?? [
             ...preRead.optionsEnabledFilterIds,
         ],
@@ -389,9 +445,15 @@ export function buildBrowserExtensionEnvironmentOptions(
     if (!state.extension || !state.settingsProfile || !state.extensionBaselineReadBack) {
         throw new Error('A verified prepared Extension session is required.');
     }
-    // The runtime option is structurally the serialized single-source provenance: the proof schema
-    // and the runtime carry the same PreparedExtension field set.
-    const provenance = state.extension;
+    // This adapter locks its baseline from an unpacked root's own manifest and resource bytes, so
+    // it is a Chromium-family construction by definition; a Firefox-family build fails named here
+    // rather than reaching a baseline lock that would find no manifest. The Chromium record is
+    // structurally the serialized single-source provenance: the proof schema and the runtime carry
+    // the same field set.
+    const provenance = requireChromiumPreparedExtension(
+        state.extension,
+        'Building the Extension environment options',
+    );
     const { packageVersion } = readPreparedExtensionManifest(provenance.extensionPath);
     const buildDigest = createHash('sha256').update(JSON.stringify(provenance)).digest('hex');
     return {

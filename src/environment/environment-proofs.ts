@@ -1,6 +1,7 @@
 import * as v from 'valibot';
 import { PhaseLabel, PHASE_LABEL_VALUES } from '../types/validation';
 import { SETTINGS_PROFILE_KIND_VALUES } from '../types/settings-profile-kind';
+import { EXTENSION_LAUNCH_FAMILY_VALUES } from './extension-launch';
 import {
     EXTENSION_MANIFEST_VERSION_VALUES,
     PREPARED_EXTENSION_SOURCE_VALUES,
@@ -118,13 +119,23 @@ export const PublishedBaselineProvenanceSchema = v.strictObject({
  *
  * The run's extension is prepared host-side before any session starts, so the provenance is one
  * shape everywhere it survives — the durable adapter proof, the locked fix result, and the local
- * run record all serialize this same schema, and each session of the run loaded exactly this build
- * (a folder the browser accepts as-is).
+ * run record all serialize this same schema, and each session of the run loaded exactly this
+ * build.
+ *
+ * The launch family decides which identity fields a record carries: a Chromium build names the
+ * unpacked directory the browser loaded and the manifest generation read from it, a Firefox build
+ * names the extension id and the signed XPI the enterprise policies force-installed (it has no
+ * unpacked directory and no manifest the host reads). Both sides stay optional so records persisted
+ * before the families were distinguished keep parsing. The managed-storage declaration is launch
+ * input, not provenance, and is deliberately not serialized here.
  */
 export const PreparedExtensionProvenanceSchema = v.strictObject({
     source: v.picklist(PREPARED_EXTENSION_SOURCE_VALUES),
-    extensionPath: v.pipe(v.string(), v.minLength(1), v.maxLength(1_024)),
-    manifestVersion: v.picklist(EXTENSION_MANIFEST_VERSION_VALUES),
+    launchFamily: v.optional(v.picklist(EXTENSION_LAUNCH_FAMILY_VALUES)),
+    extensionPath: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(1_024))),
+    manifestVersion: v.optional(v.picklist(EXTENSION_MANIFEST_VERSION_VALUES)),
+    extensionId: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(256))),
+    xpiPath: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(1_024))),
     extensionSourceSha256: DigestSchema,
     extensionSourceTag: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(200))),
 });

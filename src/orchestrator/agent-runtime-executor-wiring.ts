@@ -10,6 +10,7 @@
  */
 import './extension-filtering-executor';
 import type { IssueFacts } from '../types/issue-facts';
+import type { SelectionFilterBaseline } from '../environment/declared-filter-baseline';
 import { EnvironmentSelectionHost } from '../environment/environment-selection';
 import {
     filteringExecutors,
@@ -54,6 +55,13 @@ export interface RuntimeExecutorWiringInput {
      * their runs off the global registration.
      */
     registry?: FilteringExecutorRegistry;
+
+    /**
+     * The executable filter baseline the run supplies, when its blocker declares its own list
+     * selection instead of naming lists the official AdGuard catalog can resolve. Absent for every
+     * run whose reported selection is resolved as it always was.
+     */
+    filterBaseline?: SelectionFilterBaseline;
 }
 
 /**
@@ -76,6 +84,7 @@ export function wireRuntimeExecutors(input: RuntimeExecutorWiringInput): Runtime
     const environmentHost = new EnvironmentSelectionHost(
         input.issueFacts,
         executors.map((executor) => executor.descriptor),
+        input.filterBaseline === undefined ? {} : { filterBaseline: input.filterBaseline },
     );
     if (executors.length === 1) {
         const lock = environmentHost.lockSoleExecutor(executors[0]!.name);

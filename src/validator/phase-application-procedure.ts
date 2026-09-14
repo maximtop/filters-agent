@@ -3,17 +3,11 @@ import {
     parseRuleApplication,
     type ApplicationInstructionRefusal,
 } from '../knowledge/instruction-application';
-import type { ActionLogEntry, BlockerVerificationMethod } from '../environment/environment-proofs';
-import { createLogger, type Logger } from '../logger/logger';
+import { createLogger } from '../logger/logger';
 import { ToolName } from '../agent/tool-names';
 import { PromptDocumentName, createPromptDocumentLoader } from '../prompts/prompt-documents';
-import {
-    normalizeRulesContent,
-    observedRulesDigest,
-    sha256OfContent,
-} from '../environment/rules-content';
-import { sortListKeys, type FilterListKey } from '../environment/filter-list-ref';
 import type { BlockerStateRead } from './blocker-state-readers';
+import { creditBlockerStateRead } from './blocker-state-credit';
 import {
     APPLICATION_SESSION_BUDGET_MS,
     APPLICATION_SESSION_MAX_TURNS,
@@ -36,171 +30,10 @@ import {
  * verification section is a recorded refusal before any model turn — the model never invents a way
  * to apply a rule — and the action log is assembled by the host from the session's recorded tool
  * calls, never from the model's self-report.
- */
-
-/**
- * Whether two filter list key collections are the same set.
  *
- * @param left - One collection of list keys.
- * @param right - The other collection of list keys.
- * @returns True when both carry exactly the same distinct keys.
+ * The credit itself lives in `blocker-state-credit.ts`, shared with the host-performed file-backed
+ * application (31-AFK Decision 3), so both application paths judge a read-back by one rule.
  */
-function sameKeySet(left: readonly FilterListKey[], right: readonly FilterListKey[]): boolean {
-    const sortedLeft = sortListKeys([...new Set(left)]);
-    const sortedRight = sortListKeys([...new Set(right)]);
-    return (
-        sortedLeft.length === sortedRight.length &&
-        sortedLeft.every((key, index) => key === sortedRight[index])
-    );
-}
-
-/**
- * Required keys absent from an available collection, in ascending registry order.
- *
- * @param required - Keys that must all be present.
- * @param available - The observed key collection to check membership against.
- * @returns The required keys `available` does not contain; empty when it contains every one.
- */
-function missingKeys(
-    required: readonly FilterListKey[],
-    available: readonly FilterListKey[],
-): FilterListKey[] {
-    const availableSet = new Set(available);
-    return sortListKeys(required.filter((key) => !availableSet.has(key)));
-}
-
-/**
- * Judge the enabled filter set and Tracking-protection state a matching read-back reports against
- * the prepared expectation, the last step of both goals: the baseline plugs exactly that set back
- * in, and the candidate is applied on top of it. This is the only place the prepared state is
- * judged; the environment that consumes the result trusts it. A reader that cannot observe the set
- * (the file-backed methods) credits on the rules content alone and records that in the detail; a
- * reader that cannot observe stealth leaves the Tracking-protection state out of the judgment.
- *
- * @param read - The host read-back whose rules content already matched the goal.
- * @param goal - The goal being credited, which names what the rules content proved.
- * @param prepared - The prepared enabled list key set of the phase session.
- * @param expectedStealth - The prepared Tracking-protection state, when one is known exactly.
- * @param method - The verification method that produced the read-back.
- * @param actionLog - The host-assembled trace of the application session.
- * @param logger - Run logger for the outcome.
- * @returns Applied, with the unobservable-set detail when the reader cannot report the set, or
- *   unverified with the bounded mismatch.
- */
-function judgeEnabledFilterSet(
-    read: BlockerStateRead,
-    goal: ApplicationGoal,
-    prepared: readonly FilterListKey[] | undefined,
-    expectedStealth: boolean | undefined,
-    method: BlockerVerificationMethod,
-    actionLog: ActionLogEntry[],
-    logger: Logger,
-): PhaseApplicationResult {
-    if (
-        read.stealthEnabled !== undefined &&
-        expectedStealth !== undefined &&
-        read.stealthEnabled !== expectedStealth
-    ) {
-        logger.warn(
-            {
-                goal: goal.kind,
-                expectedStealth,
-                observedStealth: read.stealthEnabled,
-            },
-            'the read-back Tracking-protection state does not match the prepared state',
-        );
-        return {
-            kind: PhaseApplicationOutcomeKind.Unverified,
-            detail:
-                'The Tracking-protection state read back does not equal the prepared state: ' +
-                `observed ${read.stealthEnabled ? 'enabled' : 'disabled'} where ` +
-                `${expectedStealth ? 'enabled' : 'disabled'} was expected.`,
-            actionLog,
-        };
-    }
-    const credited =
-        goal.kind === ApplicationGoalKind.Candidate
-            ? 'the candidate was credited on the exact user-rules content alone'
-            : 'the baseline was credited on the empty user-rules state alone';
-    const observed = read.enabledFilterIds;
-    if (observed === undefined) {
-        logger.info(
-            { method, goal: goal.kind },
-            'the read-back does not expose the enabled filter set; credited on the rules content alone',
-        );
-        return {
-            kind: PhaseApplicationOutcomeKind.Applied,
-            actionLog,
-            readBack: read,
-            detail: `The ${method} read-back does not expose the enabled filter set; ${credited}.`,
-        };
-    }
-    if (prepared === undefined) {
-        return {
-            kind: PhaseApplicationOutcomeKind.Unverified,
-            detail:
-                'The phase session carried no prepared enabled filter set to compare the read-back ' +
-                'against.',
-            actionLog,
-        };
-    }
-    if (!sameKeySet(prepared, observed)) {
-        logger.warn(
-            {
-                goal: goal.kind,
-                preparedKeys: sortListKeys([...prepared]),
-                observedKeys: sortListKeys([...observed]),
-            },
-            'the enabled filter list set does not match the prepared set',
-        );
-        return {
-            kind: PhaseApplicationOutcomeKind.Unverified,
-            detail:
-                'The enabled filter list set read back does not equal the prepared baseline set: ' +
-                `observed [${sortListKeys([...new Set(observed)]).join(', ')}].`,
-            actionLog,
-        };
-    }
-    // Requested/options credit alone proves a filter is switched on, never that its MV3 ruleset
-    // actually compiled and activated within the browser's limits — the deleted options-page
-    // driver rejected both gaps, and a reader that can observe them (the live extension state)
-    // must still be held to the same bar.
-    if (read.limitsExceeded === true) {
-        logger.warn(
-            { goal: goal.kind },
-            'the read-back reports MV3 filter or rule limits exceeded',
-        );
-        return {
-            kind: PhaseApplicationOutcomeKind.Unverified,
-            detail:
-                'The read-back reports MV3 filter or rule limits exceeded after the application; ' +
-                'the requested filters cannot be trusted to run.',
-            actionLog,
-        };
-    }
-    if (read.activeRulesetFilterIds !== undefined) {
-        const missing = missingKeys(prepared, read.activeRulesetFilterIds);
-        if (missing.length > 0) {
-            logger.warn(
-                {
-                    goal: goal.kind,
-                    preparedKeys: sortListKeys([...prepared]),
-                    activeRulesetKeys: sortListKeys([...read.activeRulesetFilterIds]),
-                },
-                'the active MV3 rulesets do not contain every expected filter',
-            );
-            return {
-                kind: PhaseApplicationOutcomeKind.Unverified,
-                detail:
-                    'The active MV3 rulesets do not contain every expected filter: missing ' +
-                    `[${missing.join(', ')}] from the active set ` +
-                    `[${sortListKeys([...read.activeRulesetFilterIds]).join(', ')}].`,
-                actionLog,
-            };
-        }
-    }
-    return { kind: PhaseApplicationOutcomeKind.Applied, actionLog, readBack: read };
-}
 
 /**
  * Render the goal fill the task document carries.
@@ -350,90 +183,17 @@ export async function runPhaseApplication(
         };
     }
 
-    if (input.goal.kind === ApplicationGoalKind.Candidate) {
-        // Both sides digest through the one normalization: the reader reports content normalized,
-        // and the expected rule is normalized the same way, so a trailing newline on the goal rule
-        // cannot make an exact application look mismatched.
-        const observedDigest = observedRulesDigest(read);
-        if (observedDigest === undefined) {
-            return {
-                kind: PhaseApplicationOutcomeKind.Unverified,
-                detail: 'The read-back state carried no user-rules content to compare against the candidate.',
-                actionLog: runnerResult.actionLog,
-            };
-        }
-        const expectedDigest = sha256OfContent(normalizeRulesContent(input.goal.rule));
-        if (observedDigest !== expectedDigest) {
-            logger.warn(
-                {
-                    expectedDigest,
-                    observedDigest,
-                    observedRuleCount:
-                        read.rulesContent === undefined
-                            ? undefined
-                            : read.rulesContent.split('\n').length,
-                },
-                'the blocker state does not contain exactly the candidate',
-            );
-            return {
-                kind: PhaseApplicationOutcomeKind.Unverified,
-                detail:
-                    'The blocker state does not contain exactly the candidate rule: the host read ' +
-                    `back content digest ${observedDigest} where ${expectedDigest} was expected.`,
-                actionLog: runnerResult.actionLog,
-            };
-        }
-        return judgeEnabledFilterSet(
-            read,
-            input.goal,
-            input.session.baselineEnabledFilterIds,
-            input.session.expectStealthEnabled,
-            parsed.verification.method,
-            runnerResult.actionLog,
-            logger,
-        );
-    } else {
-        // The baseline contract requires no user rule in the credited state, which only the rules
-        // content itself can show: a read-back without it (a digest alone) proves nothing about
-        // absence, so it is refused rather than collapsed to "empty".
-        if (read.rulesContent === undefined) {
-            return {
-                kind: PhaseApplicationOutcomeKind.Unverified,
-                detail:
-                    `The ${parsed.verification.method} read-back reported no rules content, so ` +
-                    'the absence of user rules in the baseline state cannot be shown.',
-                actionLog: runnerResult.actionLog,
-            };
-        }
-        // Any content left after the shared normalization fails the credit, whatever the enabled
-        // filter list says.
-        const leftoverRules = normalizeRulesContent(read.rulesContent);
-        if (leftoverRules.length > 0) {
-            const ruleLineCount = leftoverRules.split('\n').length;
-            logger.warn(
-                {
-                    method: parsed.verification.method,
-                    ruleLineCount,
-                },
-                'the baseline state still carries user rules',
-            );
-            return {
-                kind: PhaseApplicationOutcomeKind.Unverified,
-                detail:
-                    'The baseline state must contain no user rules, but the ' +
-                    `${parsed.verification.method} read-back still reports ` +
-                    `${ruleLineCount} rule line(s): ${leftoverRules}`,
-                actionLog: runnerResult.actionLog,
-            };
-        }
-        return judgeEnabledFilterSet(
-            read,
-            input.goal,
-            input.session.baselineEnabledFilterIds,
-            input.session.expectStealthEnabled,
-            parsed.verification.method,
-            runnerResult.actionLog,
-            logger,
-        );
-    }
+    return creditBlockerStateRead({
+        read,
+        goal: input.goal,
+        method: parsed.verification.method,
+        actionLog: runnerResult.actionLog,
+        ...(input.session.baselineEnabledFilterIds === undefined
+            ? {}
+            : { preparedEnabledFilterIds: input.session.baselineEnabledFilterIds }),
+        ...(input.session.expectStealthEnabled === undefined
+            ? {}
+            : { expectedStealthEnabled: input.session.expectStealthEnabled }),
+        logger,
+    });
 }

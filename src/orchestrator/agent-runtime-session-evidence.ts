@@ -17,6 +17,7 @@ import {
 } from '../browser/adguard-extension-settings';
 import type { BrowserPreflightEvidence } from '../analyzer/browser-first-run';
 import type { CliAdapterProof } from '../environment/environment-proofs';
+import type { FilterListKey } from '../environment/filter-list-ref';
 import type { PreparedExtension } from '../local/prepared-extension';
 import type { CandidateVisualReview } from '../types/candidate-visual-review';
 import { ExtensionMode } from '../types/fix-run-result';
@@ -208,6 +209,16 @@ export interface AgentRuntimeEnvironmentEvidence {
     extensionBaselineReadBack?: AdGuardExtensionStateRead;
 
     /**
+     * The executable list keys this prepared session's baseline was credited with when the blocker
+     * declares its own selection instead of exposing a host-readable state (32-AFK Decision 3).
+     *
+     * Present exactly when `extensionBaselineReadBack` is absent for a credited session: the two
+     * families prove a baseline through different channels, and `sessionBaselineCredited` is the
+     * one predicate that reads either.
+     */
+    declaredBaselineListKeys?: readonly FilterListKey[];
+
+    /**
      * Whether a browser tool successfully navigated this session to the selected origin.
      */
     navigationVerified: boolean;
@@ -286,6 +297,25 @@ export interface AgentRuntimeSessionState extends AgentRuntimeEnvironmentEvidenc
      * reported content at all.
      */
     pageAccessFacts?: PageAccessFacts;
+}
+
+/**
+ * Whether one prepared session carries a credited launch baseline.
+ *
+ * Both blocker families must prove what the session browsed with before its evidence may reach the
+ * filtering environment, but they prove it through different channels: the AdGuard route by the
+ * host read-back its launch Baseline application took, a Firefox-family run by the managed-storage
+ * selection its instruction declared and the browser applied at startup. This is the one predicate
+ * every gate reads, so neither family is credited by the other's evidence.
+ *
+ * @param evidence - Browser session evidence retained by the runtime.
+ * @returns Whether this session's baseline was credited through either channel.
+ */
+export function sessionBaselineCredited(evidence: AgentRuntimeEnvironmentEvidence): boolean {
+    return (
+        evidence.extensionBaselineReadBack !== undefined ||
+        evidence.declaredBaselineListKeys !== undefined
+    );
 }
 
 /**

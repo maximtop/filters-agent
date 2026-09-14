@@ -50,11 +50,14 @@ export const TOOL_GUIDANCE: Readonly<Record<string, string>> = {
         'failed run_command step latches the failure, and a latched refusal applies here too.',
     [ToolName.FinishPreparation]:
         'Finishes the preparation session. This is the only terminal channel of a preparation ' +
-        'run. Call exactly once: with status done and the extensionDir — working-directory-' +
-        'relative — holding the unpacked build to load, when every step exited 0; with status ' +
-        'failed, naming the failing command in failedCommand, after a step failed or was ' +
-        'refused. A done payload while a step failure is latched is rejected: re-submit status ' +
-        'failed instead.',
+        'run. Call exactly once: with status done, when every step exited 0, declaring how the ' +
+        'host must install what you prepared — either the extensionDir (working-directory-' +
+        'relative) holding the unpacked build to load, or, when the preparation section declares ' +
+        'launch: firefox, launchFamily firefox with the extensionId, the working-directory-' +
+        'relative xpiPath, the managedStorage document as JSON text and the userFiltersKeyPath ' +
+        'inside it that must hold the user-filters file content; with status failed, naming the ' +
+        'failing command in failedCommand, after a step failed or was refused. A done payload ' +
+        'while a step failure is latched is rejected: re-submit status failed instead.',
     [ToolName.FinishApplication]:
         'Finishes the rule-application session. This is the only terminal channel of an ' +
         'application run. Call exactly once: with status done, when the instruction application ' +

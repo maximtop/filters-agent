@@ -35,6 +35,7 @@ import {
     recordPreflightDiagnostic,
 } from '../local/preflight-diagnostic-log';
 import { CloakBrowserEngine } from '../browser/cloakbrowser-engine';
+import { CHROMIUM_USER_AGENT_PROFILE } from '../browser/prepared-extension-launch';
 import type { IBrowserSession } from '../browser/browser-interfaces';
 import type { BrowserContext } from 'playwright-core';
 import {
@@ -52,6 +53,7 @@ import type { MissingCatalogFilterClassification } from '../environment/third-pa
 import type { EvidenceRouteHost } from '../local/evidence-route-contract';
 import { readReporterFilterSelection } from '../local/reporter-filters';
 import { BrowserExtensionExecutorName } from '../environment/executor-name';
+import { ExtensionLaunchFamily } from '../environment/extension-launch';
 import {
     BrowserExtensionEnvironmentOptions,
     type BrowserExtensionSessionRequest,
@@ -91,7 +93,7 @@ import type { RawIssue } from '../github/fetch-issue';
 import type { RuleGuidanceSource } from '../knowledge/rule-guidance';
 import type { ToolDefinition } from '../agent/tool-registry';
 import type { FixOutcome } from '../pr/fix-outcome';
-import { readPreparedExtensionManifest, type PreparedExtension } from '../local/prepared-extension';
+import type { PreparedExtension } from '../local/prepared-extension';
 import { createLogger } from '../logger/logger';
 import { RuleKind, normalizeRule, type NormalizedRule } from '../repo/rule-normalizer';
 import type { TraceRecorder } from '../tracer/trace-recorder';
@@ -131,7 +133,6 @@ import {
     type AdsEnvironmentPhaseObservationInput,
 } from '../validator/phase-orchestrator';
 import { extractBrowserLaunchSignal } from './browser-launch-signal';
-import { BrowserDisplayName } from '../types/browser-display-name';
 import { PhaseLabel } from '../types/validation';
 import { SettingsProfileKind } from '../types/settings-profile-kind';
 import { RuleSyntaxKind } from '../types/rule-syntax-kind';
@@ -180,6 +181,7 @@ import {
     type CandidateValidationOutcome,
 } from './agent-runtime-candidate-context';
 import {
+    sessionBaselineCredited,
     settingsEvidenceFromReadBack,
     type AgentRuntimeCandidateArtifactEvidence,
     type AgentRuntimeCandidateValidationBinding,
@@ -188,12 +190,27 @@ import {
     type AgentRuntimeSessionState,
 } from './agent-runtime-session-evidence';
 import { extensionBaselineSettingsFromStateRead } from './phase-application-wiring';
+import {
+    preparedExtensionActualContext,
+    preparedExtensionLaunchChannel,
+    preparedPhaseSessionConfig,
+    relaunchPolicySession,
+    type PreparedSessionLaunchHost,
+} from './prepared-session-launch';
 import { runApplication } from './phase-application-flow';
 import {
     applicationInstructionContent,
     type PhaseApplicationFlowHost,
     type PhaseApplicationModelRunnerFactory,
 } from './phase-application-flow-host';
+import {
+    buildFirefoxExtensionEnvironmentOptions,
+    firefoxPreparedLaunch,
+    runDeclaredFilterBaseline,
+} from './firefox-environment-wiring';
+import type {
+FirefoxExtensionEnvironmentOptions,
+} from '../environment/firefox-extension-environment';
 import {
     LaunchBaselineOutcomeKind,
     buildBrowserExtensionEnvironmentOptions,
@@ -898,6 +915,13 @@ function environmentEvidence(state: AgentRuntimeSessionState): AgentRuntimeEnvir
         ...(state.extensionBaselineReadBack
             ? { extensionBaselineReadBack: state.extensionBaselineReadBack }
             : {}),
+        // The other channel a prepared session's baseline is credited through: a blocker that
+        // declares its own list selection carries the declared keys instead of a read-back record,
+        // and `sessionBaselineCredited` reads either — so this projection must carry it too or the
+        // terminal gates would see an uncredited session.
+        ...(state.declaredBaselineListKeys
+            ? { declaredBaselineListKeys: state.declaredBaselineListKeys }
+            : {}),
         navigationVerified: state.navigationVerified,
         fullVisionVerified: state.fullVisionVerified,
         pageCaptures: state.pageCaptures.map((capture) => ({
@@ -1333,6 +1357,13 @@ export class AgentRuntime {
             issueFacts: options.issueFacts,
             requestedExecutors: options.agentRuntimeExecutors,
             registry: dependencies.filteringExecutors,
+            // A blocker that declares its own list selection supplies the run's executable
+            // baseline; every other run resolves the reported names as it always did (32-AFK
+            // Decision 1).
+            filterBaseline: runDeclaredFilterBaseline(
+                options.preparedExtension,
+                options.issueFacts.enabledFilters,
+            ),
         });
         // One placement-map walk per run: its map feeds the checkout tools below, and its derived
         // catalog feeds both filtering-environment request constructions. A failed walk is logged,
@@ -1524,16 +1555,10 @@ export class AgentRuntime {
         ) {
             return;
         }
-        // The run drives the stealth Chromium engine for every reporter browser: an Edge (or
-        // explicit-MV2) reporter is served by the CloakBrowser Chromium substitute, and the
-        // environment selection's fidelity recomputation records the browser-approximation
-        // limitation for the substituted browser — the report-visible stand-in for the deleted
-        // reporter-to-target parity policy.
-        this.environmentHost.bindActualContext(BrowserExtensionExecutorName, {
-            product: 'AdGuard Browser Extension',
-            browser: BrowserDisplayName.CloakBrowserChromium,
-            productVersion: readPreparedExtensionManifest(prepared.extensionPath).packageVersion,
-        });
+        this.environmentHost.bindActualContext(
+            BrowserExtensionExecutorName,
+            preparedExtensionActualContext(prepared),
+        );
     }
 
     /**
@@ -2022,7 +2047,7 @@ export class AgentRuntime {
             state.extensionMode === ExtensionMode.Prepared &&
             state.extension !== undefined &&
             state.selectedSettingsProfileKind !== undefined &&
-            state.extensionBaselineReadBack !== undefined
+            sessionBaselineCredited(state)
         );
     }
 
@@ -2764,7 +2789,13 @@ export class AgentRuntime {
         if (requestedFilterIds.length === 0) {
             return undefined;
         }
-        const extensionPath = this.preparedExtension?.extensionPath;
+        // The bundled catalog is a Chromium-build optimization source: a Firefox-family build ships
+        // no unpacked directory to read it from, so the check simply does not apply there.
+        const prepared = this.preparedExtension;
+        const extensionPath =
+            prepared !== undefined && prepared.launchFamily !== ExtensionLaunchFamily.Firefox
+                ? prepared.extensionPath
+                : undefined;
         if (!extensionPath) {
             return undefined;
         }
@@ -2902,9 +2933,15 @@ export class AgentRuntime {
         try {
             const extension = request.extension === 'prepared' ? this.preparedExtension : undefined;
             const createSession = this.dependencies.createBrowserSession ?? BrowserSession.create;
+            // Decision 2 of 31-AFK: the engine and the extension channel follow the prepared
+            // build's launch family, and so does the user-agent family — a page filtered by uBO in
+            // Firefox must be served the browser that is really running it.
+            const launchChannel = extension
+                ? preparedExtensionLaunchChannel(this.preparedSessionLaunchHost(), extension)
+                : undefined;
             const reproProfile: ReproProfile = {
                 ...request.profile,
-                userAgentProfile: 'Chromium',
+                userAgentProfile: launchChannel?.userAgentProfile ?? CHROMIUM_USER_AGENT_PROFILE,
             };
             if (this.cliEvidenceRoute) {
                 // The route-activated selection browses through its activated filtering
@@ -2935,20 +2972,18 @@ export class AgentRuntime {
                 this.environmentHost.attachCliEvidenceRouteReady(lockedKind);
             } else {
                 const config: BrowserSessionConfig = {
-                    engine: new CloakBrowserEngine(),
+                    engine: launchChannel?.engine ?? new CloakBrowserEngine(),
                     logger: createLogger({ verbose: this.options.verbose ?? false }),
                     reproProfile,
                     artifactsDir: this.options.artifactsDir,
                     headless: this.options.headless,
                     noSandbox: this.options.noSandbox,
-                };
-                if (request.extension === 'prepared' && extension) {
-                    // A plain unpacked-extension launch (Decision 2): no settings or user-rule
+                    // A plain extension launch (Decision 2 of 11-HITL): no settings or user-rule
                     // pieces — the launch route's Baseline application plus the host read-back
-                    // produce the session's settings proof after creation.
-                    config.adguardExtensionPath = extension.extensionPath;
-                    config.adguardExtensionManifestVersion = extension.manifestVersion;
-                }
+                    // produce the session's settings proof after creation. The channel carries
+                    // exactly one family's fields, so the session never sees a mixed configuration.
+                    ...(launchChannel === undefined ? {} : launchChannel.extensionChannel),
+                };
                 createdSession = await createSession(config);
             }
             let browserRegistry: ToolRegistry;
@@ -3041,6 +3076,14 @@ export class AgentRuntime {
                 if (extension) {
                     this.latestVerifiedSettingsSessionId = sessionId;
                 }
+            } else if (baselineOutcome?.kind === LaunchBaselineOutcomeKind.Declared) {
+                // A blocker that declares its own list selection is credited from that declaration
+                // (32-AFK Decision 3); there is no live state to read back, so the session carries
+                // the declared keys instead of a read-back record.
+                sessionState.declaredBaselineListKeys = baselineOutcome.listKeys;
+                if (extension) {
+                    this.latestVerifiedSettingsSessionId = sessionId;
+                }
             }
             this.mergeBrowserTools(browserRegistry);
             return {
@@ -3053,7 +3096,8 @@ export class AgentRuntime {
                 extensionSourceSha256: extension?.extensionSourceSha256 ?? null,
                 settingsVerified:
                     request.extension === 'none' ||
-                    baselineOutcome?.kind === LaunchBaselineOutcomeKind.Verified,
+                    baselineOutcome?.kind === LaunchBaselineOutcomeKind.Verified ||
+                    baselineOutcome?.kind === LaunchBaselineOutcomeKind.Declared,
                 settingsEvidence: null,
                 ...launchBaselineSettingsFields(baselineOutcome),
                 availableBrowserTools: browserRegistry
@@ -3198,22 +3242,14 @@ export class AgentRuntime {
             throw new Error('Prepared Extension state is incomplete.');
         }
         const createSession = this.dependencies.createBrowserSession ?? BrowserSession.create;
-        const config: BrowserSessionConfig = {
-            engine: new CloakBrowserEngine(),
-            logger: createLogger({ verbose: this.options.verbose ?? false }),
-            reproProfile: structuredClone(state.profile),
-            artifactsDir: this.options.artifactsDir,
-            headless: this.options.headless,
-            noSandbox: this.options.noSandbox,
-        };
-        if (request.extensionRoot) {
-            config.adguardExtensionPath = request.extensionRoot;
-            config.adguardExtensionManifestVersion = state.extension.manifestVersion;
-            // A phase session always bootstraps a fresh profile, so it gets the raised budget;
-            // analysis sessions keep the short built-in default.
-            config.extensionReadinessBudgetMs =
-                this.options.phaseReadinessBudgetMs ?? DEFAULT_PHASE_READINESS_BUDGET_MS;
-        }
+        const config = preparedPhaseSessionConfig(this.preparedSessionLaunchHost(), {
+            extension: state.extension,
+            phase: request.phase,
+            extensionRoot: request.extensionRoot,
+            reproProfile: state.profile,
+            readinessBudgetMs:
+                this.options.phaseReadinessBudgetMs ?? DEFAULT_PHASE_READINESS_BUDGET_MS,
+        });
         // The owning experiment is captured before the await: a bootstrap abandoned by the tool
         // deadline can settle minutes later, and its late record must never masquerade as
         // evidence for whatever experiment is current by then.
@@ -3264,9 +3300,31 @@ export class AgentRuntime {
             verbose: this.options.verbose ?? false,
             instruction: this.options.instruction,
             phaseReadinessBudgetMs: this.options.phaseReadinessBudgetMs,
+            relaunchPolicySession: (request) =>
+                relaunchPolicySession(this.preparedSessionLaunchHost(), request),
             createPhaseApplicationModelRunner: this.dependencies.createPhaseApplicationModelRunner,
             findExtensionRuntime: this.dependencies.findExtensionRuntime,
             readAdGuardExtensionState: this.dependencies.readAdGuardExtensionState,
+        };
+    }
+
+    /**
+     * Build the leaf launch options every prepared-extension session launch acts through.
+     *
+     * Built fresh per call, like the application flow's own host object, so it always reflects the
+     * run's current options and dependency overrides.
+     *
+     * @returns The launch host the prepared-session launch functions take.
+     */
+    private preparedSessionLaunchHost(): PreparedSessionLaunchHost {
+        return {
+            instruction: this.options.instruction,
+            filtersPath: this.options.filtersPath,
+            artifactsDir: this.options.artifactsDir,
+            headless: this.options.headless,
+            noSandbox: this.options.noSandbox,
+            verbose: this.options.verbose ?? false,
+            createBrowserSession: this.dependencies.createBrowserSession,
         };
     }
 
@@ -3458,9 +3516,14 @@ export class AgentRuntime {
             stage: EnvironmentLimitationStage.Preparation,
             detail: 'The locked environment lacks complete preparation proof.',
         };
-        const executingFilterIds =
-            state.extensionBaselineReadBack?.optionsEnabledFilterIds ??
-            this.activatedReporterFilterIds;
+        // A blocker that declares its own list selection resolves nothing against AdGuard's
+        // catalog (32-AFK Decision 1): the declaration is the run's executable baseline and the
+        // environment requests no official list at all.
+        const firefoxLaunch = firefoxPreparedLaunch(state.extension);
+        const executingFilterIds = firefoxLaunch
+            ? []
+            : (state.extensionBaselineReadBack?.optionsEnabledFilterIds ??
+              this.activatedReporterFilterIds);
         // The executor request is a projection of the run's requested official ids, not a bespoke
         // id loop: exactly one official ref per requested id, today's request verbatim. Mirrors the
         // adapters' own fail-closed contract for an unresolvable requested id: the projection
@@ -3501,17 +3564,27 @@ export class AgentRuntime {
             return limitation;
         }
         let extensionOptions: BrowserExtensionEnvironmentOptions | undefined;
+        let firefoxExtensionOptions: FirefoxExtensionEnvironmentOptions | undefined;
         try {
-            extensionOptions = buildBrowserExtensionEnvironmentOptions(
-                this.options.instruction,
-                state,
-                {
-                    extensionBaselineSettingsFor: () => this.extensionBaselineSettingsFor(state),
-                    createSession: async (request) =>
-                        await this.createFilteringPhaseSession(state, request),
-                    phaseConfiguration: this.phaseConfigurationFor(state),
-                },
-            );
+            const environmentCallbacks = {
+                extensionBaselineSettingsFor: () => this.extensionBaselineSettingsFor(state),
+                createSession: async (request: BrowserExtensionSessionRequest) =>
+                    await this.createFilteringPhaseSession(state, request),
+                phaseConfiguration: this.phaseConfigurationFor(state),
+            };
+            if (firefoxLaunch) {
+                firefoxExtensionOptions = buildFirefoxExtensionEnvironmentOptions(
+                    this.options.instruction,
+                    state,
+                    environmentCallbacks,
+                );
+            } else {
+                extensionOptions = buildBrowserExtensionEnvironmentOptions(
+                    this.options.instruction,
+                    state,
+                    environmentCallbacks,
+                );
+            }
         } catch (error) {
             // The verified-extension inputs are executor-bound: executors that ignore them see
             // the construction failure, and the adapter's own refusal below turns it into the
@@ -3529,6 +3602,7 @@ export class AgentRuntime {
             adapter = registration.createAdapter({
                 requestedLists: projection.requestedLists,
                 extensionOptions,
+                firefoxExtensionOptions,
                 evidenceRoute: this.cliEvidenceRoute,
                 launchEvidenceSession: (request) => this.launchExecutorEvidenceSession(request),
             });
@@ -3684,9 +3758,11 @@ export class AgentRuntime {
             state.extensionMode !== ExtensionMode.Prepared ||
             !state.extension ||
             !state.settingsProfile ||
-            // The settings proof is the host read-back taken by the launch route's Baseline
-            // application; a session without it was never verified against any settings request.
-            !state.extensionBaselineReadBack
+            // The baseline proof is the host read-back taken by the launch route's Baseline
+            // application, or — for a blocker that declares its own list selection — that
+            // declaration; a session credited through neither channel was never verified against
+            // any settings request.
+            !sessionBaselineCredited(state)
         ) {
             return {
                 validationSkipped: true,

@@ -1,4 +1,8 @@
 import { createHash } from 'node:crypto';
+import {
+    EXTENSION_LAUNCH_FAMILY_VALUES,
+    type ExtensionLaunchFamily,
+} from '../environment/extension-launch';
 
 /**
  * Instruction-section extraction.
@@ -139,4 +143,37 @@ export function extractPreparationSection(content: string): PreparationSection |
         content: sectionContent,
         sha256: createHash('sha256').update(sectionContent, 'utf8').digest('hex'),
     };
+}
+
+/**
+ * The `launch:` declaration grammar of the preparation section: one line naming the launch family,
+ * exactly the shape the state verification's `read:` line already uses.
+ */
+const LAUNCH_DECLARATION_LINE_PATTERN = /^launch:\s*(\S+)\s*$/;
+
+/**
+ * Read the launch family one instruction's preparation section declares.
+ *
+ * Decision 1 of 31-AFK: the preparation session declares the family in its terminal payload, but
+ * the run must know it earlier than that — the early file-backed gate decides whether a run can
+ * work at all before the preparation session is even started. The instruction states it on one
+ * line, so both readers take the family from the same declaration.
+ *
+ * @param content - Instruction text as loaded.
+ * @returns The declared family, or undefined when the instruction declares none the host knows —
+ *   which is the Chromium unpacked-directory family, the default every instruction had.
+ */
+export function declaredExtensionLaunchFamily(content: string): ExtensionLaunchFamily | undefined {
+    const sectionContent = extractInstructionSection(content, PREPARATION_SECTION_KEYWORDS);
+    if (sectionContent === undefined) {
+        return undefined;
+    }
+    for (const line of sectionContent.split('\n')) {
+        const declared = LAUNCH_DECLARATION_LINE_PATTERN.exec(line.trim())?.[1];
+        if (declared === undefined) {
+            continue;
+        }
+        return EXTENSION_LAUNCH_FAMILY_VALUES.find((family) => family === declared);
+    }
+    return undefined;
 }

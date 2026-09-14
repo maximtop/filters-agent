@@ -16,7 +16,9 @@ The instruction's preparation section, verbatim:
 
 Call {{terminalToolName}} exactly once:
 
-- When every step exited 0: status `done` and the `extensionDir` — one path relative to the working directory — of the unpacked extension directory to load. The directory must contain a `manifest.json`.
+- When every step exited 0, status `done` plus the declaration of how the host must install what you prepared:
+    - An unpacked extension directory (the default): the `extensionDir` — one path relative to the working directory — of the directory to load. It must contain a `manifest.json`.
+    - A signed Firefox XPI, when the preparation section declares `launch: firefox`: `launchFamily` `firefox`, the `extensionId` the extension publishes, the `xpiPath` relative to the working directory, the `managedStorage` document the extension reads from `browser.storage.managed` as JSON text, and the `userFiltersKeyPath` — the key path inside that document the host fills with the declared user-filters file's content. The host builds the enterprise policies from those four fields at every browser start; never write a policies file yourself.
 - After a step failed (non-zero exit, timeout, refused write): status `failed`, and the failing command in `failedCommand`. Do not retry the failed step and do not attempt further steps — after the first failure the step tools refuse every call, and `failed` is the only accepted payload.
 
 A failed preparation stops the run with the captured output of the failing step; it is never retried.

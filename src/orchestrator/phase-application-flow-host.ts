@@ -19,6 +19,7 @@ import type { RunUsageCollector } from '../pi/usage-collector';
 import type { Logger } from '../logger/logger';
 import type { PhaseApplicationModelRunner } from '../validator/phase-application-contract';
 import type { TraceRecorder } from '../tracer/trace-recorder';
+import type { PolicySessionRelaunch } from '../browser/prepared-extension-launch';
 
 /**
  * The host and dependency contracts `phase-application-flow.ts`'s `runApplication` acts through:
@@ -136,6 +137,16 @@ export interface PhaseApplicationFlowHost {
      * Wall-clock budget override for the bounded extension-state readiness waits.
      */
     phaseReadinessBudgetMs?: number;
+
+    /**
+     * Relaunch one phase session with rebuilt Firefox enterprise policies.
+     *
+     * The host-performed file-backed application (31-AFK Decision 3) writes the declared file and
+     * then needs a browser that reads the rebuilt policies, which Firefox does only at startup. The
+     * runtime implements this over the same session factory every other session of the run uses, so
+     * a test drives the relaunch through its own injected factory.
+     */
+    relaunchPolicySession: PolicySessionRelaunch;
 
     /**
      * Injected application-session runner factory (tests); defaults to the shared pi mode-session

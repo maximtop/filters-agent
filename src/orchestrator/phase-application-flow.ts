@@ -1,4 +1,3 @@
-import { isAbsolute, relative, resolve, sep } from 'node:path';
 import type { BrowserContext } from 'playwright-core';
 import type {
     AdGuardExtensionOptionsData,
@@ -17,13 +16,10 @@ import {
     type EnvironmentPhaseConfigurationRequest,
 } from '../environment/browser-extension-environment';
 import { BlockerVerificationMethod } from '../environment/environment-proofs';
+import { ExtensionLaunchFamily } from '../environment/extension-launch';
 import { adguardListKey, parseAdguardListKey } from '../environment/filter-list-ref';
 import { createLogger } from '../logger/logger';
-import {
-    ApplicationInstructionGap,
-    parseRuleApplication,
-    type ApplicationInstructionRefusal,
-} from '../knowledge/instruction-application';
+import { parseRuleApplication } from '../knowledge/instruction-application';
 import {
     createPhaseApplicationModelRunner as buildPhaseApplicationModelRunner,
 } from './application-session';
@@ -31,17 +27,22 @@ import {
     buildExtensionSettingsPayload,
     type ExtensionSettingsPayloadExpectation,
 } from './application-write-channel';
-import {
-    PhaseApplicationOutcomeKind,
-    type ApplicationGoal,
-    type PhaseApplicationModelRunner,
+import type {
+    ApplicationGoal,
+    PhaseApplicationModelRunner,
 } from '../validator/phase-application-contract';
 import { runPhaseApplication } from '../validator/phase-application-procedure';
 import {
     fileBlockerStateReader,
     type BlockerStateReader,
 } from '../validator/blocker-state-readers';
+import { requireChromiumPreparedExtension } from '../local/prepared-extension';
 import type { AgentRuntimeSessionState } from './agent-runtime-session-evidence';
+import { resolveBlockerFileTarget } from './blocker-file-target';
+import {
+    projectApplicationResult,
+    runFirefoxFileBackedApplication,
+} from './phase-application-file-backed';
 import {
     canonicalPhaseApplicationOrigin,
     expectedStealthEnabledFor,
@@ -69,61 +70,6 @@ import type {
  * neither this module, `phase-application-flow-host.ts`, nor `phase-application-launch.ts` imports
  * `agent-runtime.ts`, so the dependency runs one way only.
  */
-
-/**
- * Resolution of one declared file-backed verification target: either the absolute path the
- * file-backed read-back is admitted to read, or the typed refusal recording why the declaration
- * cannot be honored. Structurally discriminated like the rule-application parse: a member carrying
- * `gap` is the refusal.
- */
-type BlockerFileTargetResolution =
-    | {
-          /**
-           * The absolute path the file-backed read-back is admitted to read.
-           */
-          path: string;
-      }
-    | ApplicationInstructionRefusal;
-
-/**
- * Resolve one declared file-backed verification target against the run's checkout root.
- *
- * The file-backed declarations name the state the run's preparation and application steps maintain,
- * as the instruction writes it: a relative target is that file's checkout-root-relative path — the
- * same base the instruction loader resolves the instruction and its links against
- * (`PhaseApplicationFlowHost.filtersPath`, the pinned filters checkout) — and an absolute target is
- * honored as-is, as part of the instruction's trusted content (D20). A relative target whose
- * resolution escapes the checkout root is a typed refusal: the host contains file-backed read-backs
- * to the checkout, and the refused target is never read.
- *
- * @param filtersPath - The run's checkout root the relative reference resolves against.
- * @param target - Declared target exactly as the instruction wrote it.
- * @returns The absolute path the file-backed read-back is admitted to read, or the typed refusal
- *   recording why the declaration cannot be honored.
- */
-function resolveBlockerFileTarget(
-    filtersPath: string,
-    target: string,
-): BlockerFileTargetResolution {
-    if (isAbsolute(target)) {
-        return { path: target };
-    }
-    const resolved = resolve(filtersPath, target);
-    // Containment by the target's position relative to the checkout root: a first `..` segment
-    // (or a cross-root resolution that no longer names a position under the root) is the escape.
-    const relativeToRoot = relative(filtersPath, resolved);
-    const leadingSegment = relativeToRoot.split(sep, 1)[0];
-    if (leadingSegment === '..' || isAbsolute(relativeToRoot)) {
-        return {
-            gap: ApplicationInstructionGap.VerificationTargetOutsideCheckout,
-            detail:
-                'The state verification declares a checkout-relative target that resolves ' +
-                `outside the run's checkout root ("${target}"); the host contains file-backed ` +
-                'read-backs to the checkout and refuses this target before reading it.',
-        };
-    }
-    return { path: resolved };
-}
 
 /**
  * Refuse a blocker read-back whose application session was already aborted.
@@ -207,13 +153,19 @@ async function preparedBlockerSurfaceUrl(
     }
     const find = host.findExtensionRuntime ?? findExtensionRuntimeDefault;
     try {
-        const runtime = await find(context, extension.manifestVersion);
+        const runtime = await find(
+            context,
+            requireChromiumPreparedExtension(
+                extension,
+                'Locating the prepared blocker management surface',
+            ).manifestVersion,
+        );
         return `chrome-extension://${runtime.extensionId}/pages/options.html`;
     } catch (error) {
         createLogger({ verbose: host.verbose }).warn(
             {
                 error: error instanceof Error ? error.message : String(error),
-                manifestVersion: extension.manifestVersion,
+                launchFamily: extension.launchFamily ?? ExtensionLaunchFamily.Chromium,
             },
             'the prepared blocker management surface could not be located',
         );
@@ -224,9 +176,9 @@ async function preparedBlockerSurfaceUrl(
 /**
  * Build the settings payload over a page dedicated to this one host-to-extension exchange.
  *
- * No model turn has run when this is called, so the application session's own page can be
- * anywhere — a fresh phase session opens with no navigation of its own. This opens and navigates a
- * throwaway page instead, exactly like every other host read-back of the blocker state
+ * No model turn has run when this is called, so the application session's own page can be anywhere
+ * — a fresh phase session opens with no navigation of its own. This opens and navigates a throwaway
+ * page instead, exactly like every other host read-back of the blocker state
  * (`readAdGuardExtensionState`'s own `openOptionsPage`), and closes it whether the load succeeds or
  * throws.
  *
@@ -297,7 +249,8 @@ async function readExtensionBlockerState(
     const readState = host.readAdGuardExtensionState ?? readAdGuardExtensionStateDefault;
     const stateRead = await readState(
         context,
-        extension.manifestVersion,
+        requireChromiumPreparedExtension(extension, 'Reading the live AdGuard extension state')
+            .manifestVersion,
         host.phaseReadinessBudgetMs === undefined
             ? undefined
             : { budgetMs: host.phaseReadinessBudgetMs },
@@ -383,6 +336,20 @@ export async function runApplication(
         fileTargetResolution !== undefined && 'path' in fileTargetResolution
             ? fileTargetResolution.path
             : null;
+    // A Firefox-family build has no unpacked extension to drive and no live state to query: the
+    // declared file is its one state channel, and the host maintains it itself (31-AFK Decision 3).
+    // That arm runs before any of the AdGuard route's session pieces are built.
+    if (state.extension?.launchFamily === ExtensionLaunchFamily.Firefox) {
+        return await runFirefoxFileBackedApplication(
+            host,
+            state,
+            request,
+            goal,
+            session,
+            contract.verification.method,
+            admittedFileTargetPath,
+        );
+    }
     const readContext = host.applicationReadContexts.get(session);
     const expectedStealthEnabled =
         expectedStealthEnabledOverride ??
@@ -509,33 +476,8 @@ export async function runApplication(
         },
         signal: request.signal,
     });
-    if (result.kind === PhaseApplicationOutcomeKind.Applied) {
-        return {
-            result: {
-                kind: EnvironmentPhaseConfigurationOutcome.Applied,
-                method: contract.verification.method,
-                readBack: result.readBack,
-                actionLog: result.actionLog,
-                ...(result.detail === undefined ? {} : { detail: result.detail }),
-            },
-            ...(stateRead ? { stateRead } : {}),
-        };
-    }
-    if (result.kind === PhaseApplicationOutcomeKind.Refused) {
-        return {
-            result: {
-                kind: EnvironmentPhaseConfigurationOutcome.Refused,
-                gap: result.gap,
-                detail: result.detail,
-            },
-            ...(stateRead ? { stateRead } : {}),
-        };
-    }
     return {
-        result: {
-            kind: EnvironmentPhaseConfigurationOutcome.Unverified,
-            detail: result.detail,
-        },
+        result: projectApplicationResult(result, contract.verification.method),
         ...(stateRead ? { stateRead } : {}),
     };
 }

@@ -12,6 +12,7 @@ import {
     renderSettingsProfiles,
 } from './run-report-candidate-render';
 import { renderEnvironmentSelection } from './run-report-environment-render';
+import { renderBlockerProvenance } from './run-report-extension-provenance';
 import { renderOptional, renderPathList } from './run-report-values';
 
 /**
@@ -72,7 +73,9 @@ function renderRunStatus(result: FixRunResult): string {
     if (result.runStatus === 'target_url_unavailable') {
         suffix = ' — target URL unavailable from this runner';
     } else if (result.runStatus === 'browser_unavailable') {
-        suffix = ' — Chromium could not be started or configured';
+        // Family-neutral: the controlled browser is Chromium for the AdGuard route and Firefox
+        // for a signed-XPI blocker, and the status line must not name the wrong one.
+        suffix = ' — the controlled browser could not be started or configured';
     } else if (result.runStatus === 'cleanup_failed') {
         suffix = ' — environment cleanup failed';
     } else if (result.runStatus === 'fixed_in_source_pending_publication') {
@@ -220,15 +223,9 @@ export function renderValidatedLocalAgentReport(
         '',
         '## Provenance',
         '',
-        '- Browser support contract: `Chromium + MV3 only`',
-        '- Scope note: this run does not verify branded Edge or Manifest V2 behavior.',
         `- Source/extension horizon: \`${parsed.provenance.environment}\``,
         `- Headless: \`${parsed.provenance.headless ? 'yes' : 'no'}\``,
-        `- Extension source: \`${extension?.source ?? 'n/a'}\``,
-        `- Extension directory: \`${extension?.extensionPath ?? 'n/a'}\``,
-        `- Extension tag: \`${extension?.extensionSourceTag ?? 'n/a'}\``,
-        `- Extension source sha256: \`${extension?.extensionSourceSha256 ?? 'n/a'}\``,
-        `- Manifest generation: \`${extension?.manifestVersion ?? 'n/a'}\``,
+        ...renderBlockerProvenance(extension),
         ...renderSourceProvenance(parsed.result),
         ...renderKnowledgeBaseProvenance(parsed.provenance.knowledgeBase),
         '',

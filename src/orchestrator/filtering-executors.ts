@@ -5,8 +5,11 @@ import type {
     FilteringEnvironmentDescriptor,
 } from '../environment/environment-selection';
 import type {
-    BrowserExtensionEnvironmentOptions,
+BrowserExtensionEnvironmentOptions,
 } from '../environment/browser-extension-environment';
+import type {
+FirefoxExtensionEnvironmentOptions,
+} from '../environment/firefox-extension-environment';
 import type { FilteringEnvironmentAdapter } from '../environment/filtering-environment';
 import type { FilterListRef } from '../environment/filter-list-ref';
 import type { EvidenceRouteHost } from '../local/evidence-route-contract';
@@ -120,6 +123,14 @@ export interface ExecutorAdapterContext {
      * executors of other shapes never read it.
      */
     extensionOptions?: BrowserExtensionEnvironmentOptions;
+
+    /**
+     * Verified Firefox-family blocker environment inputs, when the run's prepared build is a signed
+     * XPI force-installed through enterprise policies. Exactly one of this and
+     * {@link ExecutorAdapterContext.extensionOptions} is present for an extension-executing run: the
+     * two families share an executor name but not an adapter (32-AFK Decision 3).
+     */
+    firefoxExtensionOptions?: FirefoxExtensionEnvironmentOptions;
 
     /**
      * Prepared evidence route for CLI-shaped executors, or null when the run has none. The adapter

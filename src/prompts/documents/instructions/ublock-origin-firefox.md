@@ -13,39 +13,57 @@ The run loads its filter guidance at start from these role documents:
 
 ## Preparation
 
+launch: firefox
+
+uBlock Origin is installed into Firefox as a signed XPI, force-installed through enterprise
+policies; the host writes the policies file itself before every browser start, so do not write one.
+Your job is to fetch the XPI and declare how the host must install it.
+
 1. Download the current signed Firefox build of uBlock Origin — the current release version only,
    never a frozen or pinned tag. Ask the public GitHub releases API
    `https://api.github.com/repos/gorhill/uBlock/releases/latest` and take the asset whose name
    ends with `.firefox.signed.xpi`; save it inside the run workspace.
-2. In the run's filters checkout create the user-filters file
-   `filters-agent/ublock/user-filters.txt` empty. The file read-back credits the Baseline phase
-   only when the file is empty, so an empty file is the baseline ground state; the rule-application
-   step appends the candidate rule to it.
-3. Generate the Firefox enterprise policies payload: under `ExtensionSettings`, keyed by
-   `uBlock0@raymondhill.net`, set `installation_mode` to `force_installed` and `install_url` to
-   the absolute `file://` URL of the saved XPI; under `3rdparty.Extensions` for the same
-   extension id set `adminSettings` with `userFilters` equal to the exact contents of
-   `filters-agent/ublock/user-filters.txt` and `selectedFilterLists` selecting the baseline lists
-   this repository publishes plus `user-filters` — without `user-filters` in the list, uBO never
-   applies `userFilters` at all. The file read-back cannot see `selectedFilterLists`; it credits a
-   phase from the file's content alone.
-4. Before finishing, assert both artifacts exist in the run workspace: the signed XPI and the
-   policies payload that references it.
+2. Assert the saved XPI exists in the run workspace and is not empty.
+3. Finish with the Firefox launch declaration in your terminal payload:
+    - `launchFamily`: `firefox`.
+    - `extensionId`: `uBlock0@raymondhill.net`, uBO's published Firefox id.
+    - `xpiPath`: the saved XPI, as a path relative to the working directory.
+    - `managedStorage`: the managed-storage document uBO reads from `browser.storage.managed`, as
+      JSON text — exactly the document below, this repository's baseline lists plus
+      `user-filters`. Without `user-filters` in the selection uBO never applies the candidate rule
+      at all. This selection is the run's executable baseline: it is what every phase runs with and
+      what the run report names, and nothing in it is resolved against any other product's filter
+      catalog.
+    - `userFiltersKeyPath`: `["adminSettings", "userFilters"]` — the key inside that document the
+      host fills with the exact contents of the user-filters file named under State verification.
+
+The managed-storage document, verbatim:
+
+```json
+{
+    "adminSettings": {
+        "selectedFilterLists": [
+            "user-filters",
+            "ublock-filters",
+            "ublock-badware",
+            "ublock-privacy",
+            "ublock-unbreak",
+            "easylist",
+            "easyprivacy"
+        ]
+    }
+}
+```
 
 ## Rule application
 
-Maintain the user-filters file; the candidate rule reaches uBO only through it. Perform the steps
-in order, invent none:
-
-1. If your goal is to apply the candidate rule: append it to
-   `filters-agent/ublock/user-filters.txt` as one exact line at the end of the file — no rewrites,
-   no extra rules, nothing removed.
-2. Regenerate the managed-storage payload from the file's exact contents: update
-   `adminSettings.userFilters` under `3rdparty.Extensions.uBlock0@raymondhill.net` to hold those
-   contents verbatim.
-3. Restart the browser session that runs the prepared uBO profile, so the force-installed uBO
-   re-reads the regenerated payload; uBO consumes managed storage while Firefox applies the
-   policies, not from a running session's settings UI.
+The host maintains the user-filters file `filters-agent/ublock/user-filters.txt` itself; there are
+no steps for a session to perform. Between phases the host writes that file — empty for the
+baseline goal, exactly the candidate rule as one line for the candidate goal — rebuilds the
+enterprise policies with the file's exact contents at the declared key path, relaunches the browser
+so the force-installed uBO reads the regenerated managed storage at startup, and then reads the
+file back. uBO consumes managed storage while Firefox applies the policies, never from a running
+session's settings UI, which is why the relaunch is part of the application and not an extra step.
 
 ## State verification
 
@@ -54,13 +72,17 @@ session's own report. The host's declaration:
 
 read: managed-storage-file filters-agent/ublock/user-filters.txt
 
-The target is relative to the run's checkout root; the host resolves it there. The file must be
-the very one preparation created and the application steps maintain — one rule per line, the
-candidate appended last.
+The target is relative to the run's checkout root; the host resolves it there. The file is the one
+the host maintains and the one whose contents the enterprise policies carry into uBO's managed
+storage — one rule per line, the candidate rule alone for a candidate phase.
 
-File-backed application is not supported yet: no session in this run writes the file this
-declaration names, so a run loading this example refuses before any paid work, naming the
-declared method (see `docs/modules/browser-with-extension.md`).
+The empty file credits the baseline phase and the exact candidate line credits the candidate phase.
+The run's three phases are the ones every validation uses: Firefox with no extension, Firefox with
+uBO and the lists declared above on an empty user-filters file, and the same plus exactly the
+candidate rule. The file read-back cannot see `selectedFilterLists`, so the phase proof reports the
+enabled set from the declaration above — the lists Firefox applied when it force-installed the XPI —
+and records that the user-filter state itself was credited from the file's content alone (see
+`docs/modules/browser-with-extension.md`).
 
 ## Issue selection
 
@@ -93,6 +115,8 @@ itself rather than the lists.
 ### Executor and version
 
 {{executor}} {{executorVersion}}
+
+uBlock Origin in Firefox, installed from the signed release XPI named under Preparation.
 
 ### Policy rationale
 

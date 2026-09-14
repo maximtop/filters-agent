@@ -59,10 +59,11 @@ read: extension-state user-rules
 The read-back holds the prepared build's user rules; the host credits the phase only when they
 contain exactly the candidate content the application steps saved.
 
-This live-extension method is fully supported today. File-backed verification (`user-rules-file`,
-`managed-storage-file`, as the uBO and uBOL examples declare) is not yet: no session in a run
-writes the file such a declaration names, so that run refuses before any paid work (see
-`docs/modules/browser-with-extension.md`).
+This live-extension method is fully supported today. Of the file-backed methods only
+`managed-storage-file` beside a `launch: firefox` declaration runs — the uBO example, where the
+host maintains the declared file and rebuilds Firefox's enterprise policies around it;
+`user-rules-file` (the uBOL example) still refuses before any paid work, because nothing writes the
+file it names (see `docs/modules/browser-with-extension.md`).
 
 ## Issue selection
 

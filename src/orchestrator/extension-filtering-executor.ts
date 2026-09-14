@@ -7,6 +7,8 @@ import {
 } from '../environment/environment-selection';
 import { BrowserExtensionExecutorName, type ExecutorName } from '../environment/executor-name';
 import { BrowserExtensionEnvironmentAdapter } from '../environment/browser-extension-environment';
+import { FirefoxExtensionEnvironmentAdapter } from '../environment/firefox-extension-environment';
+import type { FilteringEnvironmentAdapter } from '../environment/filtering-environment';
 import type {
     ExecutorActivationContext,
     ExecutorAdapterContext,
@@ -76,14 +78,22 @@ export const extensionFilteringExecutor: FilteringExecutor = {
     },
 
     /**
-     * Build the browser-extension adapter from the runtime's verified extension inputs.
+     * Build the adapter of the run's own blocker family from the runtime's verified inputs.
+     *
+     * One executor name, one adapter per launch family (32-AFK Decision 3): a Firefox-family run
+     * force-installs a signed XPI and credits its phases from the declared file, while the Chromium
+     * line loads an unpacked AdGuard build and locks its ruleset bytes. The runtime builds exactly
+     * one of the two option sets, so this registration never has to choose between them.
      *
      * @param context - Runtime-resolved adapter inputs.
      * @returns Fresh executing adapter for this run.
      * @throws When the run carries no verified extension session — a non-extension executor or a
      *   control session must never reach adapter construction through this registration.
      */
-    createAdapter(context: ExecutorAdapterContext): BrowserExtensionEnvironmentAdapter {
+    createAdapter(context: ExecutorAdapterContext): FilteringEnvironmentAdapter {
+        if (context.firefoxExtensionOptions) {
+            return new FirefoxExtensionEnvironmentAdapter(context.firefoxExtensionOptions);
+        }
         if (!context.extensionOptions) {
             throw new Error(
                 'The browser-extension executor executes only from a verified prepared ' +

@@ -1,5 +1,6 @@
 import { isAbsolute } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { FIREFOX_USER_FILTERS_KEY_PATH_MAX } from '../environment/extension-launch';
 
 /**
  * Environment variable the patched Playwright Firefox build reads to locate a custom
@@ -117,4 +118,71 @@ export function buildFirefoxPolicies(input: FirefoxPoliciesInput): FirefoxPolici
         };
     }
     return policy;
+}
+
+/**
+ * Test whether one managed-storage node can carry named keys.
+ *
+ * @param value - Node found at one key-path segment.
+ * @returns Whether the node is a plain keyed object (an array or a scalar cannot carry the path).
+ */
+function isKeyedNode(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Place the user-filters file content into the declared managed-storage key path.
+ *
+ * The instruction owns the managed-storage document and names the key that must hold the file's
+ * content (`['adminSettings', 'userFilters']` for uBlock Origin); the host writes the file and
+ * calls this before every launch, because Firefox reads the policies only at startup. The template
+ * is deep-copied, so the declaration itself is never mutated and two launches of the same run
+ * cannot leak one phase's rules into the next.
+ *
+ * @param template - Managed-storage document the instruction declared, without the user filters.
+ * @param keyPath - Key path inside the template that must hold the file content.
+ * @param content - Exact content of the declared user-filters file.
+ * @returns A fresh managed-storage document carrying the content at the declared key path.
+ * @throws When the key path is empty, longer than {@link FIREFOX_USER_FILTERS_KEY_PATH_MAX}, holds
+ *   an empty segment, or crosses a node that cannot carry named keys — the launch would otherwise
+ *   hand the extension a document whose user filters are somewhere else entirely.
+ */
+export function buildManagedStorageWithUserFilters(
+    template: Record<string, unknown>,
+    keyPath: readonly string[],
+    content: string,
+): Record<string, unknown> {
+    if (keyPath.length === 0 || keyPath.length > FIREFOX_USER_FILTERS_KEY_PATH_MAX) {
+        throw new Error(
+            `The managed-storage user-filters key path must hold 1 to ` +
+                `${FIREFOX_USER_FILTERS_KEY_PATH_MAX} segments; received ${keyPath.length}.`,
+        );
+    }
+    if (keyPath.some((segment) => segment.length === 0)) {
+        throw new Error(
+            `The managed-storage user-filters key path holds an empty segment: ` +
+                `[${keyPath.join(', ')}].`,
+        );
+    }
+    const managedStorage = structuredClone(template) as Record<string, unknown>;
+    let node = managedStorage;
+    for (const [index, segment] of keyPath.slice(0, -1).entries()) {
+        const next = node[segment];
+        if (next === undefined) {
+            const created: Record<string, unknown> = {};
+            node[segment] = created;
+            node = created;
+            continue;
+        }
+        if (!isKeyedNode(next)) {
+            throw new Error(
+                `The managed-storage user-filters key path [${keyPath.join(', ')}] crosses ` +
+                    `"${segment}" at depth ${index}, which holds ${typeof next} instead of an ` +
+                    'object that can carry the remaining segments.',
+            );
+        }
+        node = next;
+    }
+    node[keyPath[keyPath.length - 1]!] = content;
+    return managedStorage;
 }

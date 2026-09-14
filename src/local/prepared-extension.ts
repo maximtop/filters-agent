@@ -1,19 +1,27 @@
 /**
- * PreparedExtension — the host-validated unpacked extension every fix run carries into its browser
+ * PreparedExtension — the host-validated extension build every fix run carries into its browser
  * sessions, and the provenance vocabulary that replaces the build-from-source cache record at the
  * runtime seam.
  *
  * Exactly ONE PreparedExtension exists per run, prepared before the fix session starts: the host
- * downloads the operator-pinned prebuilt release, or adopts the directory the short-lived
- * preparation session built from the instruction's `## Preparation` section. The source kind is
- * recorded so run records state where the loaded build came from; the digest pins the exact source
- * bytes and makes substitution detectable. (A third source, an operator-preloaded directory, was
- * dropped in 27-AFK; `PreparedExtensionSource.Preloaded` stays parseable for run records persisted
- * before the drop.)
+ * downloads the operator-pinned prebuilt release, or adopts what the short-lived preparation
+ * session built from the instruction's `## Preparation` section. The source kind is recorded so run
+ * records state where the loaded build came from; the digest pins the exact source bytes and makes
+ * substitution detectable. (A third source, an operator-preloaded directory, was dropped in 27-AFK;
+ * `PreparedExtensionSource.Preloaded` stays parseable for run records persisted before the drop.)
+ *
+ * Decision 1 of 31-AFK: the record carries its launch family, because the two families install
+ * through channels with nothing in common — a Chromium unpacked directory, or a Firefox signed XPI
+ * force-installed through enterprise policies whose managed storage carries the user filters.
  */
 import { readFileSync } from 'node:fs';
 import { access, stat } from 'node:fs/promises';
-import { join } from 'node:path';
+import { isAbsolute, join } from 'node:path';
+import {
+    ExtensionLaunchFamily,
+    type ChromiumExtensionLaunch,
+    type FirefoxExtensionLaunch,
+} from '../environment/extension-launch';
 import {
     EXTENSION_MANIFEST_VERSION_VALUES,
     ExtensionManifestVersion,
@@ -21,23 +29,9 @@ import {
 } from '../environment/extension-preparation';
 
 /**
- * The one unpacked extension build this run loads into its browser sessions.
- *
- * Validated at creation: the directory exists and carries `manifest.json`. This is the shape the
- * launch wiring reads (`extensionPath`, `manifestVersion`) and the run-record provenance blocks
- * serialize.
+ * Where one prepared build came from, whatever family it launches in.
  */
-export interface PreparedExtension {
-    /**
-     * Absolute path of the unpacked directory (manifest.json at its root).
-     */
-    extensionPath: string;
-
-    /**
-     * Manifest generation the unpacked build ships.
-     */
-    manifestVersion: ExtensionManifestVersion;
-
+export interface PreparedExtensionIdentity {
     /**
      * Where this build came from.
      */
@@ -55,6 +49,44 @@ export interface PreparedExtension {
      */
     extensionSourceTag?: string;
 }
+
+/**
+ * A Chromium-family prepared build: today's unpacked directory, validated to carry `manifest.json`.
+ *
+ * This is exactly the record every run carried before the families were distinguished — its
+ * discriminant stays absent — so the launch wiring, the run-record provenance and the build digest
+ * of the Chromium route read the same fields they always did.
+ */
+export type ChromiumPreparedExtension = PreparedExtensionIdentity & ChromiumExtensionLaunch;
+
+/**
+ * A Firefox-family prepared build: a signed XPI at an absolute path plus the managed-storage
+ * declaration the host places the user filters into at every launch.
+ */
+export type FirefoxPreparedExtension = PreparedExtensionIdentity &
+    FirefoxExtensionLaunch & {
+        /**
+         * Never present: a signed XPI has no unpacked directory. Declared absent so a reader that
+         * does not care about the family reads `undefined` here instead of guessing a path.
+         */
+        extensionPath?: undefined;
+
+        /**
+         * Never present: the host reads no manifest out of a signed XPI. Declared absent for the
+         * same reason as {@link FirefoxPreparedExtension.extensionPath}.
+         */
+        manifestVersion?: undefined;
+    };
+
+/**
+ * The one extension build this run loads into its browser sessions, carrying its launch family.
+ *
+ * Validated at creation: a Chromium-family directory exists and carries `manifest.json`, and a
+ * Firefox-family XPI exists at an absolute path with a managed-storage declaration the host can
+ * place the user filters into. The launch wiring reads the family-specific fields; the run-record
+ * provenance blocks serialize them beside the source identity.
+ */
+export type PreparedExtension = ChromiumPreparedExtension | FirefoxPreparedExtension;
 
 /**
  * The one file the browser cannot load an extension without.
@@ -184,4 +216,74 @@ export async function loadPreparedExtensionFromDirectory(
         extensionSourceSha256,
         ...(sourceTag === undefined ? {} : { extensionSourceTag: sourceTag }),
     };
+}
+
+/**
+ * Validate one declared signed XPI as a loadable Firefox-family prepared extension.
+ *
+ * There is no unpacked directory and no readable manifest generation here: Firefox installs a
+ * signed archive, which the browser itself validates at startup. What the host can validate before
+ * paying for a run is that the declaration is launchable — the XPI is an existing file at an
+ * absolute path (`install_url` must be an absolute `file://` URL), the extension id is non-empty,
+ * and the managed-storage declaration can actually carry the user-filters content. The placement
+ * itself is proved by the caller through the one placement rule the launch uses, so a declaration
+ * that cannot hold the filters fails here rather than launching a browser whose user filters sit
+ * somewhere the extension never reads.
+ *
+ * @param launch - The Firefox launch declaration the preparation session produced.
+ * @param source - Where this build came from.
+ * @param extensionSourceSha256 - Digest pinning the extension source.
+ * @returns The validated PreparedExtension.
+ * @throws When the XPI path is relative, or names something other than an existing file.
+ */
+export async function loadPreparedFirefoxExtension(
+    launch: FirefoxExtensionLaunch,
+    source: PreparedExtensionSource,
+    extensionSourceSha256: string,
+): Promise<PreparedExtension> {
+    if (!isAbsolute(launch.xpiPath)) {
+        throw new Error(
+            `The prepared Firefox extension XPI path "${launch.xpiPath}" is relative; Firefox ` +
+                'installs it through an absolute file:// URL, so the path must be absolute.',
+        );
+    }
+    const xpi = await stat(launch.xpiPath).catch(() => undefined);
+    if (xpi === undefined || !xpi.isFile()) {
+        throw new Error(
+            `The prepared Firefox extension XPI ${launch.xpiPath} does not exist as a file; ` +
+                'the browser cannot force-install it.',
+        );
+    }
+    if (launch.extensionId.trim().length === 0) {
+        throw new Error(
+            `The prepared Firefox extension at ${launch.xpiPath} declares an empty extension id; ` +
+                'the enterprise policies are keyed by it.',
+        );
+    }
+    return { ...launch, source, extensionSourceSha256 };
+}
+
+/**
+ * Require the Chromium unpacked-directory build one Chromium-only path needs.
+ *
+ * The AdGuard route reads the extension's own options page, its bundled filter catalog and its
+ * manifest — none of which a signed XPI has. A Firefox-family build reaching one of those paths is
+ * a wiring fault, so it fails named here instead of being answered with a guess.
+ *
+ * @param extension - The run's one prepared extension build.
+ * @param purpose - What the caller needed the unpacked directory for, quoted into the failure.
+ * @returns The Chromium-family build.
+ * @throws When this run's prepared build is not a Chromium-family one.
+ */
+export function requireChromiumPreparedExtension(
+    extension: PreparedExtension,
+    purpose: string,
+): ChromiumPreparedExtension {
+    if (extension.launchFamily === ExtensionLaunchFamily.Firefox) {
+        throw new Error(
+            `${purpose} requires a Chromium-family prepared extension (an unpacked directory), ` +
+                `but this run prepared a ${extension.launchFamily}-family build.`,
+        );
+    }
+    return extension;
 }
