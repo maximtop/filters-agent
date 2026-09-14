@@ -31,10 +31,17 @@ Perform exactly these steps, invent none:
     3. Read `getOptionsData` again and repeat step 4.2 while any unexpected filter is still
        enabled, for at most three rounds. Never enable a filter here: the import is the only step
        that turns filters on, and this instruction names no message for enabling one.
+    4. The `getOptionsData` reply is the only evidence this step needs. Do not open the options
+       page again, read its DOM, or wait for it to settle to confirm the filters: the host reads
+       the extension state back itself after your steps.
 5. If your goal is to apply the candidate rule: call `send_extension_message` with
    `{"type": "saveUserRules", "data": {"value": "<the candidate rule your goal names>"}}`, passing
    the candidate rule exactly as written, as one line, and nothing else. No rewrites, no extra
    rules, nothing removed.
+6. Finish immediately: call `finish_application` with status `done` as soon as the last step
+   above has completed, or with status `failed` naming the step that did not, and make no other
+   call in between. Every extra call spends the session's small action budget; a session that
+   runs out of actions ends without your terminal payload.
 
 ## State verification
 

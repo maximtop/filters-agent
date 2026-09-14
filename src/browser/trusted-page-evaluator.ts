@@ -2,6 +2,38 @@ import type { Page } from 'playwright-core';
 import { createLogger, type Logger } from '../logger/logger';
 
 /**
+ * Render a CDP `Runtime.ExceptionDetails` record as the one line a failure log needs.
+ *
+ * `text` alone is nearly always the bare word "Uncaught": the thrown value lives in
+ * `exception.description` (for an Error, its name, message and stack) and the location in
+ * `lineNumber`/`columnNumber`. A live run logged a failed safe-interaction click as "Trusted page
+ * evaluation failed: Uncaught" with `failureDetail: unknown`, which named nothing about what the
+ * page threw.
+ *
+ * @param exception - The `exceptionDetails` record of a `Runtime.evaluate` response.
+ * @returns The thrown value's description (first line) with the text and location, when present.
+ */
+function describeRuntimeException(exception: Record<string, unknown>): string {
+    const text = typeof exception.text === 'string' ? exception.text : 'unknown error';
+    const thrown =
+        typeof exception.exception === 'object' && exception.exception !== null
+            ? (exception.exception as Record<string, unknown>)
+            : undefined;
+    const description =
+        typeof thrown?.description === 'string'
+            ? thrown.description.split('\n', 1)[0]
+            : typeof thrown?.value === 'string'
+              ? thrown.value
+              : undefined;
+    const location =
+        typeof exception.lineNumber === 'number'
+            ? ` at line ${exception.lineNumber}` +
+              (typeof exception.columnNumber === 'number' ? `:${exception.columnNumber}` : '')
+            : '';
+    return description === undefined ? `${text}${location}` : `${text}: ${description}${location}`;
+}
+
+/**
  * Stable isolated-world name used only for deterministic validation probes.
  */
 const VALIDATION_WORLD_NAME = 'adguard-filter-agent-validation';
@@ -135,13 +167,12 @@ class CdpIsolatedWorldEvaluator implements TrustedPageEvaluator {
                 'Runtime.evaluate response',
             );
             if (evaluationResponse.exceptionDetails !== undefined) {
-                const exception = requireRecord(
-                    evaluationResponse.exceptionDetails,
-                    'Runtime exception',
+                throw new Error(
+                    'Trusted page evaluation failed: ' +
+                        describeRuntimeException(
+                            requireRecord(evaluationResponse.exceptionDetails, 'Runtime exception'),
+                        ),
                 );
-                const detail =
-                    typeof exception.text === 'string' ? exception.text : 'unknown error';
-                throw new Error(`Trusted page evaluation failed: ${detail}`);
             }
 
             const remoteObject = requireRecord(evaluationResponse.result, 'Runtime remote object');
