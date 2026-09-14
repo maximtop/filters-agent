@@ -3,6 +3,7 @@ import type { BrowserContext, Page } from 'playwright-core';
 import { ExtensionManifestVersion } from '../environment/extension-preparation';
 import { normalizeRulesContent, sha256OfContent } from '../environment/rules-content';
 import { FilterEngine } from '../types/filter-engine';
+import { AdGuardExtensionMessageType } from './adguard-extension-message-types';
 import type { ExtensionRuntimeHints } from './extension-runtime-location';
 import {
     DEFAULT_READINESS_BUDGET_MS,
@@ -68,9 +69,13 @@ export async function waitForOptionsData(
         sharedDeadlineAt,
         label: 'AdGuard options app did not become ready',
         probe: async () => {
-            const response = await sendExtensionMessage(page, { type: 'getOptionsData' });
+            const response = await sendExtensionMessage(page, {
+                type: AdGuardExtensionMessageType.GetOptionsData,
+            });
             if (response === undefined) {
-                throw new Error('getOptionsData returned no response.');
+                throw new Error(
+                    `${AdGuardExtensionMessageType.GetOptionsData} returned no response.`,
+                );
             }
             return v.parse(OptionsDataSchema, response);
         },
@@ -93,7 +98,9 @@ export async function waitForAppInitialized(page: Page, sharedDeadlineAt: number
         sharedDeadlineAt,
         label: 'AdGuard app did not finish initialization',
         probe: async () => {
-            const response = await sendExtensionMessage(page, { type: 'getIsAppInitialized' });
+            const response = await sendExtensionMessage(page, {
+                type: AdGuardExtensionMessageType.GetIsAppInitialized,
+            });
             if (response !== true) {
                 throw new Error('AdGuard fresh-install bootstrap is still running.');
             }

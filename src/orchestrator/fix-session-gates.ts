@@ -7,6 +7,7 @@
  * TOOL_GUIDANCE. `select_environment` is advertising-priced rather than lifecycle-priced: a
  * multi-executor run offers it from the first turn, a sole-executor run never does.
  */
+import type * as v from 'valibot';
 import type { ToolRegistry } from '../agent/tool-registry';
 import { adaptSessionTools, type AdaptedToolInput } from '../pi/session-tools';
 import {
@@ -172,6 +173,16 @@ export interface FixSessionToolsOptions {
      * tool name. Read before the static fix guidance, so a per-run composition wins.
      */
     descriptionOverrides?: Readonly<Record<string, string>>;
+
+    /**
+     * Per-run advertisement schemas the runtime composed from its own state, keyed by tool name.
+     *
+     * `launch_browser` is the one shape that is not a property of the catalog alone: whether a
+     * request may carry `settings` depends on the blocker family this run prepared. The same map
+     * feeds the registry drift guard, so the shape the model is shown and the shape the registry
+     * records stay the same shape rather than two that happen to agree.
+     */
+    parameterOverrides?: Readonly<Record<string, v.GenericSchema<Record<string, unknown>>>>;
 }
 
 /**
@@ -211,10 +222,11 @@ export function buildFixSessionTools(
     if (options.routingCheck && soleExecutorRun) {
         onSelectionAccepted();
     }
-    assertParametersMatchRegistry(
-        registry,
-        (name) => FIX_TOOL_PARAMETER_SCHEMAS[name] ?? TOOL_PARAMETER_SCHEMAS[name],
-    );
+    const resolveFixSchema = (name: string): v.GenericSchema<Record<string, unknown>> | undefined =>
+        options.parameterOverrides?.[name] ??
+        FIX_TOOL_PARAMETER_SCHEMAS[name] ??
+        TOOL_PARAMETER_SCHEMAS[name];
+    assertParametersMatchRegistry(registry, resolveFixSchema);
     const quarantine = createDiagnosticQuarantine();
     const availability = createFixSurfaceAvailability(registry);
     // The seeded rule-guidance stub: a registry without a guidance source never registers the
@@ -236,10 +248,7 @@ export function buildFixSessionTools(
         const fixDescription = FIX_TOOL_GUIDANCE[name];
         return adaptRegistryTool(registry, quarantine, {
             name,
-            parameters: resolveSessionSchema(
-                name,
-                (lookup) => FIX_TOOL_PARAMETER_SCHEMAS[lookup] ?? TOOL_PARAMETER_SCHEMAS[lookup],
-            ),
+            parameters: resolveSessionSchema(name, resolveFixSchema),
             description: override ?? fixDescription,
             availability: () => availability.refusalFor(name),
             onResult: (redacted) => sink.collect(name, redacted),

@@ -22,6 +22,7 @@ import {
     PromptRenderErrorKind,
     renderTemplate,
 } from '../prompts/template';
+import { removeEmptySections } from './report-empty-sections';
 import type { PolicyDecision } from '../types/policy';
 import { AgentTerminationReason } from '../types/agent-termination-reason';
 import { BrowserFallbackReason } from '../types/browser-fallback-reason';
@@ -39,20 +40,6 @@ import { renderUntrustedRuleCodeSpan, renderUntrustedText } from './untrusted-te
  * traceable to the publisher without looking like a prompt failure.
  */
 const REPORT_COMMENT_SOURCE_LABEL = 'report comment template';
-
-/**
- * Heading line of the built-in artifacts section: exactly `## Artifacts`, alone on its line.
- *
- * Why the removal exists: the built-in template always spells the section, but a run without runner
- * variables (the CLI) — or any run whose artifacts link resolves empty — carries no link to put
- * under it, and a heading followed by nothing promises an artifact the report cannot point at.
- */
-const ARTIFACTS_SECTION_HEADING_PATTERN = /^[ \t]*## Artifacts[ \t]*$/u;
-
-/**
- * Line opening the next Markdown `##` section, the far bound of an artifacts section's body.
- */
-const SECTION_HEADING_LINE_PATTERN = /^[ \t]*##\s/u;
 
 /**
  * Human labels for every run status, in the fixed `FixRunStatus` vocabulary. Total over
@@ -479,51 +466,14 @@ export function buildReportTemplateValues(summary: ReportOutcomeSummary): Report
 }
 
 /**
- * Drop every built-in `## Artifacts` section whose body is empty or whitespace only.
- *
- * A section's body runs from the line after its heading to the next `##` heading or the end of the
- * body. The heading and that blank body are removed together, so an omitted section never leaves a
- * dangling heading before the sections that follow; a section carrying any content stays exactly as
- * rendered.
- *
- * @param body - Rendered comment body.
- * @returns The body with empty artifacts sections removed.
- */
-function removeEmptyArtifactsSections(body: string): string {
-    const lines = body.split('\n');
-    const kept: string[] = [];
-    let index = 0;
-    while (index < lines.length) {
-        const line = lines[index] ?? '';
-        if (!ARTIFACTS_SECTION_HEADING_PATTERN.test(line)) {
-            kept.push(line);
-            index += 1;
-            continue;
-        }
-        let afterBody = index + 1;
-        while (afterBody < lines.length && (lines[afterBody] ?? '').trim() === '') {
-            afterBody += 1;
-        }
-        const boundary = lines[afterBody];
-        if (boundary !== undefined && !SECTION_HEADING_LINE_PATTERN.test(boundary)) {
-            kept.push(line);
-            index += 1;
-            continue;
-        }
-        index = afterBody;
-    }
-    return kept.join('\n');
-}
-
-/**
  * Render one report comment body from a resolved template and the computed fill values.
  *
  * Fills are filtered down to `extractPlaceholders(template)` first, so a custom template using any
  * subset of the fixed set renders fine and unused fills are ignored. A token outside the fixed set
  * throws named — no fill can ever appear for it, and the strict render would otherwise misreport
- * the unknown token as merely "not filled". When the artifacts link resolved empty, every built-in
- * `## Artifacts` section whose body stays blank is omitted: with no link to render, the heading
- * would promise an artifact the report cannot point at.
+ * the unknown token as merely "not filled". Every section whose body renders blank is then omitted,
+ * on every outcome: a heading with nothing under it promises the reader a rule, a rationale or an
+ * artifact the report does not have. The outcome itself carries no heading and always stays.
  *
  * @param template - Report template text; the instruction section or the built-in template.
  * @param values - Fill values covering every key of `REPORT_TEMPLATE_FILL`.
@@ -544,9 +494,5 @@ export function renderReportComment(template: string, values: ReportTemplateValu
     for (const name of declares) {
         subset[name] = fills[name] ?? '';
     }
-    const rendered = renderTemplate(template, subset, REPORT_COMMENT_SOURCE_LABEL);
-    if (values.artifactsLink === '') {
-        return removeEmptyArtifactsSections(rendered);
-    }
-    return rendered;
+    return removeEmptySections(renderTemplate(template, subset, REPORT_COMMENT_SOURCE_LABEL));
 }

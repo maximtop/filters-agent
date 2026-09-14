@@ -19,7 +19,19 @@ Perform exactly these steps, invent none:
    passing the payload exactly as written, so the extension enables exactly the official filters
    the prepared expectation names and its Tracking-protection state. Do not add, remove, or edit
    any other filter.
-4. If your goal is to apply the candidate rule: call `send_extension_message` with
+4. Confirm the import landed on exactly the expected filters, and turn off any extra one. A
+   successful `applySettingsJson` is not proof on its own: the extension re-enables some filters
+   from settings of its own after the import.
+    1. Call `send_extension_message` with `{"type": "getOptionsData"}`. Its
+       `filtersMetadata.filters` array carries one entry per filter, with a `filterId` and an
+       `enabled` flag.
+    2. For every entry whose `enabled` is `true` and whose `filterId` is **not** among the official
+       filter IDs the prepared expectation names, call `send_extension_message` with
+       `{"type": "disableFilter", "data": {"filterId": <that filterId>}}`.
+    3. Read `getOptionsData` again and repeat step 4.2 while any unexpected filter is still
+       enabled, for at most three rounds. Never enable a filter here: the import is the only step
+       that turns filters on, and this instruction names no message for enabling one.
+5. If your goal is to apply the candidate rule: call `send_extension_message` with
    `{"type": "saveUserRules", "data": {"value": "<the candidate rule your goal names>"}}`, passing
    the candidate rule exactly as written, as one line, and nothing else. No rewrites, no extra
    rules, nothing removed.

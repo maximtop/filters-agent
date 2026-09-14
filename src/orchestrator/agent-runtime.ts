@@ -117,10 +117,10 @@ import type { PiRuntime } from '../pi/runtime';
 import type { RunUsageCollector } from '../pi/usage-collector';
 import { ApplicationGoalKind } from '../validator/phase-application-contract';
 import {
-    readAdGuardExtensionState as readAdGuardExtensionStateDefault,
+readAdGuardExtensionState as readAdGuardExtensionStateDefault,
 } from '../browser/adguard-extension-state-read';
 import {
-    findExtensionRuntime as findExtensionRuntimeDefault,
+findExtensionRuntime as findExtensionRuntimeDefault,
 } from '../browser/extension-runtime-location';
 import {
     candidateArtifactIdentitiesEqual,
@@ -152,20 +152,18 @@ import {
     type LaunchedEvidenceSession,
     type EvidenceSessionLaunchRequest,
 } from './filtering-executors';
-import {
-    BROWSER_LAUNCH_DEADLINE_MS,
-    BROWSER_TOOL_DEADLINE_MS,
-    registerLifecycleTools,
-    type RuntimeLifecycleToolsHost,
-} from './runtime-lifecycle-tools';
+import { registerLifecycleTools, type RuntimeLifecycleToolsHost } from './runtime-lifecycle-tools';
+import { BROWSER_LAUNCH_DEADLINE_MS, BROWSER_TOOL_DEADLINE_MS } from './browser-tool-deadlines';
 import {
     terminalSymptomObservation,
     validateTerminalOutcome as judgeTerminalOutcome,
 } from './terminal-outcome-validator';
 import type { TerminalValidationView } from './terminal-validation-view';
 import {
-    LaunchBrowserSchema,
-    MAX_BROWSER_VALIDATION_DETAIL_LENGTH,
+    DECLARED_BASELINE_SETTINGS_PROFILE,
+    launchBrowserAdvertisement,
+    launchBrowserRefusal,
+    launchBrowserRequestSchema,
     normalizeLaunchBrowserArguments,
     requestsUnsupportedProxyRegion,
 } from './launch-browser-arguments';
@@ -2312,6 +2310,7 @@ export class AgentRuntime {
             issueAttachmentArtifactIds: this.options.issueAttachmentArtifactIds,
             allowedTargetUrls: this.options.allowedTargetUrls,
             baseRegistry: this.baseRegistry,
+            launchBrowserAdvertisement: launchBrowserAdvertisement(this.preparedExtension),
             capabilities: () => this.environmentHost.capabilities(),
             markBaseTool: (name) => {
                 this.baseToolNames.add(name);
@@ -2835,21 +2834,13 @@ export class AgentRuntime {
                 networkEgressChanged: false,
             };
         }
-        const parsed = v.safeParse(LaunchBrowserSchema, normalizeLaunchBrowserArguments(args));
+        const parsed = v.safeParse(
+            launchBrowserRequestSchema(this.preparedExtension),
+            normalizeLaunchBrowserArguments(args),
+        );
         if (!parsed.success) {
-            const validationDetail = parsed.issues
-                .map((issue) => issue.message)
-                .join('; ')
-                .slice(0, MAX_BROWSER_VALIDATION_DETAIL_LENGTH);
             return {
-                error: [
-                    'Invalid launch_browser request. Accepted settings shapes:',
-                    '{"kind":"agent_selected","filterIds":[2],"stealthEnabled":false};',
-                    '{"kind":"defaults_plus_required","requiredFilterIds":[2]};',
-                    '{"kind":"report_exact","importUrl":"https://..."};',
-                    '{"kind":"reported_on_current","importUrl":"https://..."}.',
-                    `Validation detail: ${validationDetail}`,
-                ].join(' '),
+                error: launchBrowserRefusal(this.preparedExtension, parsed.issues),
                 errorKind: 'invalid_browser_request',
                 retryable: true,
             };
@@ -2916,7 +2907,7 @@ export class AgentRuntime {
         // which degrades them onto the convergent subset with recorded conflicts instead of
         // rejecting the launch.
         if (
-            request.extension === 'prepared' &&
+            request.settings !== undefined &&
             (request.settings.kind === SettingsProfileKind.AgentSelected ||
                 request.settings.kind === SettingsProfileKind.DefaultsPlusRequired)
         ) {
@@ -3019,10 +3010,12 @@ export class AgentRuntime {
                 analyzedArtifactIds: new Set<string>(),
             };
             if (request.extension === 'prepared') {
-                sessionState.selectedSettingsProfileKind = request.settings.kind;
-                sessionState.settingsProfile = structuredClone(
-                    request.settings as AdGuardExtensionSettingsProfile,
-                );
+                // A declared-baseline run selects nothing: it records the blocker's own declared
+                // defaults, which is exactly what its browser applied at startup.
+                const settings = (request.settings ??
+                    DECLARED_BASELINE_SETTINGS_PROFILE) as AdGuardExtensionSettingsProfile;
+                sessionState.selectedSettingsProfileKind = settings.kind;
+                sessionState.settingsProfile = structuredClone(settings);
             }
             // Reset per session: a materially different environment gets its own budget, while a
             // single session cannot keep re-deriving the page by hand.
@@ -3042,7 +3035,7 @@ export class AgentRuntime {
                           sessionState,
                           createdSession,
                           targetUrl,
-                          request.settings as AdGuardExtensionSettingsProfile,
+                          request.settings as AdGuardExtensionSettingsProfile | undefined,
                           (conflicts) => this.recordExtensionFilterFidelity(conflicts),
                           signal,
                       )

@@ -2,6 +2,7 @@ import type { Page } from 'playwright-core';
 import * as v from 'valibot';
 import { TOOL_GUIDANCE, TOOL_PARAMETER_SCHEMAS } from '../agent/tool-catalog';
 import { ToolName } from '../agent/tool-names';
+import { AdGuardExtensionMessageType } from '../browser/adguard-extension-message-types';
 import { DISABLE_STEALTH_SETTING } from '../browser/adguard-extension-settings';
 import { sendExtensionMessage } from '../browser/adguard-extension-state-transport';
 import type { IBrowserSession } from '../browser/browser-interfaces';
@@ -91,9 +92,25 @@ const ENABLED_GROUPS_KEY = 'enabled-groups';
 const STEALTH_SECTION_KEY = 'stealth';
 
 /**
- * Extension app-message type returning the current installation's complete settings export.
+ * Section key of the extension's own configuration schema the Acceptable Ads switch lives under.
  */
-const LOAD_SETTINGS_JSON_MESSAGE_TYPE = 'loadSettingsJson';
+const GENERAL_SETTINGS_SECTION_KEY = 'general-settings';
+
+/**
+ * Key of the Acceptable Ads switch inside the general-settings section.
+ *
+ * It is not a preference the payload may leave alone: the extension treats it as authority over
+ * {@link SEARCH_ADS_AND_SELF_PROMOTION_FILTER_ID} and re-enables that filter whenever the flag is
+ * on, whatever `enabled-filters` said. The first live run applied the prepared `[2, 3]`, the import
+ * answered `true`, and the read-back observed `[2, 3, 10]`.
+ */
+const ALLOW_ACCEPTABLE_ADS_KEY = 'allow-acceptable-ads';
+
+/**
+ * Official ID of the "Filter unblocking search ads and self-promotion" filter — the one filter the
+ * Acceptable Ads switch governs, so the switch is exactly "is this filter expected".
+ */
+const SEARCH_ADS_AND_SELF_PROMOTION_FILTER_ID = 10;
 
 /**
  * Shape of the `loadSettingsJson` response: the complete settings export as a JSON string.
@@ -125,6 +142,33 @@ export interface ExtensionSettingsPayloadExpectation {
 }
 
 /**
+ * Set the Acceptable Ads switch from the expected filter set.
+ *
+ * The switch is a second, higher authority over one filter, so leaving the export's own value in
+ * place silently contradicts `enabled-filters`. Expressed as an equality rather than a one-way
+ * disable: a run that expects the filter must not have the switch turn it back off either.
+ *
+ * @param root - The parsed settings export being mutated in place.
+ * @param enabledFilterIds - Exact official filter IDs the payload enables.
+ * @returns Nothing.
+ */
+function setAcceptableAds(
+    root: Record<string, unknown>,
+    enabledFilterIds: readonly number[],
+): void {
+    const section = root[GENERAL_SETTINGS_SECTION_KEY];
+    if (typeof section !== 'object' || section === null) {
+        throw new Error(
+            "The extension's own settings export carries no general-settings section to set " +
+                'the Acceptable Ads switch in.',
+        );
+    }
+    (section as Record<string, unknown>)[ALLOW_ACCEPTABLE_ADS_KEY] = enabledFilterIds.includes(
+        SEARCH_ADS_AND_SELF_PROMOTION_FILTER_ID,
+    );
+}
+
+/**
  * Load the extension's own settings export and mutate it into the complete import document its
  * `applySettingsJson` message accepts.
  *
@@ -132,16 +176,18 @@ export interface ExtensionSettingsPayloadExpectation {
  * anything unless the JSON carries `protocol-version`, `general-settings`,
  * `extension-specific-settings` and a full `filters` section — so a payload built from the
  * expectation alone can never establish a baseline. The build's own most recent export already
- * carries all of that; this loads it fresh over the prepared surface, changes only the three fields
- * the expectation names, and hands back the complete document unchanged everywhere else, exactly as
- * the retired options-page driver's legacy import path did before the model performed this step
+ * carries all of that; this loads it fresh over the prepared surface, changes only the fields the
+ * expectation names — the filters, their groups, the Acceptable Ads switch that governs one of them
+ * and the stealth state — and hands back the complete document unchanged everywhere else, exactly
+ * as the retired options-page driver's legacy import path did before the model performed this step
  * itself (`git show 1ea6e065^:src/browser/adguard-settings-import-protocol.ts`).
  *
  * @param page - Prepared blocker management surface page the export is read from.
  * @param expectation - The prepared expectation the payload must express.
  * @returns The complete settings-import JSON document, ready for `applySettingsJson`.
- * @throws When the export does not parse as a JSON object, or carries no `filters` section, or
- *   carries no `stealth` section to enable Tracking protection in when one is expected enabled.
+ * @throws When the export does not parse as a JSON object, or carries no `filters` or
+ *   `general-settings` section, or carries no `stealth` section to enable Tracking protection in
+ *   when one is expected enabled.
  */
 export async function buildExtensionSettingsPayload(
     page: Page,
@@ -149,7 +195,9 @@ export async function buildExtensionSettingsPayload(
 ): Promise<string> {
     const exported = v.parse(
         SettingsExportResponseSchema,
-        await sendExtensionMessage(page, { type: LOAD_SETTINGS_JSON_MESSAGE_TYPE }),
+        await sendExtensionMessage(page, {
+            type: AdGuardExtensionMessageType.LoadSettingsJson,
+        }),
     );
     let root: Record<string, unknown>;
     try {
@@ -167,6 +215,7 @@ export async function buildExtensionSettingsPayload(
     }
     const filters = filtersSection as Record<string, unknown>;
     filters[ENABLED_FILTERS_KEY] = [...expectation.enabledFilterIds];
+    setAcceptableAds(root, expectation.enabledFilterIds);
     const existingGroups = Array.isArray(filters[ENABLED_GROUPS_KEY])
         ? (filters[ENABLED_GROUPS_KEY] as unknown[]).filter(
               (group): group is number => typeof group === 'number',

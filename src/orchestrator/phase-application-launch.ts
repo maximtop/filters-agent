@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import type { AdGuardExtensionSettingsProfile } from '../browser/adguard-extension-settings';
 import type { AdGuardExtensionStateRead } from '../browser/adguard-extension-state-shapes';
 import {
-    readAdGuardExtensionState as readAdGuardExtensionStateDefault,
+readAdGuardExtensionState as readAdGuardExtensionStateDefault,
 } from '../browser/adguard-extension-state-read';
 import { readBundledFilterCatalogIds } from '../browser/extension-filter-catalog';
 import type { BrowserSession } from '../browser/browser-session';
@@ -255,7 +255,7 @@ export async function launchExtensionBaseline(
     state: AgentRuntimeSessionState,
     session: BrowserSession,
     targetUrl: string,
-    settings: AdGuardExtensionSettingsProfile,
+    settings: AdGuardExtensionSettingsProfile | undefined,
     recordFilterFidelity: (conflicts: readonly MissingCatalogFilterClassification[]) => void,
     signal?: AbortSignal,
 ): Promise<LaunchBaselineOutcome> {
@@ -283,10 +283,10 @@ export async function launchExtensionBaseline(
             detail: declared.detail,
         };
     }
-    if (!extension || !session.extensionContext) {
+    if (!extension || !session.extensionContext || !settings) {
         const detail =
-            'The prepared launch session carried no verified extension context, so the ' +
-            'Baseline application could not run.';
+            'The prepared launch session carried no verified extension context and requested ' +
+            'settings, so the Baseline application could not run.';
         logger.warn({}, 'the launch Baseline application could not run');
         return { kind: LaunchBaselineOutcomeKind.Unverified, detail };
     }

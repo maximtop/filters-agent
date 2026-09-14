@@ -12,13 +12,15 @@
  *
  * Every one of them reads its registered JSON parameters from the shared catalog through
  * `registeredParameters`, so the catalog stays their single declaration. `close_browser` has no
- * `TOOL_PARAMETER_SCHEMAS` entry at all and `launch_browser`'s entry there is the widened gate stub
- * every property of which is optional, so those two resolve through a `REGISTERED_SHAPE_OVERRIDES`
- * entry onto their strict `FIX_TOOL_PARAMETER_SCHEMAS` mirrors — the same shapes the fix session
- * already advertises. Nothing advertises the registry `parameters` itself; the drift guard is its
- * only reader, so deriving both sides from one schema makes them agree by construction.
+ * `TOOL_PARAMETER_SCHEMAS` entry at all, so it resolves through a `REGISTERED_SHAPE_OVERRIDES`
+ * entry onto its strict `FIX_TOOL_PARAMETER_SCHEMAS` mirror — the same shape the fix session
+ * already advertises. `launch_browser` is the one per-run shape: the host hands it the run's
+ * advertisement, because whether the request carries `settings` depends on the family of the
+ * blocker this run prepared. Nothing advertises the registry `parameters` itself; the drift guard
+ * is its only reader, so deriving both sides from one schema makes them agree by construction.
  */
 import { registeredParameters } from '../agent/registered-parameters';
+import { toAdvertisedSchema } from '../pi/tool-schema';
 import { ToolName } from '../agent/tool-names';
 import { ToolRegistry } from '../agent/tool-registry';
 import { registerReporterScreenshotTool } from '../agent/reporter-screenshot-tool';
@@ -27,7 +29,6 @@ import type { RawIssue } from '../github/fetch-issue';
 import { withToolDeadline } from '../pi/session-tools';
 import { PlacementResolutionSchema } from '../repo/placement-resolver';
 import { effectiveRuleScopes, normalizeRule } from '../repo/rule-normalizer';
-import { APPLICATION_SESSION_BUDGET_MS } from '../validator/phase-application-contract';
 import * as v from 'valibot';
 import {
     normalizePlacementDomain,
@@ -36,38 +37,8 @@ import {
     type CandidatePlacementResolution,
 } from './agent-runtime-candidate-context';
 import type { AgentRuntimeSessionState } from './agent-runtime-session-evidence';
-
-/**
- * Hard deadline for one browser tool call.
- *
- * The loop's wall-clock budget is checked between turns, so it cannot end a turn that never
- * returns: one live run hung inside a browser launch and sat there for over two hours despite a
- * one-hour budget. This bounds the call itself, and the model is told the tool timed out so it can
- * choose a different move.
- */
-export const BROWSER_TOOL_DEADLINE_MS = 3 * 60_000;
-
-/**
- * Wall-clock room one launch's readiness waits need beside the application session.
- *
- * A launch runs a readiness pre-read before the session and a state read-back after it; at the
- * default configuration those waits bound themselves to 30 s and 90 s, and an aborted call gets up
- * to 90 s to record its own cleanup before the agent loop continues. Four minutes fits that sum
- * with bootstrap slack.
- */
-const BROWSER_LAUNCH_READINESS_ENVELOPE_MS = 4 * 60_000;
-
-/**
- * Hard deadline for one `launch_browser` call.
- *
- * A launch runs the readiness pre-read, the whole bounded application session
- * (`APPLICATION_SESSION_BUDGET_MS`), and the host read-back inside one tool call, so the plain
- * browser-tool deadline would end a valid launch while its session kept spending turns in the
- * background. This deadline covers the session budget plus the readiness envelope, and the handler
- * threads its abort signal into the session so a timed-out launch discards its late read-back.
- */
-export const BROWSER_LAUNCH_DEADLINE_MS =
-    APPLICATION_SESSION_BUDGET_MS + BROWSER_LAUNCH_READINESS_ENVELOPE_MS;
+import { BROWSER_LAUNCH_DEADLINE_MS, BROWSER_TOOL_DEADLINE_MS } from './browser-tool-deadlines';
+import type { LaunchBrowserAdvertisement } from './launch-browser-arguments';
 
 /**
  * The runtime seam the lifecycle tools act through.
@@ -87,6 +58,15 @@ export interface RuntimeLifecycleToolsHost {
      * Exact prompt-safe browser targets bound outside the model loop.
      */
     readonly allowedTargetUrls: readonly string[];
+
+    /**
+     * What the model is shown for `launch_browser` on this run.
+     *
+     * Per-run rather than catalog-fixed: a Firefox-family run has no host-writable settings
+     * surface, so its request takes no `settings` and the registered shape must say the same thing
+     * the session advertises — the drift guard compares the two.
+     */
+    readonly launchBrowserAdvertisement: LaunchBrowserAdvertisement;
 
     /**
      * Registry holding the preserved handlers of the persistent non-browser tools.
@@ -461,10 +441,8 @@ export function registerLifecycleTools(
             type: 'function',
             function: {
                 name: 'launch_browser',
-                description:
-                    'Start a fresh isolated headless Chromium MV3 session. Use extension=none ' +
-                    'for control or extension=prepared with model-selected settings.',
-                parameters: registeredParameters(ToolName.LaunchBrowser),
+                description: host.launchBrowserAdvertisement.description,
+                parameters: toAdvertisedSchema(host.launchBrowserAdvertisement.parameters),
             },
         },
         handler: async (args) =>

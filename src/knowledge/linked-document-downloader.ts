@@ -1,4 +1,82 @@
 import { createHash } from 'node:crypto';
+import { reduceHtmlToText } from './html-document-text';
+
+/**
+ * Host serving GitHub's rendered web pages, including the HTML view of a repository wiki.
+ */
+const GITHUB_WEB_HOST = 'github.com';
+
+/**
+ * Host serving raw repository and wiki content; a wiki is its own git repository there.
+ */
+const GITHUB_RAW_HOST = 'raw.githubusercontent.com';
+
+/**
+ * Path segment marking a repository's wiki on the web host: `/<owner>/<repo>/wiki/<Page>`.
+ */
+const GITHUB_WIKI_PATH_SEGMENT = 'wiki';
+
+/**
+ * Extension of a wiki page's source file in the wiki's own git repository.
+ */
+const GITHUB_WIKI_SOURCE_EXTENSION = '.md';
+
+/**
+ * Media type of a document that arrived as markup rather than as prose.
+ */
+const HTML_MEDIA_TYPE = 'text/html';
+
+/**
+ * Rewrite a GitHub wiki page URL onto its raw Markdown source.
+ *
+ * A guidance link naming `github.com/<owner>/<repo>/wiki/<Page>` answers with the rendered page,
+ * and storing that gave `lookup_rule_guidance` the page's `<head>` instead of the syntax reference.
+ * A wiki is a git repository of its own, and
+ * `raw.githubusercontent.com/wiki/<owner>/<repo>/<Page>.md` serves that page's Markdown source —
+ * the exact text the instruction means to cite. Every other URL comes back unchanged: this is one
+ * rewrite for one known host, not a URL guessing scheme.
+ *
+ * @param url - The URL an instruction link names.
+ * @returns The URL to fetch instead, or the same URL when no rewrite applies.
+ */
+export function linkedDocumentFetchUrl(url: string): string {
+    let parsed: URL;
+    try {
+        parsed = new URL(url);
+    } catch {
+        return url;
+    }
+    if (parsed.hostname !== GITHUB_WEB_HOST) {
+        return url;
+    }
+    const [owner, repository, wiki, ...page] = parsed.pathname.split('/').filter(Boolean);
+    if (
+        owner === undefined ||
+        repository === undefined ||
+        wiki !== GITHUB_WIKI_PATH_SEGMENT ||
+        page.length !== 1
+    ) {
+        return url;
+    }
+    const pageName = page[0]!;
+    if (pageName.endsWith(GITHUB_WIKI_SOURCE_EXTENSION)) {
+        return url;
+    }
+    return (
+        `https://${GITHUB_RAW_HOST}/${GITHUB_WIKI_PATH_SEGMENT}/${owner}/${repository}/` +
+        `${pageName}${GITHUB_WIKI_SOURCE_EXTENSION}`
+    );
+}
+
+/**
+ * Whether a response declares itself as HTML.
+ *
+ * @param response - The fetched response.
+ * @returns True when the declared media type is `text/html`.
+ */
+function declaresHtml(response: Response): boolean {
+    return (response.headers.get('content-type') ?? '').toLowerCase().includes(HTML_MEDIA_TYPE);
+}
 
 /**
  * Hard deadline for one linked-document download.
@@ -136,12 +214,22 @@ export interface DownloadedLinkedDocument {
     url: string;
 
     /**
-     * Complete UTF-8 text of the body.
+     * URL actually retrieved: the requested one, or the raw source a known rewrite points at
+     * ({@link linkedDocumentFetchUrl}). Recorded so a run's evidence names what it really read.
+     */
+    fetchedUrl: string;
+
+    /**
+     * Readable text of the body: the bytes as sent for a prose document, the reduced text for one
+     * that arrived as HTML.
      */
     content: string;
 
     /**
      * SHA-256 over the exact response bytes, so a run can state what it served.
+     *
+     * Over the bytes, not over the reduced text: the digest identifies the upstream document, and a
+     * change in how markup is reduced must not look like a change in the document.
      */
     sha256: string;
 }
@@ -153,9 +241,14 @@ export interface DownloadedLinkedDocument {
  * typed failure, never a truncated or padded document — the instruction documents are read "as they
  * are", so any silent rewrite would corrupt the exact text the run cites.
  *
+ * Two transformations do apply, and both exist because the alternative is no guidance at all. A
+ * GitHub wiki URL is fetched as its raw Markdown source ({@link linkedDocumentFetchUrl}), and a
+ * document that answers with `text/html` is reduced to its readable text before it is stored: a
+ * stored HTML page reached `lookup_rule_guidance` as the page's `<head>`.
+ *
  * @param url - Http(s) URL of the document to fetch.
  * @param fetchImpl - Injectable fetch for deterministic tests; production uses global fetch.
- * @returns The body text and its SHA-256 digest over the exact bytes.
+ * @returns The readable body text, the URL really retrieved, and the SHA-256 of the exact bytes.
  * @throws {LinkedDocumentDownloadError} With a stable code naming the URL for every failure class.
  */
 export async function downloadLinkedDocument(
@@ -187,9 +280,10 @@ export async function downloadLinkedDocument(
         );
     }
 
+    const fetchedUrl = linkedDocumentFetchUrl(url);
     let response: Response;
     try {
-        response = await fetchImpl(url, {
+        response = await fetchImpl(fetchedUrl, {
             signal: AbortSignal.timeout(LINKED_DOCUMENT_TIMEOUT_MS),
             redirect: 'follow',
         });
@@ -198,7 +292,7 @@ export async function downloadLinkedDocument(
         throw new LinkedDocumentDownloadError(
             LinkedDocumentDownloadFailureCode.DocumentUnavailable,
             url,
-            `fetch failed: ${detail}`,
+            `fetch of ${redactUrlCredentials(fetchedUrl)} failed: ${detail}`,
             error,
         );
     }
@@ -240,17 +334,21 @@ export async function downloadLinkedDocument(
             `body is ${bytes.byteLength} bytes, above the ${MAX_LINKED_DOCUMENT_BYTES}-byte cap`,
         );
     }
-    const content = new TextDecoder('utf-8').decode(bytes);
+    const decoded = new TextDecoder('utf-8').decode(bytes);
+    const content = declaresHtml(response) ? reduceHtmlToText(decoded) : decoded;
     if (content.trim().length === 0) {
         throw new LinkedDocumentDownloadError(
             LinkedDocumentDownloadFailureCode.DocumentEmpty,
             url,
-            'body carries no usable text',
+            declaresHtml(response)
+                ? 'the HTML body carries no readable text outside its markup'
+                : 'body carries no usable text',
         );
     }
 
     return {
         url,
+        fetchedUrl,
         content,
         sha256: createHash('sha256').update(bytes).digest('hex'),
     };

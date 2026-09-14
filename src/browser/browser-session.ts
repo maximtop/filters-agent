@@ -12,11 +12,12 @@ import {
     runBoundedBrowserClose,
     type BrowserCloseTimings,
 } from './bounded-close';
+import { forceKillBrowserProcessTree } from './browser-kill-handle';
 import type { PreparedStrictBrowserRoute } from './strict-browser-route';
 import type { ExtensionManifestVersion } from '../environment/extension-preparation';
 import type { ReproProfile } from '../types/repro-profile';
 import type { FirefoxPolicies } from './firefox-policies';
-import { launchSessionBrowser } from './launch-wiring';
+import { launchSessionBrowser, type LaunchedSessionPieces } from './launch-wiring';
 import { BrowserConfigurationError } from './browser-launch-errors';
 
 export {
@@ -218,26 +219,27 @@ export class BrowserSession implements IBrowserSession {
      */
     private readonly closeTimings?: BrowserCloseTimings;
 
+    /**
+     * Pid of Playwright's own browser process, recorded at launch as this session's kill handle.
+     */
+    private readonly browserProcessPid?: number;
+
     private constructor(
-        browser: Browser | BrowserContext,
-        page: Page,
+        pieces: LaunchedSessionPieces,
         logger: Logger,
         artifactsDir: string,
-        profileDir?: string,
-        strictRouteId?: string,
-        strictRouteTempDir?: string,
         closeTimings?: BrowserCloseTimings,
-        extensionContext?: BrowserContext,
     ) {
-        this.browser = browser;
-        this.page = page;
+        this.browser = pieces.browser;
+        this.page = pieces.page;
         this.logger = logger;
         this.artifactsDir = artifactsDir;
-        this.profileDir = profileDir;
-        this.strictRouteId = strictRouteId;
-        this.strictRouteTempDir = strictRouteTempDir;
+        this.profileDir = pieces.profileDir;
+        this.strictRouteId = pieces.strictRouteId;
+        this.strictRouteTempDir = pieces.strictRouteTempDir;
         this.closeTimings = closeTimings;
-        this.extensionContext = extensionContext;
+        this.extensionContext = pieces.extensionContext;
+        this.browserProcessPid = pieces.browserProcessPid;
         this.attachListeners();
     }
 
@@ -263,17 +265,7 @@ export class BrowserSession implements IBrowserSession {
         );
         rejectCrossFamilyExtensionChannels(config);
         const pieces = await launchSessionBrowser(config);
-        return new BrowserSession(
-            pieces.browser,
-            pieces.page,
-            logger,
-            config.artifactsDir,
-            pieces.profileDir,
-            pieces.strictRouteId,
-            pieces.strictRouteTempDir,
-            config.closeTimings,
-            pieces.extensionContext,
-        );
+        return new BrowserSession(pieces, logger, config.artifactsDir, config.closeTimings);
     }
 
     /**
@@ -418,18 +410,26 @@ export class BrowserSession implements IBrowserSession {
                 await this.browser.close();
             },
             forceKill: () => {
-                // Plain non-persistent launches expose no session-unique path: Playwright picks
-                // its own temp profile, so those sessions can only be abandoned. Every session
-                // class observed hanging live runs a persistent context with an owned directory.
-                const marker = this.profileDir ?? this.strictRouteTempDir;
-                if (!marker) {
-                    this.logger.warn(
-                        {},
-                        'no session-owned profile path: this browser cannot be force-killed',
-                    );
-                    return 0;
+                // The pid recorded at launch is the handle every family has; the marker scan adds
+                // the strays of a persistent context (a renderer reparented away from the group).
+                // A plain launch used to reach here with neither and could only be abandoned.
+                let killed = 0;
+                if (this.browserProcessPid !== undefined) {
+                    killed += forceKillBrowserProcessTree(this.browserProcessPid, this.logger);
                 }
-                return forceKillBrowserProcessesByMarker(marker, this.logger);
+                const marker = this.profileDir ?? this.strictRouteTempDir;
+                if (marker) {
+                    killed += forceKillBrowserProcessesByMarker(marker, this.logger);
+                }
+                if (this.browserProcessPid === undefined && !marker) {
+                    this.logger.error(
+                        {},
+                        'no kill handle for this browser: the launch exposed neither a process ' +
+                            'pid nor a session-owned profile path, so the close can only be ' +
+                            'abandoned',
+                    );
+                }
+                return killed;
             },
             logger: this.logger,
             deadlineMs: this.closeTimings?.deadlineMs,

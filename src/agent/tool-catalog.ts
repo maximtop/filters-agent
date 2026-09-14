@@ -324,6 +324,54 @@ export const TOOL_PARAMETER_SCHEMAS: Readonly<
 } satisfies ToolSchemaEntries;
 
 /**
+ * The advertised `launch_browser` profile: what the model may say about the browser context.
+ */
+const ADVERTISED_BROWSER_PROFILE = v.strictObject({
+    viewport: ViewportSchema,
+    locale: v.string(),
+    timezone: v.string(),
+    consentStrategy: ConsentStrategySchema,
+    geolocation: v.optional(v.strictObject({ latitude: v.number(), longitude: v.number() })),
+});
+
+export const LAUNCH_BROWSER_PARAMETERS = v.strictObject({
+    extension: v.picklist(EXTENSION_MODE_VALUES),
+    targetUrl: v.string(),
+    profile: ADVERTISED_BROWSER_PROFILE,
+    settings: v.optional(
+        v.union([
+            v.strictObject({
+                kind: v.literal(SettingsProfileKind.AgentSelected),
+                filterIds: v.array(v.pipe(v.number(), v.integer(), v.minValue(1))),
+                stealthEnabled: v.boolean(),
+            }),
+            v.strictObject({
+                kind: v.literal(SettingsProfileKind.DefaultsPlusRequired),
+                requiredFilterIds: v.array(v.pipe(v.number(), v.integer(), v.minValue(1))),
+                reporterImportUrl: v.optional(v.string()),
+                siteHostname: v.optional(v.string()),
+                reportedFilterNames: v.optional(v.array(v.string())),
+                issueLabels: v.optional(v.array(v.string())),
+            }),
+            v.strictObject({
+                kind: v.literal(SettingsProfileKind.ReportExact),
+                importUrl: v.string(),
+            }),
+            v.strictObject({
+                kind: v.literal(SettingsProfileKind.ReportedOnCurrent),
+                importUrl: v.string(),
+            }),
+        ]),
+    ),
+});
+
+export const DECLARED_BASELINE_LAUNCH_BROWSER_PARAMETERS = v.strictObject({
+    extension: v.picklist(EXTENSION_MODE_VALUES),
+    targetUrl: v.string(),
+    profile: ADVERTISED_BROWSER_PROFILE,
+});
+
+/**
  * Strict advertisement schemas for the fix session surface, one per tool name whose only committed
  * shape is a permissive widened-stub entry (select_environment, launch_browser,
  * lookup_rule_guidance) plus the fix-only names (update_observed_intent, close_browser,
@@ -355,44 +403,7 @@ export const FIX_TOOL_PARAMETER_SCHEMAS: Readonly<
         path: v.pipe(v.string(), v.minLength(1)),
         content: v.string(),
     }),
-    [ToolName.LaunchBrowser]: v.strictObject({
-        extension: v.picklist(EXTENSION_MODE_VALUES),
-        targetUrl: v.string(),
-        profile: v.strictObject({
-            viewport: ViewportSchema,
-            locale: v.string(),
-            timezone: v.string(),
-            consentStrategy: ConsentStrategySchema,
-            geolocation: v.optional(
-                v.strictObject({ latitude: v.number(), longitude: v.number() }),
-            ),
-        }),
-        settings: v.optional(
-            v.union([
-                v.strictObject({
-                    kind: v.literal(SettingsProfileKind.AgentSelected),
-                    filterIds: v.array(v.pipe(v.number(), v.integer(), v.minValue(1))),
-                    stealthEnabled: v.boolean(),
-                }),
-                v.strictObject({
-                    kind: v.literal(SettingsProfileKind.DefaultsPlusRequired),
-                    requiredFilterIds: v.array(v.pipe(v.number(), v.integer(), v.minValue(1))),
-                    reporterImportUrl: v.optional(v.string()),
-                    siteHostname: v.optional(v.string()),
-                    reportedFilterNames: v.optional(v.array(v.string())),
-                    issueLabels: v.optional(v.array(v.string())),
-                }),
-                v.strictObject({
-                    kind: v.literal(SettingsProfileKind.ReportExact),
-                    importUrl: v.string(),
-                }),
-                v.strictObject({
-                    kind: v.literal(SettingsProfileKind.ReportedOnCurrent),
-                    importUrl: v.string(),
-                }),
-            ]),
-        ),
-    }),
+    [ToolName.LaunchBrowser]: LAUNCH_BROWSER_PARAMETERS,
     [ToolName.CloseBrowser]: v.strictObject({}),
     [ToolName.LookupRuleGuidance]: v.strictObject({ topic: RuleGuidanceTopicSchema }),
     // The registered report_missing_information definition is exactly MissingInformationEntrySchema:

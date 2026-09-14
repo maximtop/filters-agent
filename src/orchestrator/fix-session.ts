@@ -22,6 +22,11 @@ import { recordTerminalTool, withExecutionRecording } from '../tracer/session-tr
 import type { PiRuntime } from '../pi/runtime';
 import type { RunUsageCollector } from '../pi/usage-collector';
 import { buildFixSessionTools } from './fix-session-gates';
+import {
+    launchBrowserSessionDescriptions,
+    launchBrowserSessionParameters,
+} from './launch-browser-arguments';
+import type { PreparedExtension } from '../local/prepared-extension';
 import { createObservationSink } from './fix-session-observations';
 import { launchModeSession } from '../session/mode-session';
 import { sealFixTrace, type FixSessionRun } from './fix-session-seal';
@@ -43,6 +48,17 @@ export interface FixSessionRuntime extends FixTerminalHost {
      * tool name; the sole-executor wired composition leaves the map empty.
      */
     sessionToolDescriptions?(): Readonly<Record<string, string>>;
+
+    /**
+     * The run's one host-prepared extension build, when it prepared one.
+     *
+     * The session reads it for exactly one thing: `launch_browser`'s shape and description follow
+     * the prepared blocker's family, because a Firefox-family build has no host-writable settings
+     * surface for the model to select into.
+     *
+     * @returns The prepared build, or undefined for a run that prepared none.
+     */
+    getPreparedExtension?(): PreparedExtension | undefined;
 }
 
 /**
@@ -169,11 +185,16 @@ export async function runFixSession(options: FixSessionOptions): Promise<FixSess
     const routingController = options.routingCheck ? new AbortController() : undefined;
     const latchState = { fired: false };
     const sink = createObservationSink();
+    const preparedExtension = options.runtime.getPreparedExtension?.();
     const tools = buildFixSessionTools(
         {
             registry: options.runtime.registry,
             routingCheck: options.routingCheck,
-            descriptionOverrides: options.runtime.sessionToolDescriptions?.(),
+            descriptionOverrides: {
+                ...options.runtime.sessionToolDescriptions?.(),
+                ...launchBrowserSessionDescriptions(preparedExtension),
+            },
+            parameterOverrides: launchBrowserSessionParameters(preparedExtension),
         },
         sink,
         () => {

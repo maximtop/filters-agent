@@ -8,6 +8,7 @@ import { buildBrowserSubprocessEnvironment } from './browser-subprocess-environm
 import { ExtensionManifestVersion } from '../environment/extension-preparation';
 import { Viewport, type ReproProfile } from '../types/repro-profile';
 import { launchStrictRoutePieces } from './strict-route-launch';
+import { readBrowserProcessPid } from './browser-kill-handle';
 import { BrowserLaunchError, BrowserConfigurationError } from './browser-launch-errors';
 
 /**
@@ -46,6 +47,14 @@ export interface LaunchedSessionPieces {
      * The persistent context when the pieces are an unpacked-extension launch.
      */
     extensionContext?: BrowserContext;
+
+    /**
+     * Pid of Playwright's own browser process, when the launch exposed one.
+     *
+     * The session's kill handle: without it a close that misses its deadline has nothing to kill
+     * unless the family happens to own a unique profile path (`browser-kill-handle.ts`).
+     */
+    browserProcessPid?: number;
 }
 
 /**
@@ -315,12 +324,40 @@ async function launchPlainBrowserPieces(
 }
 
 /**
+ * Dispatch one launch onto its family branch.
+ *
+ * @param config - Session configuration driving the launch.
+ * @param inputs - Session-level launch inputs shared by every family branch.
+ * @returns The launched pieces of whichever family served the configuration.
+ * @throws {BrowserLaunchError} When the engine fails to launch.
+ * @throws {BrowserConfigurationError} When the launch configuration is unusable for the family.
+ */
+async function launchFamilyPieces(
+    config: BrowserSessionConfig,
+    inputs: SessionLaunchInputs,
+): Promise<LaunchedSessionPieces> {
+    if (config.strictRoute) {
+        return await launchStrictRoutePieces(inputs);
+    }
+    if (config.firefoxPolicies) {
+        return await launchFirefoxPoliciesPieces(inputs);
+    }
+    if (config.adguardExtensionPath) {
+        return await launchAdGuardExtensionPieces(inputs);
+    }
+    return await launchPlainBrowserPieces(inputs);
+}
+
+/**
  * Launch the browser pieces a `BrowserSession` is built on, following the session's family.
  *
  * The strict route takes precedence (it carries its own isolated profile machinery), then the
  * Firefox policies channel, then the Chromium unpacked-extension channel, and the plain browser
  * launch serves everything else. Each family branch maps its own failures to the launch or
  * configuration error the caller's classifier already knows.
+ *
+ * Whichever branch ran, the pieces come back carrying this launch's kill handle: the pid is read
+ * here, once, for every family, so no launch can reach a bounded close with nothing to kill.
  *
  * @param config - Session configuration driving the launch.
  * @returns The launched pieces the session constructor needs.
@@ -344,14 +381,7 @@ export async function launchSessionBrowser(
         userAgent: resolveUserAgent(reproProfile),
     };
 
-    if (config.strictRoute) {
-        return launchStrictRoutePieces(inputs);
-    }
-    if (config.firefoxPolicies) {
-        return launchFirefoxPoliciesPieces(inputs);
-    }
-    if (config.adguardExtensionPath) {
-        return launchAdGuardExtensionPieces(inputs);
-    }
-    return launchPlainBrowserPieces(inputs);
+    const pieces = await launchFamilyPieces(config, inputs);
+    const browserProcessPid = readBrowserProcessPid(pieces.browser, logger);
+    return browserProcessPid === undefined ? pieces : { ...pieces, browserProcessPid };
 }
