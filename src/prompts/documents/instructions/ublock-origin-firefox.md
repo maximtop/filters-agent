@@ -9,7 +9,7 @@ exactly what this instruction declares.
 The run loads its filter guidance at start from these role documents:
 
 - [uBlock Origin static filter syntax](https://github.com/gorhill/uBlock/wiki/Static-filter-syntax)
-- [uAssets filtering policy](https://github.com/uBlockOrigin/uAssets/wiki/Filtering-policy)
+- [uAssets filtering policy](https://github.com/uBlockOrigin/uAssets/blob/master/CONTRIBUTING.md)
 
 ## Preparation
 

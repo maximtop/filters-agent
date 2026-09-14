@@ -17,6 +17,12 @@ const GITHUB_RAW_HOST = 'raw.githubusercontent.com';
 const GITHUB_WIKI_PATH_SEGMENT = 'wiki';
 
 /**
+ * Path segment marking a repository file's rendered view on the web host:
+ * `/<owner>/<repo>/blob/<ref>/<path>`.
+ */
+const GITHUB_BLOB_PATH_SEGMENT = 'blob';
+
+/**
  * Extension of a wiki page's source file in the wiki's own git repository.
  */
 const GITHUB_WIKI_SOURCE_EXTENSION = '.md';
@@ -27,14 +33,16 @@ const GITHUB_WIKI_SOURCE_EXTENSION = '.md';
 const HTML_MEDIA_TYPE = 'text/html';
 
 /**
- * Rewrite a GitHub wiki page URL onto its raw Markdown source.
+ * Rewrite a GitHub web page URL onto the raw source it renders.
  *
- * A guidance link naming `github.com/<owner>/<repo>/wiki/<Page>` answers with the rendered page,
- * and storing that gave `lookup_rule_guidance` the page's `<head>` instead of the syntax reference.
- * A wiki is a git repository of its own, and
- * `raw.githubusercontent.com/wiki/<owner>/<repo>/<Page>.md` serves that page's Markdown source —
- * the exact text the instruction means to cite. Every other URL comes back unchanged: this is one
- * rewrite for one known host, not a URL guessing scheme.
+ * A guidance link naming `github.com/<owner>/<repo>/wiki/<Page>` or
+ * `github.com/<owner>/<repo>/blob/<ref>/<path>` answers with the rendered page, and storing that
+ * gave `lookup_rule_guidance` the page's `<head>` instead of the syntax reference. Both views have
+ * a raw source: a wiki is a git repository of its own, served at
+ * `raw.githubusercontent.com/wiki/<owner>/<repo>/<Page>.md`, and a repository file is served at
+ * `raw.githubusercontent.com/<owner>/<repo>/<ref>/<path>` — the exact text the instruction means to
+ * cite. Every other URL comes back unchanged: these are two rewrites for one known host, not a URL
+ * guessing scheme.
  *
  * @param url - The URL an instruction link names.
  * @returns The URL to fetch instead, or the same URL when no rewrite applies.
@@ -49,23 +57,24 @@ export function linkedDocumentFetchUrl(url: string): string {
     if (parsed.hostname !== GITHUB_WEB_HOST) {
         return url;
     }
-    const [owner, repository, wiki, ...page] = parsed.pathname.split('/').filter(Boolean);
-    if (
-        owner === undefined ||
-        repository === undefined ||
-        wiki !== GITHUB_WIKI_PATH_SEGMENT ||
-        page.length !== 1
-    ) {
+    const [owner, repository, view, ...rest] = parsed.pathname.split('/').filter(Boolean);
+    if (owner === undefined || repository === undefined) {
         return url;
     }
-    const pageName = page[0]!;
-    if (pageName.endsWith(GITHUB_WIKI_SOURCE_EXTENSION)) {
-        return url;
+    if (view === GITHUB_WIKI_PATH_SEGMENT && rest.length === 1) {
+        const pageName = rest[0]!;
+        if (pageName.endsWith(GITHUB_WIKI_SOURCE_EXTENSION)) {
+            return url;
+        }
+        return (
+            `https://${GITHUB_RAW_HOST}/${GITHUB_WIKI_PATH_SEGMENT}/${owner}/${repository}/` +
+            `${pageName}${GITHUB_WIKI_SOURCE_EXTENSION}`
+        );
     }
-    return (
-        `https://${GITHUB_RAW_HOST}/${GITHUB_WIKI_PATH_SEGMENT}/${owner}/${repository}/` +
-        `${pageName}${GITHUB_WIKI_SOURCE_EXTENSION}`
-    );
+    if (view === GITHUB_BLOB_PATH_SEGMENT && rest.length >= 2) {
+        return `https://${GITHUB_RAW_HOST}/${owner}/${repository}/${rest.join('/')}`;
+    }
+    return url;
 }
 
 /**
@@ -242,8 +251,8 @@ export interface DownloadedLinkedDocument {
  * are", so any silent rewrite would corrupt the exact text the run cites.
  *
  * Two transformations do apply, and both exist because the alternative is no guidance at all. A
- * GitHub wiki URL is fetched as its raw Markdown source ({@link linkedDocumentFetchUrl}), and a
- * document that answers with `text/html` is reduced to its readable text before it is stored: a
+ * GitHub wiki page or file view is fetched as its raw source ({@link linkedDocumentFetchUrl}), and
+ * a document that answers with `text/html` is reduced to its readable text before it is stored: a
  * stored HTML page reached `lookup_rule_guidance` as the page's `<head>`.
  *
  * @param url - Http(s) URL of the document to fetch.
