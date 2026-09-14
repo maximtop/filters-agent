@@ -45,8 +45,9 @@ export const WHOLE_DOCUMENT_ANCHOR = 'whole-document';
 
 /**
  * Instruction-serving map from every public guidance topic to the run instruction's roles that
- * define it, in serving order: a topic serves those role documents in this order, and one missing
- * role turns the lookup into the typed not-linked notice.
+ * define it, in serving order: a topic serves whichever of those role documents the instruction
+ * links, in this order, and only a topic with none of its roles linked turns the lookup into the
+ * typed not-linked notice.
  */
 export const INSTRUCTION_TOPIC_ROLES: Record<RuleGuidanceTopic, readonly GuidanceDocumentRole[]> = {
     element_hiding: [GuidanceDocumentRole.Syntax],

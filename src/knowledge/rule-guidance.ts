@@ -408,18 +408,17 @@ export class KnowledgeGuidanceSession {
         query?: string,
     ): RuleGuidanceResult {
         const roles = INSTRUCTION_TOPIC_ROLES[topic];
-        const bound = roles.map((role) =>
-            source.documents.find((document) => document.role === role),
-        );
+        // A topic serves whichever of its role documents the instruction links, in role order;
+        // only a topic with none of them linked becomes the not-linked notice. A repository with
+        // one document for policy and contributing alike (uAssets: CONTRIBUTING.md) links it once,
+        // under one role, and must still be able to answer `placement` from it.
+        const served = roles
+            .map((role) => source.documents.find((document) => document.role === role))
+            .filter((document): document is InstructionLinkedDocument => document !== undefined);
         this.consulted = true;
-        if (bound.some((document) => document === undefined)) {
-            return notLinkedResult(
-                topic,
-                source,
-                roles.filter((_, index) => bound[index] === undefined),
-            );
+        if (served.length === 0) {
+            return notLinkedResult(topic, source, roles);
         }
-        const served = bound as InstructionLinkedDocument[];
         const { text, servedSectionHeadings } = serveInstructionDocuments(served, topic, query);
         return {
             topic,
