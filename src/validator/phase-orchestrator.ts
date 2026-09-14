@@ -123,6 +123,14 @@ export interface AdsEnvironmentPhaseObservationInput {
      * Adapter-authored exact phase proof.
      */
     proof: EnvironmentPhaseStateProof;
+
+    /**
+     * The experiment's cooperative cancellation, when the outer tool deadline provided one. An
+     * observer threads it into the out-of-loop vision calls it makes, so an expired deadline
+     * cancels the in-flight completion instead of leaving the tool awaiting a reply nothing will
+     * read. The phase's own browser work is bounded by the abort race in `racePhaseAbort`.
+     */
+    signal?: AbortSignal;
 }
 
 /**
@@ -417,6 +425,7 @@ export async function executeEnvironmentPhase(
                 phaseTokenId: token.tokenId,
                 session: opened.handle.session,
                 proof: opened.handle.adapterProof,
+                ...(config.signal === undefined ? {} : { signal: config.signal }),
             }),
             config.signal,
         );

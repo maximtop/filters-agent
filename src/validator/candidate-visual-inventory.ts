@@ -148,6 +148,7 @@ async function inventoryImages(
     const result = await options.vision.structured({
         messages,
         schema: CandidateVisualTileBatchOutputSchema,
+        ...(options.signal === undefined ? {} : { signal: options.signal }),
     });
     if (result.kind === SingleShotResultKind.ProviderFailure) {
         throw new Error(result.message);

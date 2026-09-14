@@ -508,6 +508,7 @@ export async function synthesizeFinalReview(
             messages,
             schema: CandidateVisualFinalModelOutputSchema,
             maxAttempts: 1,
+            ...(options.signal === undefined ? {} : { signal: options.signal }),
         });
         // One schema-validation attempt per outer attempt: the loop owns bounded repair and the
         // dismissal audit, so the client must not burn its own repair budget here.

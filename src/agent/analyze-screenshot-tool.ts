@@ -2,10 +2,18 @@
  * The `analyze_screenshot` tool: the only path from registered screenshot pixels to textual
  * observations, including the untrusted-evidence system prompt, the typed observation schema, and
  * the artifact resolution that keeps the vision model inside the run's own artifacts directory.
+ *
+ * The call is bounded here rather than by its callers: the handler spends its whole duration inside
+ * one out-of-loop single-shot completion, which no agent-loop guard can end, so the registration
+ * wraps itself in `withToolDeadline` and threads that deadline's signal into the vision request.
+ * The reporter-aware variant in `reporter-screenshot-tool.ts` dispatches into this registration and
+ * inherits the bound.
  */
 import { realpathSync } from 'node:fs';
 import { isAbsolute, relative, sep } from 'node:path';
 import * as v from 'valibot';
+import { VISION_TOOL_DEADLINE_MS } from './vision-tool-deadline';
+import { withToolDeadline } from '../pi/session-tools';
 import { SingleShotResultKind, type SingleShotClient } from '../pi/single-shot-types';
 import type { TraceRecorder } from '../tracer/trace-recorder';
 import { type SymptomKind } from '../validator/symptom-rubric';
@@ -172,53 +180,60 @@ export function registerAnalyzeScreenshotTool(
                 parameters: registeredParameters(ToolName.AnalyzeScreenshot),
             },
         },
-        handler: async (args: Record<string, unknown>) => {
-            const artifactId = typeof args.artifactId === 'string' ? args.artifactId.trim() : '';
-            const prompt = typeof args.prompt === 'string' ? args.prompt.trim() : '';
-            if (
-                artifactId.length === 0 ||
-                prompt.length === 0 ||
-                prompt.length > MAX_VISION_PROMPT_CHARS
-            ) {
-                return {
-                    error: `artifactId and a non-empty prompt of at most ${MAX_VISION_PROMPT_CHARS} characters are required`,
-                };
-            }
-            const screenshot = resolveVisionScreenshot(options, artifactId);
-            const structuredPrompt =
-                `${prompt}\n\nAdditionally classify what the capture fundamentally ` +
-                `shows as pageObstruction: 'anti_bot_challenge' when a CAPTCHA or ` +
-                `bot-verification interstitial replaces the site content; ` +
-                `'access_wall' when a login, paywall, or geo wall does; ` +
-                `'error_or_blank' for an error page or an essentially blank capture; ` +
-                `otherwise 'none'.`;
-            const result = await options.vision.structured({
-                messages: [
-                    { role: 'system', text: VISION_SYSTEM_PROMPT },
-                    {
-                        role: 'user',
-                        text: structuredPrompt,
-                        images: [{ path: screenshot.path }],
-                    },
-                ],
-                schema: ScreenshotObservationSchema,
-            });
-            if (result.kind !== SingleShotResultKind.Parsed) {
-                const detail =
-                    result.kind === SingleShotResultKind.InvalidResult
-                        ? result.detail
-                        : result.message;
-                return {
-                    artifactId,
-                    error: `Screenshot analysis failed: ${detail.slice(0, MAX_VISION_FAILURE_DETAIL_CHARS)}`,
-                };
-            }
-            return {
-                artifactId,
-                model: options.vision.modelId,
-                analysis: result.value.analysis,
-                pageObstruction: result.value.pageObstruction,
-            };
-        },
+        handler: async (args: Record<string, unknown>) =>
+            await withToolDeadline(
+                ToolName.AnalyzeScreenshot,
+                async (signal) => {
+                    const artifactId =
+                        typeof args.artifactId === 'string' ? args.artifactId.trim() : '';
+                    const prompt = typeof args.prompt === 'string' ? args.prompt.trim() : '';
+                    if (
+                        artifactId.length === 0 ||
+                        prompt.length === 0 ||
+                        prompt.length > MAX_VISION_PROMPT_CHARS
+                    ) {
+                        return {
+                            error: `artifactId and a non-empty prompt of at most ${MAX_VISION_PROMPT_CHARS} characters are required`,
+                        };
+                    }
+                    const screenshot = resolveVisionScreenshot(options, artifactId);
+                    const structuredPrompt =
+                        `${prompt}\n\nAdditionally classify what the capture fundamentally ` +
+                        `shows as pageObstruction: 'anti_bot_challenge' when a CAPTCHA or ` +
+                        `bot-verification interstitial replaces the site content; ` +
+                        `'access_wall' when a login, paywall, or geo wall does; ` +
+                        `'error_or_blank' for an error page or an essentially blank capture; ` +
+                        `otherwise 'none'.`;
+                    const result = await options.vision.structured({
+                        messages: [
+                            { role: 'system', text: VISION_SYSTEM_PROMPT },
+                            {
+                                role: 'user',
+                                text: structuredPrompt,
+                                images: [{ path: screenshot.path }],
+                            },
+                        ],
+                        schema: ScreenshotObservationSchema,
+                        signal,
+                    });
+                    if (result.kind !== SingleShotResultKind.Parsed) {
+                        const detail =
+                            result.kind === SingleShotResultKind.InvalidResult
+                                ? result.detail
+                                : result.message;
+                        return {
+                            artifactId,
+                            error: `Screenshot analysis failed: ${detail.slice(0, MAX_VISION_FAILURE_DETAIL_CHARS)}`,
+                        };
+                    }
+                    return {
+                        artifactId,
+                        model: options.vision.modelId,
+                        analysis: result.value.analysis,
+                        pageObstruction: result.value.pageObstruction,
+                    };
+                },
+                VISION_TOOL_DEADLINE_MS,
+            ),
     });
 }

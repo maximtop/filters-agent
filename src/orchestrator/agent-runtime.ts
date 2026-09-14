@@ -116,12 +116,8 @@ import type { LlmConfig } from '../config/config';
 import type { PiRuntime } from '../pi/runtime';
 import type { RunUsageCollector } from '../pi/usage-collector';
 import { ApplicationGoalKind } from '../validator/phase-application-contract';
-import {
-readAdGuardExtensionState as readAdGuardExtensionStateDefault,
-} from '../browser/adguard-extension-state-read';
-import {
-findExtensionRuntime as findExtensionRuntimeDefault,
-} from '../browser/extension-runtime-location';
+import { readAdGuardExtensionState as readAdGuardExtensionStateDefault } from '../browser/adguard-extension-state-read';
+import { findExtensionRuntime as findExtensionRuntimeDefault } from '../browser/extension-runtime-location';
 import {
     candidateArtifactIdentitiesEqual,
     parseCandidateValidationArtifactId,
@@ -206,9 +202,7 @@ import {
     firefoxPreparedLaunch,
     runDeclaredFilterBaseline,
 } from './firefox-environment-wiring';
-import type {
-FirefoxExtensionEnvironmentOptions,
-} from '../environment/firefox-extension-environment';
+import type { FirefoxExtensionEnvironmentOptions } from '../environment/firefox-extension-environment';
 import {
     LaunchBaselineOutcomeKind,
     buildBrowserExtensionEnvironmentOptions,
@@ -2349,7 +2343,8 @@ export class AgentRuntime {
             countAntiBotChallenge: (targetUrl, sessionId, observation, result) => {
                 this.countAntiBotChallenge(targetUrl, sessionId, observation, result);
             },
-            inspectLatestFullPageCapture: async () => await this.inspectLatestFullPageCapture(),
+            inspectLatestFullPageCapture: async (signal) =>
+                await this.inspectLatestFullPageCapture(signal),
             launchBrowser: async (args, signal) => await this.launchBrowser(args, signal),
             dispose: async () => {
                 await this.dispose();
@@ -2363,9 +2358,13 @@ export class AgentRuntime {
      * The provider-facing helper owns semantic inspection. This runtime only binds its result to
      * the active session and atomically credits exact artifacts from successful batches.
      *
+     * @param signal - Cooperative cancellation from the vision tool deadline, threaded into every
+     *   vision request of the batch.
      * @returns Compact model-facing coverage result or typed retry guidance.
      */
-    private async inspectLatestFullPageCapture(): Promise<Record<string, unknown>> {
+    private async inspectLatestFullPageCapture(
+        signal?: AbortSignal,
+    ): Promise<Record<string, unknown>> {
         const state = this.activeSessionId
             ? this.sessionStates.get(this.activeSessionId)
             : undefined;
@@ -2440,6 +2439,7 @@ export class AgentRuntime {
                             .join('\n')
                             .slice(0, 2_000),
                     artifactsDir: this.options.artifactsDir,
+                    ...(signal === undefined ? {} : { signal }),
                 },
                 capture.rawCapture,
             );

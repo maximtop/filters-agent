@@ -1,5 +1,5 @@
 /**
- * The wall-clock bounds of the runtime's browser tools.
+ * The wall-clock bounds of the runtime's browser and vision tools.
  *
  * They live apart from the registrations that apply them because they are read from three places —
  * the lifecycle registrations, the runtime's own per-tool wrapping, and the tests that advance

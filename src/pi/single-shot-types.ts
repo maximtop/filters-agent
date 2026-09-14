@@ -174,7 +174,17 @@ export interface SingleShotCallOptions {
     maxTokens?: number;
 
     /**
-     * Per-request HTTP deadline in milliseconds (mapped from `llm.requestTimeoutMs`).
+     * Per-request deadline in milliseconds (mapped from `llm.requestTimeoutMs`), enforced in the
+     * two halves neither of which covers a whole request alone:
+     *
+     * - Up to the response headers as the OpenAI SDK's own `timeout`, which the SDK arms around
+     *   `fetch` and clears the moment the response resolves, so a provider that never answers fails
+     *   there.
+     * - From there to the end of the assistant message as an INACTIVITY deadline over the streamed
+     *   response, armed on the stream's first event and re-armed on every event after it
+     *   (`single-shot-completion.ts`). It bounds the GAP between events, never the response's total
+     *   length, so a model that streams its reasoning for many minutes is alive; a stream that
+     *   opened and stopped producing is aborted and returns a provider-failure naming the stall.
      */
     timeoutMs?: number;
 
@@ -259,7 +269,10 @@ export interface SingleShotClientDefaults {
     maxTokens?: number;
 
     /**
-     * Per-request HTTP deadline in milliseconds.
+     * Per-request deadline in milliseconds applied to every call of this client unless a call
+     * passes its own. Both halves of the bound — the SDK's header timeout and the inactivity
+     * deadline over the streamed body — come from this one value; see
+     * {@link SingleShotCallOptions.timeoutMs}.
      */
     timeoutMs?: number;
 

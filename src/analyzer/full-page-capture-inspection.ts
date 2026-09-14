@@ -145,6 +145,16 @@ export async function inspectFullPageVisualCapture(
     const batchFailures: FullPageVisualBatchFailure[] = [];
 
     for (const [index, batch] of batches.entries()) {
+        if (options.signal?.aborted) {
+            // The tool deadline expired mid-batch. Every remaining batch is another paid vision
+            // completion whose answer the aborted call can no longer return, so the loop stops and
+            // the accounting below reports the uninspected artifacts as missing.
+            batchFailures.push({
+                artifactIds: batch.map((image) => image.id),
+                reason: 'The vision tool deadline stopped the batch before this image batch ran.',
+            });
+            continue;
+        }
         const label =
             overviewVisionEligible && index === 0
                 ? 'full-page overview'

@@ -1,14 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { toJsonSchema } from '@valibot/to-json-schema';
 import * as v from 'valibot';
-import {
-    contentText,
-    type Api,
-    type AssistantMessage,
-    type Message,
-    type Model,
-} from '@earendil-works/pi-ai';
-import { ReasoningEffort, type ActiveReasoningEffort } from '../config/reasoning-effort';
+import { contentText, type Api, type AssistantMessage, type Model } from '@earendil-works/pi-ai';
 import {
     SingleShotResultKind,
     type SingleShotCallOptions,
@@ -18,6 +11,7 @@ import {
     type SingleShotStructuredOptions,
 } from './single-shot-types';
 import type { PiRuntime } from './runtime';
+import { completeOnce } from './single-shot-completion';
 import { toPiMessages } from './single-shot-input';
 import { toTurnStopReason, TurnStopReason } from './stop-reason';
 import { toCompletionUsage, type CompletionUsage } from './usage-reporting';
@@ -39,7 +33,9 @@ import { formatIssues } from './valibot-issues';
  * The contract types live in `single-shot-types.ts` and are imported FROM there by every consumer;
  * this module re-exports none of them. It used to, next to the behavior, and the result was two
  * reachable origins for one symbol — the split leaked into call sites either way, and one origin
- * per name is the property worth keeping.
+ * per name is the property worth keeping. One bounded provider completion — the pi request mapping
+ * and the inactivity deadline over the streamed response — is `single-shot-completion.ts`, which
+ * every attempt made here goes through.
  */
 
 /**
@@ -84,15 +80,6 @@ const MIN_MAX_ATTEMPTS = 1;
  * have.
  */
 const MAX_MAX_ATTEMPTS = 3;
-
-/**
- * Sampling temperature applied when a call passes none.
- *
- * Every migrated structured path ran at explicit 0 (vision-json, reviewer, oracle); the screenshot
- * tool left it unset, which let the gateway default decide — 0 keeps it deterministic and matches
- * the dominant existing behavior.
- */
-const DEFAULT_TEMPERATURE = 0;
 
 /**
  * Maximum Valibot issues quoted in one bounded diagnostic.
@@ -145,68 +132,6 @@ function parseJsonResponse(content: string): unknown {
         }
         throw new Error('response did not contain a JSON object');
     }
-}
-
-/**
- * Map the configured reasoning effort onto the provider request field, or onto nothing.
- *
- * The pi boundary in one place. Single-shot calls go through `ModelRuntime.complete`, which is the
- * API-typed path (`stream`), so the field pi reads is `reasoningEffort` — `reasoning` is the
- * `streamSimple`-only spelling that pi clamps before forwarding under this same name, and passing
- * it here would be silently dropped. That path applies no clamping and has no `off` member: "off"
- * is expressed by omitting the field, which for a model with no `thinkingLevelMap` (ours) is what
- * makes pi send no `reasoning_effort` at all. The remaining literals are pi's own, so no lookup
- * table stands between the configuration and the wire.
- *
- * @param effort - The configured effort, or undefined when neither the call nor the client set one.
- * @returns The request fields to spread, empty for `off` and for an unset effort.
- */
-function reasoningEffortRequestFields(effort: ReasoningEffort | undefined): {
-    /**
-     * The level pi puts on the wire as `reasoning_effort`; absent means no reasoning parameter.
-     */
-    reasoningEffort?: ActiveReasoningEffort;
-} {
-    return effort === undefined || effort === ReasoningEffort.Off
-        ? {}
-        : { reasoningEffort: effort };
-}
-
-/**
- * Run one completion through the pi runtime and return the raw assistant message.
- *
- * @param runtime - The pi runtime the model handle belongs to.
- * @param model - Model handle to call.
- * @param systemPrompt - Optional system prompt.
- * @param messages - Pi message list.
- * @param options - Call controls, including the cache-routing session id.
- * @returns The raw assistant message (pi resolves provider failures instead of throwing).
- */
-async function completeOnce(
-    runtime: PiRuntime,
-    model: Model<Api>,
-    systemPrompt: string | undefined,
-    messages: Message[],
-    options: Omit<SingleShotCallOptions, 'messages'> & {
-        /**
-         * One affinity id per logical call, routing cache reads within it.
-         */
-        sessionId?: string;
-    },
-): Promise<AssistantMessage> {
-    return runtime.modelRuntime.complete(
-        model,
-        { ...(systemPrompt !== undefined ? { systemPrompt } : {}), messages },
-        {
-            temperature: options.temperature ?? DEFAULT_TEMPERATURE,
-            ...reasoningEffortRequestFields(options.reasoningEffort),
-            ...(options.maxTokens !== undefined ? { maxTokens: options.maxTokens } : {}),
-            ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
-            ...(options.maxRetries !== undefined ? { maxRetries: options.maxRetries } : {}),
-            ...(options.sessionId !== undefined ? { sessionId: options.sessionId } : {}),
-            ...(options.signal !== undefined ? { signal: options.signal } : {}),
-        },
-    );
 }
 
 /**

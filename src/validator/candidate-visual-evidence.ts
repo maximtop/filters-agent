@@ -173,4 +173,13 @@ export interface CandidateVisualVerifierOptions {
      * Trace recorder that owns the resulting review artifact.
      */
     recorder: TraceRecorder;
+
+    /**
+     * Cooperative cancellation from the apply_rule tool deadline that bounds the experiment this
+     * review runs inside. It reaches every vision request the review makes — the per-state
+     * inventories and the final synthesis — so an expired deadline cancels the in-flight completion
+     * instead of leaving the tool awaiting a verdict nothing will read. A cancelled request
+     * surfaces as a provider failure, which this review already fails closed on.
+     */
+    signal?: AbortSignal;
 }

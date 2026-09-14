@@ -107,6 +107,13 @@ export interface FullPageVisualCaptureOptions {
      * Runner-owned root containing the screenshot artifacts.
      */
     artifactsDir: string;
+
+    /**
+     * Cooperative cancellation from the tool deadline that bounds the whole batch. It reaches every
+     * vision request the batch makes, so an expired deadline cancels the in-flight completion
+     * instead of leaving the tool awaiting a reply the run will never use.
+     */
+    signal?: AbortSignal;
 }
 
 /**
@@ -317,6 +324,7 @@ export async function inspectInventoryBatch(
         messages,
         schema: PreCandidateVisualBatchOutputSchema,
         maxAttempts: 2,
+        ...(options.signal === undefined ? {} : { signal: options.signal }),
     });
     if (result.kind === SingleShotResultKind.ProviderFailure) {
         throw new Error(result.message);

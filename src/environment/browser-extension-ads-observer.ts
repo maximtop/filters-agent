@@ -435,6 +435,9 @@ export class BrowserExtensionAdsObserver {
             symptomKind: this.options.symptomKind ?? SymptomKind.Ads,
             artifactsDir: this.options.artifactsDir,
             recorder: this.options.recorder,
+            // The experiment's cancellation, so an expired apply_rule deadline cancels the batch's
+            // in-flight vision completion instead of paying out the rest of the images.
+            ...(input.signal === undefined ? {} : { signal: input.signal }),
         };
         const inventoryCapture: Parameters<typeof inspectFullPageVisualCapture>[1] = {
             // The inventory capture contract requires all three identities; omitting the viewport
@@ -686,6 +689,7 @@ export class BrowserExtensionAdsObserver {
             vision: this.options.vision,
             recorder: this.options.recorder,
             artifactIdentitySuffix: executionSuffix,
+            ...(input.signal === undefined ? {} : { signal: input.signal }),
         };
         const visual = this.options.dependencies?.reviewCandidateVisually
             ? await this.options.dependencies.reviewCandidateVisually(input, reviewOptions)

@@ -458,6 +458,9 @@ export class AnnoyanceInteractionObserver {
                 reporterSymptom: options.reporterSymptom,
                 artifactsDir: options.artifactsDir,
                 recorder: options.recorder,
+                // The experiment's cancellation, so an expired apply_rule deadline cancels the
+                // batch's in-flight vision completion instead of paying out the rest of the images.
+                ...(input.signal === undefined ? {} : { signal: input.signal }),
             },
             {
                 artifactId: viewportArtifactId,

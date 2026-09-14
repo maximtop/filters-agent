@@ -38,6 +38,7 @@ import {
 } from './agent-runtime-candidate-context';
 import type { AgentRuntimeSessionState } from './agent-runtime-session-evidence';
 import { BROWSER_LAUNCH_DEADLINE_MS, BROWSER_TOOL_DEADLINE_MS } from './browser-tool-deadlines';
+import { VISION_TOOL_DEADLINE_MS } from '../agent/vision-tool-deadline';
 import type { LaunchBrowserAdvertisement } from './launch-browser-arguments';
 
 /**
@@ -182,9 +183,12 @@ export interface RuntimeLifecycleToolsHost {
     /**
      * Inspect the active session's latest full-page capture with bounded vision batches.
      *
+     * @param signal - Deadline signal the inspection threads into every vision request of the
+     *   batch, so an expired deadline cancels the in-flight completion and stops the batch instead
+     *   of paying for the remaining images.
      * @returns Compact model-facing coverage result or typed retry guidance.
      */
-    inspectLatestFullPageCapture(): Promise<Record<string, unknown>>;
+    inspectLatestFullPageCapture(signal?: AbortSignal): Promise<Record<string, unknown>>;
 
     /**
      * Start one isolated browser session for the model-selected target and profile.
@@ -432,7 +436,12 @@ export function registerLifecycleTools(
                 parameters: registeredParameters(ToolName.InspectFullPageCapture),
             },
         },
-        handler: async () => await host.inspectLatestFullPageCapture(),
+        handler: async () =>
+            await withToolDeadline(
+                ToolName.InspectFullPageCapture,
+                (signal) => host.inspectLatestFullPageCapture(signal),
+                VISION_TOOL_DEADLINE_MS,
+            ),
     });
     host.markBaseTool('inspect_full_page_capture');
 
