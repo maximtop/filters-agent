@@ -21,8 +21,9 @@ export const GuardCause = {
     Turns: 'turns',
 
     /**
-     * One provider response outlived `RunBudgets.requestTimeoutMs` between the moment its stream
-     * opened and the end of the assistant message.
+     * One provider response made no streamed progress for `RunBudgets.requestTimeoutMs`: its stream
+     * opened and then went silent, with neither a further delta nor the end of the assistant
+     * message. A response that keeps streaming for longer than that is alive and does not trip it.
      */
     RequestDeadline: 'request-deadline',
 
@@ -55,24 +56,29 @@ export interface RunBudgets {
     maxTurns?: number;
 
     /**
-     * Per-request provider deadline in milliseconds. It is enforced in two halves, because neither
-     * half covers a whole request on its own:
+     * Per-request provider deadline in milliseconds, applied to silence rather than to elapsed
+     * time. It is enforced in two halves, because neither half covers a whole request on its own:
      *
      * - Up to the response headers by pi's `retry.provider.timeoutMs` setting, which becomes the
      *   OpenAI SDK's `timeout`. The SDK arms it around `fetch` and clears it in a `finally` the
      *   moment the response resolves — that is, when the headers arrive — so a provider that never
      *   answers fails here, as a timeout error pi's auto-retry treats as transient.
-     * - From there to the end of the assistant message by the runner's own per-request guard. Nothing
-     *   in pi bounds the streamed body for openai-completions (pi's undici dispatcher with body
-     *   timeouts is installed only by its own CLI entry points), so without this guard a trickling
-     *   provider left one turn — and therefore the run — unbounded. The guard aborts the session
+     * - From there to the end of the assistant message by the runner's own per-request guard, which
+     *   restarts on every streamed delta. Nothing in pi bounds the streamed body for
+     *   openai-completions (pi's undici dispatcher with body timeouts is installed only by its own
+     *   CLI entry points), so without this guard a provider that opened a stream and stopped
+     *   producing left one turn — and therefore the run — unbounded. The guard aborts the session
      *   and the run seals `budget-exceeded` with `GuardCause.RequestDeadline`.
+     *
+     * This bounds a gap between deltas, never a response's total length: a reasoning model that
+     * streams its thinking for many minutes is alive, and the run's total duration is bounded by
+     * `wallClockMs` instead.
      *
      * Pi's compaction summarization request is issued outside the agent loop and so is covered by
      * the header half only.
      *
      * Required: the deadline is a configuration field (`llm.requestTimeoutMs`, defaulted once at
-     * the env boundary), so every run is bounded and no caller can leave a streamed response
+     * the env boundary), so every run is bounded and no caller can leave a stalled response
      * unguarded.
      */
     requestTimeoutMs: number;

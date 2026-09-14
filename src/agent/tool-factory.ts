@@ -17,6 +17,7 @@ import type { PlacementMap } from '../types/repo-context';
 import {
     KnowledgeGuidanceSession,
     RULE_GUIDANCE_TOPICS,
+    RuleGuidanceQuerySchema,
     RuleGuidanceTopicSchema,
     type RuleGuidanceSource,
 } from '../knowledge/rule-guidance';
@@ -244,7 +245,10 @@ export async function createToolRegistry(options: ToolRegistryOptions): Promise<
                         "Read one bounded topic from this run's rule-guidance documents. This must " +
                         'be called before evaluating the first candidate. Prefer domain-scoped ' +
                         'element hiding for removable ads and leftovers; consult CSS injection ' +
-                        'only when ordinary hiding is proven insufficient.',
+                        'only when ordinary hiding is proven insufficient. A document too long to ' +
+                        'return whole comes back as the sections matching the topic plus an index ' +
+                        'of every heading it has; pass `query` with the words naming what you need ' +
+                        'to narrow it to those sections, and call again for another part.',
                     parameters: registeredParameters(ToolName.LookupRuleGuidance),
                 },
             },
@@ -256,7 +260,11 @@ export async function createToolRegistry(options: ToolRegistryOptions): Promise<
                         allowedTopics: RULE_GUIDANCE_TOPICS,
                     };
                 }
-                return guidanceSession.lookup(parsed.output) as unknown as Record<string, unknown>;
+                const query = v.safeParse(RuleGuidanceQuerySchema, args.query);
+                return guidanceSession.lookup(
+                    parsed.output,
+                    query.success ? query.output : undefined,
+                ) as unknown as Record<string, unknown>;
             },
         });
     }

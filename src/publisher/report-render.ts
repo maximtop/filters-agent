@@ -108,7 +108,11 @@ const AGENT_TERMINATION_LABELS: Record<AgentTerminationReason, string> = {
     [AgentTerminationReason.LlmRejected]: 'The provider rejected the exact request',
     [AgentTerminationReason.TerminalNotCalled]: 'The agent loop ended without a terminal decision',
     [AgentTerminationReason.RetryBudgetExhausted]: 'A tool exhausted its failure budget',
-    [AgentTerminationReason.MaxIterationsExceeded]: 'The agent loop reached its budget',
+    [AgentTerminationReason.MaxIterationsExceeded]: 'The agent loop reached its iteration limit',
+    [AgentTerminationReason.RequestDeadlineExceeded]:
+        'A provider response stalled past the per-request deadline',
+    [AgentTerminationReason.WallClockExceeded]:
+        'The investigation ran out of its wall-clock budget',
     [AgentTerminationReason.Interrupted]: 'The host aborted the run',
     [AgentTerminationReason.HaltedByCaller]: 'The caller halted the run',
     [AgentTerminationReason.CliInstallationCapabilityUnavailable]:

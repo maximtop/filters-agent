@@ -14,7 +14,9 @@ import { extractSection, GUIDANCE_SECTIONS, resolveDocument } from './knowledge-
 import {
     INSTRUCTION_TOPIC_ROLES,
     instructionDocumentCitation,
+    MAX_GUIDANCE_QUERY_CHARACTERS,
     notLinkedResult,
+    serveInstructionDocuments,
     type RuleGuidanceNotice,
 } from './instruction-serving';
 
@@ -30,6 +32,12 @@ export const RULE_GUIDANCE_TOPICS = [
 ] as const;
 
 export const RuleGuidanceTopicSchema = v.picklist(RULE_GUIDANCE_TOPICS);
+
+export const RuleGuidanceQuerySchema = v.pipe(
+    v.string(),
+    v.minLength(1),
+    v.maxLength(MAX_GUIDANCE_QUERY_CHARACTERS),
+);
 
 /**
  * One bounded documentation subject exposed to the reasoning model.
@@ -132,8 +140,8 @@ export interface RuleGuidanceResult {
     topic: RuleGuidanceTopic;
 
     /**
-     * Relevant Markdown excerpts truncated to the declared maximum, or the human-readable
-     * explanation carried by a not-linked notice.
+     * Relevant Markdown excerpts within the declared maximum, or the human-readable explanation
+     * carried by a not-linked notice.
      */
     guidance: string;
 
@@ -147,6 +155,15 @@ export interface RuleGuidanceResult {
      * document and for a not-linked notice.
      */
     citations: KnowledgeGuidanceCitation[];
+
+    /**
+     * Headings of the instruction-document sections this response carries, in document order;
+     * present exactly when a document was too long to serve whole and had to be narrowed to the
+     * requested topic. Absence therefore reads "nothing was left out" — a whole document, a pinned
+     * KnowledgeBase excerpt, or a not-linked notice — and any value tells a run's trace which part
+     * of a long reference the model was actually shown.
+     */
+    servedSectionHeadings?: string[];
 
     /**
      * Exact repository revisions consulted by this lookup; present for KnowledgeBase lookups only,
@@ -220,9 +237,10 @@ function assertRepositorySlug(repository: string, label: string): void {
 /**
  * Stateful bounded rule-guidance reader for a single isolated agent run.
  *
- * Dispatches on the source kind: a KnowledgeBase source serves today's pinned AdGuard sections, an
- * instruction source serves its whole linked role documents and answers topics without a linked
- * role with the typed not-linked notice.
+ * Dispatches on the source kind: a KnowledgeBase source serves today's pinned AdGuard sections; an
+ * instruction source serves its linked role documents — whole when they fit the response bound,
+ * otherwise narrowed to the sections matching the topic plus an index of the document's other
+ * headings — and answers topics without a linked role with the typed not-linked notice.
  */
 export class KnowledgeGuidanceSession {
     private consulted = false;
@@ -322,15 +340,17 @@ export class KnowledgeGuidanceSession {
      * Read only the allowlisted sections mapped to one validated topic.
      *
      * @param topic - Bounded public lookup subject.
+     * @param query - Optional extra keywords narrowing a long instruction document to the sections
+     *   that match them; ignored by the KnowledgeBase branch, whose sections are pinned per topic.
      * @returns Excerpts, immutable citations, and exact source revisions.
      */
-    lookup(topic: RuleGuidanceTopic): RuleGuidanceResult {
+    lookup(topic: RuleGuidanceTopic, query?: string): RuleGuidanceResult {
         const parsed = v.safeParse(RuleGuidanceTopicSchema, topic);
         if (!parsed.success) {
             throw new Error(`Unsupported guidance topic: ${String(topic)}`);
         }
         if (this.source.kind === RuleGuidanceSourceKind.Instruction) {
-            return this.lookupInstruction(parsed.output, this.source);
+            return this.lookupInstruction(parsed.output, this.source, query);
         }
         return this.lookupKnowledgeBase(parsed.output, this.source);
     }
@@ -372,16 +392,20 @@ export class KnowledgeGuidanceSession {
     }
 
     /**
-     * Serve the instruction's whole role documents mapped to one topic, or the typed not-linked
-     * notice when any of the topic's roles is unbound.
+     * Serve the instruction's role documents mapped to one topic, or the typed not-linked notice
+     * when any of the topic's roles is unbound.
      *
      * @param topic - Validated lookup subject.
      * @param source - Instruction source narrowed by the dispatcher.
-     * @returns The served whole documents, or the notice carrying the missing-information record.
+     * @param query - Optional extra keywords for the section scoring.
+     * @returns The served documents — whole when they fit, otherwise narrowed to the topic's
+     *   sections with an index of the rest — or the notice carrying the missing-information
+     *   record.
      */
     private lookupInstruction(
         topic: RuleGuidanceTopic,
         source: InstructionGuidanceSource,
+        query?: string,
     ): RuleGuidanceResult {
         const roles = INSTRUCTION_TOPIC_ROLES[topic];
         const bound = roles.map((role) =>
@@ -396,17 +420,15 @@ export class KnowledgeGuidanceSession {
             );
         }
         const served = bound as InstructionLinkedDocument[];
-        const normalized = served.map((document) =>
-            document.content.replace(/\r\n/gu, '\n').replace(/\n+$/u, ''),
-        );
-        const guidance = normalized.join('\n\n').slice(0, MAX_GUIDANCE_CHARACTERS);
+        const { text, servedSectionHeadings } = serveInstructionDocuments(served, topic, query);
         return {
             topic,
-            guidance,
+            guidance: text,
             maxCharacters: MAX_GUIDANCE_CHARACTERS,
             citations: served
                 .map((document) => instructionDocumentCitation(document))
                 .filter((citation) => citation !== undefined),
+            ...(servedSectionHeadings === undefined ? {} : { servedSectionHeadings }),
         };
     }
 

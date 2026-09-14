@@ -44,13 +44,22 @@ export interface RunGuardOptions {
  * runner reads the recorded cause to seal the run with the matching typed outcome. Guards never
  * change the advertised tool list or any prompt — they only stop the run.
  *
- * The per-request deadline covers exactly the half of `requestTimeoutMs` pi leaves unenforced. It
- * is armed on the assistant's `message_start`, which pi emits once the provider response resolves
- * and the stream opens, and disarmed on that message's `message_end`, which pi emits when the
- * stream ends and BEFORE the turn's tool calls run. So it starts precisely where the OpenAI SDK's
- * own `timeout` stops — the SDK clears that timer as soon as the headers arrive — and it bounds one
- * streamed response, never a legitimately long tool execution. A provider that never answers at all
- * is still the SDK's timeout and still seals as a provider failure.
+ * The per-request deadline is an INACTIVITY deadline over exactly the half of `requestTimeoutMs` pi
+ * leaves unenforced. It is armed on the assistant's `message_start`, which pi emits once the
+ * provider response resolves and the stream opens, RE-ARMED on every `message_update`, which pi
+ * emits for each streamed delta of that message, and disarmed on its `message_end`, which pi emits
+ * when the stream ends and BEFORE the turn's tool calls run. So it starts precisely where the
+ * OpenAI SDK's own `timeout` stops — the SDK clears that timer as soon as the headers arrive — and
+ * it bounds SILENCE inside one streamed response, never that response's total length and never a
+ * legitimately long tool execution. A provider that never answers at all is still the SDK's timeout
+ * and still seals as a provider failure.
+ *
+ * Measuring total length rather than liveness is what this guard used to do, and it killed live
+ * runs: a reasoning model streaming its thinking for longer than `requestTimeoutMs` tripped the
+ * timer that exists for a wedged provider. Two runs sealed `request-deadline` with tokens still
+ * arriving — one at loop turn 30, one at turn 24 right after a turn whose completion was 10,554
+ * tokens. A run's total duration is already bounded by the wall-clock budget, so the only thing
+ * left for this timer to detect is a stream that has stopped producing.
  *
  * Determinism note: pi awaits every event listener between turns and `abort()` flips the run signal
  * synchronously, so a guard tripping on `turn_end` stops the run before the next provider request
@@ -90,15 +99,18 @@ export function attachRunGuards(session: AgentSession, options: RunGuardOptions)
             );
         });
     };
+    // Restart the inactivity window. Called on the stream's opening event and again on every delta,
+    // so the deadline always measures the gap since the last sign of life rather than the response's
+    // total length.
+    const armRequestTimer = (): void => {
+        clearRequestTimer();
+        requestTimer = setTimeout(() => fire(GuardCause.RequestDeadline), budgets.requestTimeoutMs);
+        requestTimer.unref();
+    };
     const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
-        if (event.type === 'message_start') {
+        if (event.type === 'message_start' || event.type === 'message_update') {
             if (event.message.role === 'assistant') {
-                clearRequestTimer();
-                requestTimer = setTimeout(
-                    () => fire(GuardCause.RequestDeadline),
-                    budgets.requestTimeoutMs,
-                );
-                requestTimer.unref();
+                armRequestTimer();
             }
             return;
         }

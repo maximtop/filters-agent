@@ -323,15 +323,14 @@ function classifyEnd<T>(
 ): TerminalOutcome<T> | undefined {
     const cause = guards.cause();
     if (cause === GuardCause.RequestDeadline) {
-        // The runner's own per-request timer, armed on the assistant `message_start` and disarmed
-        // on its `message_end` — so it is never live while the terminal tool runs, and an accepted
-        // or capped settlement always wins the race in `settleRun` before this is consulted.
+        // The runner's own per-request INACTIVITY timer, armed on the assistant `message_start`,
+        // re-armed on every streamed delta and disarmed on `message_end` — so it is never live
+        // while the terminal tool runs, and an accepted or capped settlement always wins the race
+        // in `settleRun` before this is consulted.
         return {
             kind: SealKind.BudgetExceeded,
             budget: GuardCause.RequestDeadline,
-            detail:
-                `provider request deadline of ${budgets.requestTimeoutMs}ms expired ` +
-                'while the response was streaming',
+            detail: `no streamed progress for ${budgets.requestTimeoutMs}ms in one provider response`,
         };
     }
     if (cause === GuardCause.WallClock) {

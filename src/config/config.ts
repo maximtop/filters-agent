@@ -56,7 +56,13 @@ export const GITHUB_TOKEN_VAR = 'GITHUB_TOKEN';
 const DEFAULT_REQUEST_MAX_ATTEMPTS = 2;
 
 /**
- * Default hard deadline for one provider request, the schema ceiling.
+ * Default deadline for one provider request, the schema ceiling.
+ *
+ * The deadline bounds SILENCE, not a response's total length: up to the response headers it is the
+ * SDK's own request timeout, and from there it is the run guard's inactivity window, restarted on
+ * every streamed delta (`RunBudgets.requestTimeoutMs`). So a model that reasons for longer than
+ * this while tokens keep arriving is left alone; a stream that stops producing for this long is
+ * not, and the run's total duration is bounded by the wall-clock budget instead.
  *
  * Raised from 120 s on 2026-09-05: with `LLM_REASONING_EFFORT` at `high` the reasoning model's
  * thinking regularly outlived two minutes, and four of six campaign runs that day carried "Request

@@ -5,6 +5,12 @@ import {
     type InstructionGuidanceSource,
     type InstructionLinkedDocument,
 } from './guidance-source';
+import {
+    isContainedSection,
+    renderHeadingIndex,
+    splitMarkdownSections,
+    type MarkdownSection,
+} from './markdown-sections';
 import type {
     KnowledgeGuidanceCitation,
     RuleGuidanceResult,
@@ -39,8 +45,8 @@ export const WHOLE_DOCUMENT_ANCHOR = 'whole-document';
 
 /**
  * Instruction-serving map from every public guidance topic to the run instruction's roles that
- * define it, in serving order: a topic serves its whole role documents in this order, and one
- * missing role turns the lookup into the typed not-linked notice.
+ * define it, in serving order: a topic serves those role documents in this order, and one missing
+ * role turns the lookup into the typed not-linked notice.
  */
 export const INSTRUCTION_TOPIC_ROLES: Record<RuleGuidanceTopic, readonly GuidanceDocumentRole[]> = {
     element_hiding: [GuidanceDocumentRole.Syntax],
@@ -52,6 +58,281 @@ export const INSTRUCTION_TOPIC_ROLES: Record<RuleGuidanceTopic, readonly Guidanc
     compatibility: [GuidanceDocumentRole.Syntax],
     placement: [GuidanceDocumentRole.Policy, GuidanceDocumentRole.Contributing],
 };
+
+/**
+ * Keywords identifying which sections of an instruction document belong to each guidance topic, in
+ * the vocabulary such references actually use: prose names ("cosmetic", "procedural") beside the
+ * syntax tokens a section is about (`##`, `+js`, `@@`).
+ *
+ * These decide WHICH part of a long reference answers a topic. Serving a document's first
+ * {@link MAX_GUIDANCE_CHARACTERS} characters instead answered every topic with the document's
+ * opening: asked for `scriptlet`, a run got the uBlock Origin "Static filter syntax" page cut
+ * inside "Pre-parsing directives" and filed a missing-information report saying the scriptlet
+ * section was unreachable — from a page that documents scriptlet injection at length, tens of
+ * kilobytes further down.
+ *
+ * A model adds its own keywords per call through the tool's `query` argument, for a subject the
+ * fixed topics do not name (`removeparam`, `redirect-rule`).
+ */
+export const INSTRUCTION_TOPIC_KEYWORDS: Record<RuleGuidanceTopic, readonly string[]> = {
+    element_hiding: ['cosmetic', 'element hiding', '##', 'hide'],
+    css_injection: ['style', 'css injection', ':style'],
+    extended_css: [
+        'procedural',
+        'extended',
+        ':has',
+        ':matches-css',
+        ':upward',
+        ':remove',
+        'action operators',
+    ],
+    network: ['network', '||', 'options', 'modifier'],
+    scriptlet: ['scriptlet', '+js', 'resources'],
+    exception: ['exception', '@@', 'badfilter', 'allow'],
+    compatibility: ['not supported', 'supported', 'compatibility', 'abp', 'syntax differences'],
+    // Not a syntax topic: placement is answered by the policy and contributing documents, whose
+    // sections are about where a rule goes rather than how it is written.
+    placement: ['placement', 'section', 'file', 'structure', 'directory'],
+};
+
+/**
+ * What one keyword found in a section's HEADING contributes to its score.
+ *
+ * A heading names what its section is about; a body mention only proves the subject came up. Ten
+ * keeps a single heading hit ahead of everything the body can contribute for that keyword (see
+ * {@link MAX_COUNTED_BODY_HITS}), so "Scriptlet injection" outranks a network section that happens
+ * to mention scriptlets three times.
+ */
+const HEADING_KEYWORD_SCORE = 10;
+
+/**
+ * Body occurrences of one keyword that count toward a section's score.
+ *
+ * Capped, because uncapped it measures length instead of relevance: the longest section of a syntax
+ * reference mentions every token dozens of times and would win every topic. Three separates a
+ * section that is about a subject from one that mentions it in passing.
+ */
+const MAX_COUNTED_BODY_HITS = 3;
+
+/**
+ * Label the narrowed response puts in front of the document's heading index.
+ */
+const HEADING_INDEX_LABEL = 'All headings in this document:';
+
+/**
+ * Marker appended to a section the response had to cut, so a model reading it knows the text ends
+ * early rather than that the section says nothing more.
+ */
+const TRUNCATION_MARKER = '\n…';
+
+/**
+ * Separator between served blocks — the blank line Markdown puts between them.
+ */
+const SECTION_SEPARATOR = '\n\n';
+
+/**
+ * Longest accepted `query` on one guidance lookup.
+ *
+ * The argument adds a few keywords, it does not carry a paragraph: 120 characters holds several
+ * modifier names with room to spare, while prose of any length would contribute a keyword per word
+ * and match every section equally.
+ */
+export const MAX_GUIDANCE_QUERY_CHARACTERS = 120;
+
+/**
+ * Split a model-supplied query into scoring keywords.
+ *
+ * @param query - The optional query argument of one lookup.
+ * @returns Its whitespace-separated words, lowercased. A token stays whole, so a modifier name such
+ *   as `removeparam` or `$redirect-rule` is one keyword.
+ */
+function queryKeywords(query: string | undefined): string[] {
+    if (query === undefined) {
+        return [];
+    }
+    return query
+        .toLowerCase()
+        .split(/\s+/u)
+        .filter((word) => word.length > 0);
+}
+
+/**
+ * Count occurrences of one keyword in a text, stopping at the counted maximum.
+ *
+ * @param text - Lowercased haystack.
+ * @param keyword - Lowercased keyword.
+ * @returns Occurrences found, at most {@link MAX_COUNTED_BODY_HITS}.
+ */
+function countHits(text: string, keyword: string): number {
+    let hits = 0;
+    let from = 0;
+    while (hits < MAX_COUNTED_BODY_HITS) {
+        const at = text.indexOf(keyword, from);
+        if (at < 0) {
+            return hits;
+        }
+        hits += 1;
+        from = at + keyword.length;
+    }
+    return hits;
+}
+
+/**
+ * Score one section's relevance to a set of keywords.
+ *
+ * @param section - The section under test.
+ * @param keywords - Lowercased topic and query keywords.
+ * @returns The score; zero when no keyword appears in the section at all.
+ */
+function scoreSection(section: MarkdownSection, keywords: readonly string[]): number {
+    const heading = section.heading.toLowerCase();
+    const body = section.body.toLowerCase();
+    let score = 0;
+    for (const keyword of keywords) {
+        if (heading.includes(keyword)) {
+            score += HEADING_KEYWORD_SCORE;
+        }
+        score += countHits(body, keyword);
+    }
+    return score;
+}
+
+/**
+ * One document's contribution to a narrowed guidance response.
+ */
+interface NarrowedDocument {
+    /**
+     * Text to serve for this document: its matching sections — or, when none matched or none fit,
+     * its cut best match or its preamble — followed by the document's heading index.
+     */
+    text: string;
+
+    /**
+     * Headings of the sections that text carries, in document order.
+     */
+    headings: string[];
+}
+
+/**
+ * Guidance served for one topic, and which of its sections that text carries.
+ */
+export interface ServedInstructionGuidance {
+    /**
+     * The guidance text, within {@link MAX_GUIDANCE_CHARACTERS}.
+     */
+    text: string;
+
+    /**
+     * Headings of the sections served, in document order; absent when the documents fit the bound
+     * and were served whole, so nothing was left out.
+     */
+    servedSectionHeadings?: string[];
+}
+
+/**
+ * Narrow one document to the sections matching a set of keywords, always naming the rest.
+ *
+ * @param document - Normalized document text.
+ * @param keywords - Lowercased topic and query keywords.
+ * @param budget - Characters this document may contribute to the response.
+ * @returns The text to serve and the headings of the sections it carries, in document order.
+ */
+function narrowDocument(
+    document: string,
+    keywords: readonly string[],
+    budget: number,
+): NarrowedDocument {
+    const sections = splitMarkdownSections(document);
+    const index = renderHeadingIndex(sections);
+    const tail = index === '' ? '' : `${HEADING_INDEX_LABEL}\n${index}`;
+    const room = Math.max(0, budget - (tail === '' ? 0 : tail.length + SECTION_SEPARATOR.length));
+    const ranked = sections
+        .filter((section) => section.heading !== '')
+        .map((section, order) => ({ section, order, score: scoreSection(section, keywords) }))
+        .filter((entry) => entry.score > 0)
+        // oxlint-disable-next-line unicorn/no-array-sort -- ES2023 toSorted is outside this project target.
+        .sort((left, right) => right.score - left.score || left.order - right.order)
+        .map((entry) => entry.section);
+    const taken: MarkdownSection[] = [];
+    let used = 0;
+    for (const candidate of ranked) {
+        // Sections nest, so a parent and its child would serve the same text twice. Whichever of
+        // the two is dropped is still named by the index.
+        const overlaps = taken.some(
+            (section) =>
+                isContainedSection(candidate, section) || isContainedSection(section, candidate),
+        );
+        if (overlaps) {
+            continue;
+        }
+        const cost = candidate.text.length + (taken.length === 0 ? 0 : SECTION_SEPARATOR.length);
+        if (used + cost > room) {
+            continue;
+        }
+        taken.push(candidate);
+        used += cost;
+    }
+    if (taken.length === 0) {
+        // Either nothing matched or the best match alone is bigger than the room. A cut best match
+        // still answers the topic; the document's preamble is what is left when nothing matched.
+        const fallback = ranked[0] ?? sections[0];
+        const text = fallback?.text ?? '';
+        const cut = text.slice(0, Math.max(0, room - TRUNCATION_MARKER.length));
+        const opening = cut.length < text.length ? `${cut}${TRUNCATION_MARKER}` : cut;
+        return {
+            text: [opening, tail].filter((part) => part !== '').join(SECTION_SEPARATOR),
+            headings: ranked[0] === undefined ? [] : [ranked[0].heading],
+        };
+    }
+    // oxlint-disable-next-line unicorn/no-array-sort -- ES2023 toSorted is outside this project target.
+    const ordered = [...taken].sort((left, right) => left.startLine - right.startLine);
+    return {
+        text: [...ordered.map((section) => section.text), tail]
+            .filter((part) => part !== '')
+            .join(SECTION_SEPARATOR),
+        headings: ordered.map((section) => section.heading),
+    };
+}
+
+/**
+ * Serve the instruction's role documents for one topic, narrowed to the matching sections when they
+ * do not fit whole.
+ *
+ * Documents that fit the response bound together are served whole and unchanged — the bound is what
+ * narrowing exists for, and a policy document that fits has nothing to narrow. Past the bound each
+ * document is served as its sections matching the topic's keywords plus the model's own query, in
+ * document order, followed by an index of every heading the document has: the model can then see
+ * what it did not get and ask again for it, instead of concluding the guidance is absent.
+ *
+ * @param documents - The topic's bound role documents, in serving order.
+ * @param topic - Validated lookup subject, whose keywords drive the scoring.
+ * @param query - Optional model-supplied keywords for a subject the topics do not name.
+ * @returns The guidance text and, when any document was narrowed, the headings actually served.
+ */
+export function serveInstructionDocuments(
+    documents: readonly InstructionLinkedDocument[],
+    topic: RuleGuidanceTopic,
+    query?: string,
+): ServedInstructionGuidance {
+    const normalized = documents.map((document) =>
+        document.content.replace(/\r\n/gu, '\n').replace(/\n+$/u, ''),
+    );
+    const whole = normalized.join(SECTION_SEPARATOR);
+    if (whole.length <= MAX_GUIDANCE_CHARACTERS) {
+        return { text: whole };
+    }
+    const keywords = [...INSTRUCTION_TOPIC_KEYWORDS[topic], ...queryKeywords(query)];
+    const separators = SECTION_SEPARATOR.length * Math.max(0, normalized.length - 1);
+    const budget = Math.floor((MAX_GUIDANCE_CHARACTERS - separators) / normalized.length);
+    const narrowed = normalized.map((document) => narrowDocument(document, keywords, budget));
+    return {
+        text: narrowed
+            .map((document) => document.text)
+            .filter((text) => text !== '')
+            .join(SECTION_SEPARATOR),
+        servedSectionHeadings: narrowed.flatMap((document) => document.headings),
+    };
+}
 
 /**
  * Build the typed not-linked notice for a topic whose roles the instruction did not link.

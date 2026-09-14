@@ -11,8 +11,13 @@ import type { TraceRecorder } from './trace-recorder';
 import { TraceEventType, type RunTrace } from '../types/trace';
 import { AgentTerminationReason } from '../types/agent-termination-reason';
 import { SealKind } from '../pi/seal-types';
-import type { GuardCause } from '../pi/guard-types';
-import type { NonTerminalSeal, RejectionCap, TerminalOutcome } from '../pi/seal-types';
+import { GuardCause } from '../pi/guard-types';
+import type {
+    BudgetExceededSealed,
+    NonTerminalSeal,
+    RejectionCap,
+    TerminalOutcome,
+} from '../pi/seal-types';
 import type {
     CompactionObserver,
     SessionCompactionObservation,
@@ -45,6 +50,23 @@ export const SEAL_DECISION_PHASE = 'run_sealed';
 export const COMPACTION_DECISION_PHASE = 'context_compacted';
 
 /**
+ * Which typed reason each run budget ends a run for, total over the budget union so a new bound
+ * cannot silently inherit another's reason.
+ *
+ * The three endings are not the same failure, and a maintainer reading the issue comment has only
+ * this to tell them apart: a provider response that went silent says nothing about the
+ * investigation (the model was mid-thought), an expired wall clock says the work did not fit the
+ * time it was given, and the iteration backstop says the loop was going in circles. Collapsing all
+ * three onto `max_iterations_exceeded` reported every one of them as "The agent loop reached its
+ * budget".
+ */
+const BUDGET_TERMINATION_REASONS: Record<BudgetExceededSealed['budget'], AgentTerminationReason> = {
+    [GuardCause.Turns]: AgentTerminationReason.MaxIterationsExceeded,
+    [GuardCause.RequestDeadline]: AgentTerminationReason.RequestDeadlineExceeded,
+    [GuardCause.WallClock]: AgentTerminationReason.WallClockExceeded,
+};
+
+/**
  * Map a seal that produced no accepted payload onto the typed reason the run ended for.
  *
  * A provider failure forks on `deterministic`: a rejection of this exact request (the pinned
@@ -70,7 +92,7 @@ export function sealTerminationReason(outcome: NonTerminalSeal): AgentTerminatio
                 ? AgentTerminationReason.LlmRejected
                 : AgentTerminationReason.LlmError;
         case SealKind.BudgetExceeded:
-            return AgentTerminationReason.MaxIterationsExceeded;
+            return BUDGET_TERMINATION_REASONS[outcome.budget];
         case SealKind.Aborted:
             return AgentTerminationReason.Interrupted;
     }

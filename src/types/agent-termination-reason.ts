@@ -28,9 +28,20 @@ export const AgentTerminationReason = {
     RetryBudgetExhausted: 'retry_budget_exhausted',
 
     /**
-     * The loop reached its iteration or duration budget without a terminal decision.
+     * The loop reached its iteration backstop without a terminal decision.
      */
     MaxIterationsExceeded: 'max_iterations_exceeded',
+
+    /**
+     * One provider response made no streamed progress within the per-request deadline, so the run
+     * was stopped inside that turn.
+     */
+    RequestDeadlineExceeded: 'request_deadline_exceeded',
+
+    /**
+     * The investigation's wall-clock budget expired before a terminal decision.
+     */
+    WallClockExceeded: 'wall_clock_exceeded',
 
     /**
      * The Host abort signal fired before the next paid operation.

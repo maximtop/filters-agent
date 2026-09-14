@@ -17,7 +17,7 @@ import {
     SafeInteractionKindSchema,
     SyntheticTextTokenSchema,
 } from '../environment/safe-interaction';
-import { RuleGuidanceTopicSchema } from '../knowledge/rule-guidance';
+import { RuleGuidanceQuerySchema, RuleGuidanceTopicSchema } from '../knowledge/rule-guidance';
 import { MissingInformationEntrySchema } from '../types/missing-information';
 import { ConsentStrategySchema, ViewportSchema } from '../types/repro-profile';
 import { ProblemTypeSchema } from '../types/issue-facts';
@@ -75,7 +75,13 @@ export const TOOL_GUIDANCE: Readonly<Record<string, string>> = {
     [ToolName.UpdateObservedIntent]:
         'Refines the observed issue classification after new evidence without changing the locked environment or reported context.',
     [ToolName.LookupRuleGuidance]:
-        'Returns bounded guidance from the pinned AdGuard KnowledgeBase and repository policy for a rule topic, including the source SHA, file, and anchor citation.',
+        'Returns bounded guidance from the pinned AdGuard KnowledgeBase and repository policy for a ' +
+        'rule topic, including the source SHA, file, and anchor citation. When a run serves the ' +
+        "instruction's own linked documents instead, a document too long to return whole comes back " +
+        'as the sections matching the topic plus an index of every heading it has — pass `query` ' +
+        'with the words naming what you need (a modifier such as `removeparam`, a selector such as ' +
+        '`:has`, a heading from the index) to narrow it to those sections, and call again for ' +
+        'another part of the same document.',
     [ToolName.ReportMissingInformation]:
         'Records exactly what the run instruction lacks. Call it the moment you find that a needed ' +
         'document, section, or fact is missing, naming the gap precisely: the bounded subject line ' +
@@ -288,7 +294,10 @@ export const TOOL_PARAMETER_SCHEMAS: Readonly<
         rationale: v.optional(v.string()),
         confidence: v.optional(v.number()),
     }),
-    [ToolName.LookupRuleGuidance]: v.object({ topic: v.optional(RuleGuidanceTopicSchema) }),
+    [ToolName.LookupRuleGuidance]: v.object({
+        topic: v.optional(RuleGuidanceTopicSchema),
+        query: v.optional(RuleGuidanceQuerySchema),
+    }),
     [ToolName.LaunchBrowser]: v.object({
         extension: v.optional(v.picklist(EXTENSION_MODE_VALUES)),
         targetUrl: v.optional(v.string()),
@@ -405,7 +414,10 @@ export const FIX_TOOL_PARAMETER_SCHEMAS: Readonly<
     }),
     [ToolName.LaunchBrowser]: LAUNCH_BROWSER_PARAMETERS,
     [ToolName.CloseBrowser]: v.strictObject({}),
-    [ToolName.LookupRuleGuidance]: v.strictObject({ topic: RuleGuidanceTopicSchema }),
+    [ToolName.LookupRuleGuidance]: v.strictObject({
+        topic: RuleGuidanceTopicSchema,
+        query: v.optional(RuleGuidanceQuerySchema),
+    }),
     // The registered report_missing_information definition is exactly MissingInformationEntrySchema:
     // a strict object whose subject/detail bounds also validate the run result's capped block, so
     // the model is machine-checked against the same contract the harvest reads back.
