@@ -1,0 +1,64 @@
+{
+    "name": "adguard-filters-agent",
+    "version": "0.1.0",
+    "description": "Browser-first AI agent for investigating AdguardFilters issues",
+    "type": "module",
+    "scripts": {
+        "typecheck": "tsc --noEmit -p tsconfig.json"
+    },
+    "dependencies": {
+        "@adguard/aglint": "3.0.3",
+        "@earendil-works/pi-ai": "0.84.1",
+        "@earendil-works/pi-coding-agent": "0.84.1",
+        "@octokit/rest": "^21.1.0",
+        "@valibot/to-json-schema": "^1.7.0",
+        "cloakbrowser": "^0.3.31",
+        "commander": "^14.0.3",
+        "dotenv": "^16.4.0",
+        "express": "^5.0.0",
+        "pino": "^9.6.0",
+        "playwright-core": "^1.50.0",
+        "tar-stream": "3.1.7",
+        "undici": "^8.10.0",
+        "valibot": "^1.4.1",
+        "yaml": "^2.9.0"
+    },
+    "devDependencies": {
+        "@eslint/js": "^10.0.1",
+        "@stylistic/eslint-plugin": "^5.10.0",
+        "@types/express": "^5.0.0",
+        "@types/node": "^24.0.0",
+        "@typescript-eslint/eslint-plugin": "^8.60.0",
+        "@typescript-eslint/parser": "^8.60.0",
+        "eslint": "^10.4.0",
+        "eslint-flat-config-utils": "^3.2.0",
+        "eslint-import-resolver-typescript": "^4.4.4",
+        "eslint-plugin-import": "^2.32.0",
+        "eslint-plugin-import-newlines": "^2.0.0",
+        "eslint-plugin-jsdoc": "^63.0.0",
+        "oxfmt": "^0.52.0",
+        "oxlint": "^1.67.0",
+        "tsx": "^4.19.0",
+        "typescript": "^5.7.0",
+        "typescript-eslint": "^8.60.0",
+        "vitest": "^3.0.0"
+    },
+    "engines": {
+        "node": ">=24"
+    },
+    "pnpm": {
+        "overrides": {
+            "brace-expansion@1": "^1.1.12",
+            "brace-expansion@5": "^5.0.9",
+            "@earendil-works/pi-agent-core": "0.84.1",
+            "@earendil-works/pi-ai": "0.84.1",
+            "@earendil-works/pi-client": "0.84.1",
+            "@earendil-works/pi-protocol": "0.84.1",
+            "@earendil-works/pi-telemetry": "0.84.1",
+            "@earendil-works/pi-tui": "0.84.1"
+        },
+        "patchedDependencies": {
+            "@adguard/aglint": "patches/@adguard__aglint.patch"
+        }
+    }
+}

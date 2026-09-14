@@ -1,0 +1,499 @@
+/**
+ * The issue and browser lifecycle tools the agent runtime owns: `fetch_issue`, the runtime's own
+ * wrappers over the base registry's search, placement, guidance and screenshot tools, full-page
+ * capture inspection, and the `launch_browser` / `close_browser` session lifecycle. The run's
+ * extension build is prepared host-side before the session, so no preparation tool exists here.
+ *
+ * They register through {@link RuntimeLifecycleToolsHost} rather than against the runtime class, so
+ * each handler's bookkeeping is one named seam instead of a reach into runtime state. The
+ * reporter-aware `analyze_screenshot` variant is one tool rather than a lifecycle concern and lives
+ * beside the plain one in `src/agent/reporter-screenshot-tool.ts`; this file only adapts the host
+ * for it.
+ *
+ * Every one of them reads its registered JSON parameters from the shared catalog through
+ * `registeredParameters`, so the catalog stays their single declaration. `close_browser` has no
+ * `TOOL_PARAMETER_SCHEMAS` entry at all and `launch_browser`'s entry there is the widened gate stub
+ * every property of which is optional, so those two resolve through a `REGISTERED_SHAPE_OVERRIDES`
+ * entry onto their strict `FIX_TOOL_PARAMETER_SCHEMAS` mirrors — the same shapes the fix session
+ * already advertises. Nothing advertises the registry `parameters` itself; the drift guard is its
+ * only reader, so deriving both sides from one schema makes them agree by construction.
+ */
+import { registeredParameters } from '../agent/registered-parameters';
+import { ToolName } from '../agent/tool-names';
+import { ToolRegistry } from '../agent/tool-registry';
+import { registerReporterScreenshotTool } from '../agent/reporter-screenshot-tool';
+import type { FilteringEnvironmentDescriptor } from '../environment/environment-selection';
+import type { RawIssue } from '../github/fetch-issue';
+import { withToolDeadline } from '../pi/session-tools';
+import { PlacementResolutionSchema } from '../repo/placement-resolver';
+import { effectiveRuleScopes, normalizeRule } from '../repo/rule-normalizer';
+import { APPLICATION_SESSION_BUDGET_MS } from '../validator/phase-application-contract';
+import * as v from 'valibot';
+import {
+    normalizePlacementDomain,
+    placementRuleTypeForCandidate,
+    reportedDomainFromAllowedTargets,
+    type CandidatePlacementResolution,
+} from './agent-runtime-candidate-context';
+import type { AgentRuntimeSessionState } from './agent-runtime-session-evidence';
+
+/**
+ * Hard deadline for one browser tool call.
+ *
+ * The loop's wall-clock budget is checked between turns, so it cannot end a turn that never
+ * returns: one live run hung inside a browser launch and sat there for over two hours despite a
+ * one-hour budget. This bounds the call itself, and the model is told the tool timed out so it can
+ * choose a different move.
+ */
+export const BROWSER_TOOL_DEADLINE_MS = 3 * 60_000;
+
+/**
+ * Wall-clock room one launch's readiness waits need beside the application session.
+ *
+ * A launch runs a readiness pre-read before the session and a state read-back after it; at the
+ * default configuration those waits bound themselves to 30 s and 90 s, and an aborted call gets up
+ * to 90 s to record its own cleanup before the agent loop continues. Four minutes fits that sum
+ * with bootstrap slack.
+ */
+const BROWSER_LAUNCH_READINESS_ENVELOPE_MS = 4 * 60_000;
+
+/**
+ * Hard deadline for one `launch_browser` call.
+ *
+ * A launch runs the readiness pre-read, the whole bounded application session
+ * (`APPLICATION_SESSION_BUDGET_MS`), and the host read-back inside one tool call, so the plain
+ * browser-tool deadline would end a valid launch while its session kept spending turns in the
+ * background. This deadline covers the session budget plus the readiness envelope, and the handler
+ * threads its abort signal into the session so a timed-out launch discards its late read-back.
+ */
+export const BROWSER_LAUNCH_DEADLINE_MS =
+    APPLICATION_SESSION_BUDGET_MS + BROWSER_LAUNCH_READINESS_ENVELOPE_MS;
+
+/**
+ * The runtime seam the lifecycle tools act through.
+ */
+export interface RuntimeLifecycleToolsHost {
+    /**
+     * Prompt-safe issue snapshot exposed by `fetch_issue`.
+     */
+    readonly issue: RawIssue;
+
+    /**
+     * Reporter screenshot artifact identities, in the one-based order `fetch_issue` advertises.
+     */
+    readonly issueAttachmentArtifactIds: readonly string[];
+
+    /**
+     * Exact prompt-safe browser targets bound outside the model loop.
+     */
+    readonly allowedTargetUrls: readonly string[];
+
+    /**
+     * Registry holding the preserved handlers of the persistent non-browser tools.
+     */
+    readonly baseRegistry: ToolRegistry;
+
+    /**
+     * Filtering environments the Host advertises for this run.
+     *
+     * @returns The advertised environment descriptors.
+     */
+    capabilities(): FilteringEnvironmentDescriptor[];
+
+    /**
+     * Record one tool name as runtime-owned rather than inherited from the base registry.
+     *
+     * @param name - Registered tool name.
+     */
+    markBaseTool(name: string): void;
+
+    /**
+     * Dispatch one base-registry tool through the runtime's own bookkeeping.
+     *
+     * @param name - Base tool name.
+     * @param args - Model-supplied arguments.
+     * @returns The tool result.
+     */
+    dispatchBaseTool(name: string, args: Record<string, unknown>): Promise<Record<string, unknown>>;
+
+    /**
+     * Record that the model read the issue through `fetch_issue`.
+     */
+    recordFetchedIssue(): void;
+
+    /**
+     * Record that repository search offered a domain-extension candidate for one selector.
+     *
+     * @param selector - Exact selector the model searched for.
+     */
+    recordDomainExtensionSelectorSearch(selector: string): void;
+
+    /**
+     * Record that the model consulted the rule guidance knowledge base.
+     */
+    recordGuidanceConsulted(): void;
+
+    /**
+     * Retain one successful deterministic placement resolution for terminal validation.
+     *
+     * @param resolution - Resolver result bound to its candidate and target domain.
+     */
+    recordPlacementResolution(resolution: CandidatePlacementResolution): void;
+
+    /**
+     * Read the cached analysis of one reporter screenshot.
+     *
+     * @param artifactId - Reporter screenshot artifact identity.
+     * @returns The cached result, or undefined when this screenshot was never analyzed.
+     */
+    cachedReporterScreenshotResult(artifactId: string): Record<string, unknown> | undefined;
+
+    /**
+     * Retain the first successful analysis of one reporter screenshot for the rest of the run.
+     *
+     * @param artifactId - Reporter screenshot artifact identity.
+     * @param analysis - Non-empty analysis text returned by the vision provider.
+     * @param result - Complete tool result to cache for a repeated request.
+     */
+    recordReporterScreenshotAnalysis(
+        artifactId: string,
+        analysis: string,
+        result: Record<string, unknown>,
+    ): void;
+
+    /**
+     * Credit one screenshot artifact as inspected by the vision model.
+     *
+     * @param artifactId - Screenshot artifact identity.
+     */
+    recordScreenshotAnalysis(artifactId: string): void;
+
+    /**
+     * Browser session that produced one screenshot artifact.
+     *
+     * @param artifactId - Screenshot artifact identity.
+     * @returns Session identity, or undefined for a reporter attachment.
+     */
+    screenshotSessionId(artifactId: string): string | undefined;
+
+    /**
+     * Read one browser session's retained state.
+     *
+     * @param sessionId - Session identity.
+     * @returns Session state, or undefined when the session is unknown.
+     */
+    sessionState(sessionId: string): AgentRuntimeSessionState | undefined;
+
+    /**
+     * Spend one bounded technical attempt on an observed anti-bot challenge.
+     *
+     * @param targetUrl - Exact prompt-safe target selected for the run.
+     * @param sessionId - Session that observed the challenge.
+     * @param observation - Bounded prompt-safe description of the challenge evidence.
+     * @param result - Successful tool result augmented with the budget state in place.
+     */
+    countAntiBotChallenge(
+        targetUrl: string,
+        sessionId: string,
+        observation: string,
+        result: Record<string, unknown>,
+    ): void;
+
+    /**
+     * Inspect the active session's latest full-page capture with bounded vision batches.
+     *
+     * @returns Compact model-facing coverage result or typed retry guidance.
+     */
+    inspectLatestFullPageCapture(): Promise<Record<string, unknown>>;
+
+    /**
+     * Start one isolated browser session for the model-selected target and profile.
+     *
+     * @param args - Model-supplied `launch_browser` arguments.
+     * @param signal - Deadline signal the launch threads into its application session, so an
+     *   expired deadline aborts the session instead of letting it spend turns in the background.
+     * @returns The tool result.
+     */
+    launchBrowser(
+        args: Record<string, unknown>,
+        signal?: AbortSignal,
+    ): Promise<Record<string, unknown>>;
+
+    /**
+     * Close the active browser session.
+     */
+    dispose(): Promise<void>;
+}
+
+/**
+ * Register the issue, extension, and browser lifecycle tools the runtime owns.
+ *
+ * @param registry - Registry the model's tool calls dispatch into.
+ * @param host - Runtime seam the handlers act through.
+ */
+export function registerLifecycleTools(
+    registry: ToolRegistry,
+    host: RuntimeLifecycleToolsHost,
+): void {
+    registry.register({
+        definition: {
+            type: 'function',
+            function: {
+                name: 'fetch_issue',
+                description:
+                    'Read the prompt-safe raw issue and stable user screenshot indices. Use ' +
+                    'issueScreenshotIndex with analyze_screenshot; opaque artifact IDs are not ' +
+                    'exposed. Extract extension version, manifest, filters, and settings ' +
+                    'yourself.',
+                parameters: registeredParameters(ToolName.FetchIssue),
+            },
+        },
+        handler: async (args) => {
+            if (args.issueNumber !== host.issue.number) {
+                return {
+                    error: `This run is restricted to issue ${host.issue.number}.`,
+                    errorKind: 'issue_mismatch',
+                    retryable: true,
+                };
+            }
+            host.recordFetchedIssue();
+            return {
+                issue: host.issue,
+                capabilities: host.capabilities(),
+                issueScreenshots: host.issueAttachmentArtifactIds.map((_, index) => ({
+                    issueScreenshotIndex: index + 1,
+                })),
+            };
+        },
+    });
+    host.markBaseTool('fetch_issue');
+
+    const searchDefinition = host.baseRegistry
+        .getDefinitions()
+        .find((definition) => definition.function.name === 'search_rules');
+    if (searchDefinition) {
+        registry.register({
+            definition: searchDefinition,
+            handler: async (args) => {
+                const result = await host.baseRegistry.dispatch('search_rules', args);
+                const selector =
+                    typeof args.selector === 'string' ? args.selector.trim() : undefined;
+                const matches = Array.isArray(result.matches) ? result.matches : [];
+                const hasDomainExtensionCandidate = matches.some(
+                    (match) =>
+                        typeof match === 'object' &&
+                        match !== null &&
+                        'domainExtensionCandidate' in match &&
+                        match.domainExtensionCandidate === true,
+                );
+                if (selector && hasDomainExtensionCandidate) {
+                    host.recordDomainExtensionSelectorSearch(selector);
+                }
+                return result;
+            },
+        });
+    }
+
+    const placementDefinition = host.baseRegistry
+        .getDefinitions()
+        .find((definition) => definition.function.name === 'resolve_placement');
+    if (placementDefinition) {
+        registry.register({
+            definition: placementDefinition,
+            handler: async (args) => {
+                const result = await host.dispatchBaseTool('resolve_placement', args);
+                if (result.error !== undefined) {
+                    return result;
+                }
+                const resolution = v.safeParse(PlacementResolutionSchema, result);
+                if (!resolution.success) {
+                    return {
+                        error: 'The repository placement resolver returned an invalid result.',
+                        errorKind: 'placement_resolver_invalid_result',
+                        retryable: false,
+                    };
+                }
+                const candidateRule =
+                    typeof args.candidateRule === 'string' ? args.candidateRule : '';
+                const candidate = normalizeRule(candidateRule);
+                const ruleType = placementRuleTypeForCandidate(candidate);
+                const requestedRuleType =
+                    typeof args.ruleType === 'string' ? args.ruleType : undefined;
+                const targetDomain =
+                    typeof args.targetDomain === 'string'
+                        ? normalizePlacementDomain(args.targetDomain)
+                        : undefined;
+                const reportedDomainRaw = reportedDomainFromAllowedTargets(host.allowedTargetUrls);
+                const reportedDomain = reportedDomainRaw
+                    ? normalizePlacementDomain(reportedDomainRaw)
+                    : undefined;
+                const effectiveScopes = effectiveRuleScopes(candidate, reportedDomain);
+                const matchingEffectiveScopes = effectiveScopes
+                    .map(normalizePlacementDomain)
+                    .filter((scope): scope is string => scope === reportedDomain);
+                // Each failed check names the offending field, the expected value, and the
+                // received one: the previous single generic sentence sent one live run
+                // through all three placement retries guessing blind at which argument was
+                // wrong (proceedflow.info, 2026-08-18).
+                const rejections: string[] = [];
+                if (candidate.canonical.length === 0) {
+                    rejections.push('candidateRule does not parse as an actionable filter rule.');
+                } else if (ruleType === undefined) {
+                    rejections.push(
+                        "the candidate's syntax kind cannot request repository placement.",
+                    );
+                } else if (requestedRuleType !== ruleType) {
+                    rejections.push(
+                        `ruleType must be the syntax-derived '${ruleType}'; got ` +
+                            (requestedRuleType === undefined
+                                ? 'nothing.'
+                                : `'${requestedRuleType}'.`),
+                    );
+                }
+                if (reportedDomain === undefined) {
+                    rejections.push('the runner has no bound reported domain to scope placement.');
+                } else {
+                    if (targetDomain === undefined) {
+                        rejections.push(
+                            'targetDomain must be the runner-bound reported domain ' +
+                                `'${reportedDomain}'.`,
+                        );
+                    } else if (targetDomain !== reportedDomain) {
+                        rejections.push(
+                            'targetDomain must be the runner-bound reported domain ' +
+                                `'${reportedDomain}'; got '${targetDomain}'.`,
+                        );
+                    }
+                    if (matchingEffectiveScopes.length !== 1) {
+                        rejections.push(
+                            'exactly one effective scope of the candidate must equal ' +
+                                `'${reportedDomain}'; the candidate's effective scopes are ` +
+                                `[${effectiveScopes.join(', ') || 'none'}] — scope the rule ` +
+                                'to the reported domain (for a network rule, add ' +
+                                `$domain=${reportedDomain}).`,
+                        );
+                    }
+                }
+                // The extra undefined re-checks are redundant at runtime (each one already
+                // queued a rejection) but let the compiler carry the narrowing below.
+                if (rejections.length > 0 || targetDomain === undefined || ruleType === undefined) {
+                    return {
+                        error: `resolve_placement rejected the request: ${rejections.join(' ')}`,
+                        errorKind: 'candidate_placement_context_invalid',
+                        retryable: true,
+                        requiredAction: 'resolve_candidate_placement',
+                        expectedRuleType: ruleType ?? null,
+                        expectedTargetDomain: reportedDomain ?? null,
+                        effectiveScopes,
+                    };
+                }
+                host.recordPlacementResolution({
+                    candidateCanonical: candidate.canonical,
+                    targetDomain,
+                    ruleType,
+                    resolution: resolution.output,
+                });
+                return result;
+            },
+        });
+    }
+
+    const guidanceDefinition = registry
+        .getDefinitions()
+        .find((definition) => definition.function.name === 'lookup_rule_guidance');
+    if (guidanceDefinition) {
+        registry.register({
+            definition: guidanceDefinition,
+            handler: async (args) => {
+                // The proxy registered during create is replaced below by a direct dispatch
+                // snapshot, so capture its result before replacing it.
+                const proxy = await host.dispatchBaseTool('lookup_rule_guidance', args);
+                if (proxy.error === undefined) {
+                    host.recordGuidanceConsulted();
+                }
+                return proxy;
+            },
+        });
+    }
+
+    registerReporterScreenshotTool(registry, {
+        issueAttachmentArtifactIds: host.issueAttachmentArtifactIds,
+        dispatchBaseTool: (name, args) => host.dispatchBaseTool(name, args),
+        cachedReporterScreenshotResult: (artifactId) =>
+            host.cachedReporterScreenshotResult(artifactId),
+        recordReporterScreenshotAnalysis: (artifactId, analysis, result) =>
+            host.recordReporterScreenshotAnalysis(artifactId, analysis, result),
+        recordScreenshotAnalysis: (artifactId) => host.recordScreenshotAnalysis(artifactId),
+        noteAntiBotChallengeCapture: (artifactId, result) => {
+            const captureSessionId = host.screenshotSessionId(artifactId);
+            const captureState = captureSessionId ? host.sessionState(captureSessionId) : undefined;
+            if (captureState && captureSessionId) {
+                host.countAntiBotChallenge(
+                    captureState.targetUrl,
+                    captureSessionId,
+                    `vision classified capture ${artifactId} as a challenge interstitial`,
+                    result,
+                );
+            }
+        },
+    });
+
+    registry.register({
+        definition: {
+            type: 'function',
+            function: {
+                name: 'inspect_full_page_capture',
+                description:
+                    'Inspect the latest screenshot(captureTiles=true) from the active browser ' +
+                    'session. The runner sends its full-page overview and ordered original-' +
+                    'resolution tiles to the dedicated vision model in bounded batches, ' +
+                    'returns one compact typed inventory, and reports exact artifact IDs for ' +
+                    'any batch that needs a focused analyze_screenshot retry.',
+                parameters: registeredParameters(ToolName.InspectFullPageCapture),
+            },
+        },
+        handler: async () => await host.inspectLatestFullPageCapture(),
+    });
+    host.markBaseTool('inspect_full_page_capture');
+
+    registry.register({
+        definition: {
+            type: 'function',
+            function: {
+                name: 'launch_browser',
+                description:
+                    'Start a fresh isolated headless Chromium MV3 session. Use extension=none ' +
+                    'for control or extension=prepared with model-selected settings.',
+                parameters: registeredParameters(ToolName.LaunchBrowser),
+            },
+        },
+        handler: async (args) =>
+            await withToolDeadline(
+                'launch_browser',
+                (signal) => host.launchBrowser(args, signal),
+                BROWSER_LAUNCH_DEADLINE_MS,
+            ),
+    });
+    host.markBaseTool('launch_browser');
+
+    registry.register({
+        definition: {
+            type: 'function',
+            function: {
+                name: 'close_browser',
+                description: 'Close the active browser before ending or changing environment.',
+                parameters: registeredParameters(ToolName.CloseBrowser),
+            },
+        },
+        handler: async () =>
+            await withToolDeadline(
+                'close_browser',
+                async () => {
+                    await host.dispose();
+                    return { closed: true };
+                },
+                BROWSER_TOOL_DEADLINE_MS,
+            ),
+    });
+    host.markBaseTool('close_browser');
+}

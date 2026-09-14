@@ -1,0 +1,121 @@
+# The `filters-agent` action face of the shared agent entry point.
+#
+# The action runs as a Docker container action over `action.Dockerfile`, which carries the
+# sources, `node_modules` and both browsers; the image boots `src/action/action-main.ts` through
+# tsx. There are deliberately no `default:` expressions in this metadata: the input names mirror
+# `src/action/action-input-binding.ts` one-to-one, and the runtime-side fallbacks
+# (`GITHUB_REPOSITORY`, the workspace, the container artifacts directory) are applied by the
+# binding, so this file and the binding cannot diverge. Inputs reach the container as `INPUT_*`
+# variables read in Node; the token never passes through a shell.
+name: 'filters-agent'
+description: >-
+    Analyzes a reported filtering issue or the open-issue backlog of this repository, verifies
+    proposed rules in the AdGuard extension, and posts the report as an issue comment; run
+    artifacts are published by the workflow through the outputs below. The LLM inputs are
+    mandatory and come from repository secrets.
+
+inputs:
+    repository:
+        description: >-
+            Repository slug (owner/repo) the run identifies itself with; defaults to the runner's
+            GITHUB_REPOSITORY.
+        required: false
+    issueNumber:
+        description: >-
+            Number of the issue to analyze; selecting it runs the single-issue mode.
+        required: false
+    backlog:
+        description: >-
+            'true' analyzes the repository's open-issue backlog instead of a single issue.
+        required: false
+    limit:
+        description: >-
+            Maximum number of backlog issues analyzed per run; unset means up to 50 issues in one
+            job, each a paid LLM run; the loop also stops at its wall-clock budget (default 5 h 30
+            min, overridable by an input) so one job stays under GitHub's 6-hour cap.
+        required: false
+    trustedRoles:
+        description: >-
+            Comma-separated GitHub author associations trusted to change a backlog issue's revision;
+            defaults to OWNER,MEMBER,COLLABORATOR.
+        required: false
+    maxRevisionsPerWindow:
+        description: >-
+            Maximum revision-marked reports one backlog issue may receive inside the rolling
+            revisionWindowMs window; defaults to the queue's revision budget.
+        required: false
+    revisionWindowMs:
+        description: >-
+            Length of the rolling window the revision budget counts against, in milliseconds;
+            defaults to the queue's revision window (24 hours).
+        required: false
+    backlogWallClockBudgetMs:
+        description: >-
+            Wall-clock budget for the whole backlog loop, in milliseconds; defaults to 5 h 30 min so
+            one job stays under GitHub's 6-hour cap. The loop stops taking new issues once the
+            remaining time can no longer fit one more issue's own investigation budget.
+        required: false
+    executors:
+        description: >-
+            Comma-separated executor names the analysis session may use; the public value is
+            'browser_extension'; empty means every registered executor.
+        required: false
+    instructionPath:
+        description: >-
+            Path of the run instruction file, relative to the checkout; when unset, the checkout's
+            default instruction at .github/filters-agent/AGENTS.md is loaded when present.
+        required: false
+    artifactsDir:
+        description: >-
+            Directory the run writes its artifacts to; defaults to filters-agent-artifacts/artifacts
+            under the checkout.
+        required: false
+    model:
+        description: >-
+            Reasoning-model slug overriding the LLM runtime's configured model.
+        required: false
+    noComment:
+        description: >-
+            'true' skips posting the report as an issue comment; the report is still written to the
+            artifacts directory.
+        required: false
+    checkoutPath:
+        description: >-
+            Path of the analyzed checkout; defaults to the runner's GITHUB_WORKSPACE.
+        required: false
+    githubToken:
+        description: >-
+            GitHub API token the run reads issues with; in practice mandatory in every run, since the
+            action only serves GitHub-read modes — a missing token fails the job named, even together
+            with noComment.
+        required: false
+    llmBaseUrl:
+        description: >-
+            OpenAI-compatible API base URL of the LLM provider.
+        required: true
+    llmApiKey:
+        description: >-
+            API key of the LLM provider; pass it from a repository secret.
+        required: true
+    llmModel:
+        description: >-
+            Default reasoning-model slug for the run's LLM sessions.
+        required: true
+    llmVisionModel:
+        description: >-
+            Model slug used for vision steps that read screenshots.
+        required: true
+
+outputs:
+    artifacts-dir:
+        description: >-
+            Directory the run wrote its artifacts to, relative to the checkout; feed it to
+            actions/upload-artifact.
+    status:
+        description: >-
+            How the run sealed: success, partial_failure (backlog runs with per-issue failures), or
+            failed.
+
+runs:
+    using: 'docker'
+    image: 'action.Dockerfile'

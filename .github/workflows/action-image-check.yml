@@ -1,0 +1,32 @@
+# Build the container action image on CI.
+#
+# A GitHub Actions container action builds its image fresh inside every job that uses it (see
+# `action.yml`'s `runs.using: docker`), so a broken `action.Dockerfile` only ever surfaces on a
+# real run unless something builds it ahead of time. This check does exactly that build, the same
+# way the runner would: `docker build -f action.Dockerfile .`, with the Dockerfile's own directory
+# as the build context. The recipe carries its own build-time proofs (browser launches, a boot of
+# the action face with no inputs) — this job only has to build it; no `docker run` here.
+
+name: Action image build check
+
+on:
+    pull_request:
+    push:
+        branches:
+            - main
+    workflow_dispatch:
+
+permissions:
+    contents: read
+
+jobs:
+    build:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Check out the repository
+              uses: actions/checkout@v6
+              with:
+                  persist-credentials: false
+
+            - name: Build the container action image
+              run: docker build -f action.Dockerfile .

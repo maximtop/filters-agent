@@ -1,0 +1,574 @@
+/**
+ * The candidate verdict: everything between a submitted terminal outcome and the patch a run is
+ * allowed to publish — extracting the proposal, deciding whether the runner-bound proof selected in
+ * `candidate-validation-selection.ts` is complete, and gating the patch on browser evidence.
+ *
+ * It lives beside the fix cores rather than inside the GitHub-hosted runner because all three fix
+ * paths — hosted, legacy local, and agentic — reach the same verdict from the same evidence.
+ */
+import { createHash } from 'node:crypto';
+import * as v from 'valibot';
+import { FixOutcomeKind, ReproductionStatus, type FixOutcome } from '../pr/fix-outcome';
+import { planRepositoryEdit } from '../repo/repository-edit';
+import { RuleKind, normalizeRule } from '../repo/rule-normalizer';
+import { RepositoryEditKind } from '../types/repository-edit-kind';
+import { parseCandidateValidationArtifactId } from '../types/candidate-artifact-identity';
+import type { CandidateVisualReview } from '../types/candidate-visual-review';
+import { CandidateVisualReviewSchema } from '../types/candidate-visual-review';
+import {
+    FixRunStatus,
+    SymptomObservation,
+    type CandidatePatch,
+    type VerifiedCandidateScreenshotPaths,
+} from '../types/fix-run-result';
+import type { ArtifactRef, RunTrace } from '../types/trace';
+import {
+    hasPersistedCandidateValidation,
+    verifiedCandidateScreenshotPaths,
+    type CandidateValidationSelection,
+} from './candidate-validation-selection';
+import {
+    RuleApplicationFactSchema,
+    ValidationViewportPositionSchema,
+    type RuleApplicationFact,
+} from '../types/validation';
+import {
+    calculateTrustedBaselineHash,
+    type TrustedValidationContext,
+} from '../validator/trusted-validation-context';
+
+/**
+ * Convert the rich internal rule proposal to the minimal deterministic publisher payload.
+ *
+ * The model-echoed placement carries no in-file position by schema; the exact insertion point is
+ * host-planned here from the pinned checkout and travels on `repositoryEdit`.
+ *
+ * @param outcome - Parsed LLM fix outcome.
+ * @param checkoutPath - Optional pinned checkout used to plan a domain-list extension.
+ * @returns A candidate patch for draft-PR outcomes, otherwise null.
+ */
+export function candidatePatchFromOutcome(
+    outcome: FixOutcome,
+    checkoutPath?: string,
+): CandidatePatch | null {
+    if (outcome.outcome !== FixOutcomeKind.DraftPr) {
+        return null;
+    }
+    const rule = outcome.ruleProposal.rule;
+    const filePath = outcome.ruleProposal.placement.filePath;
+    const normalized = normalizeRule(rule);
+    if (!normalized.syntaxKind) {
+        throw new Error(`Candidate has no actionable AdGuard syntax: ${rule}`);
+    }
+    const repositoryPlan = checkoutPath
+        ? planRepositoryEdit(
+              checkoutPath,
+              filePath,
+              rule,
+              outcome.ruleProposal.duplicateCheck.matches.map((match) => match.rule),
+          )
+        : { filePath, edit: { kind: RepositoryEditKind.Insert } };
+    return {
+        rule,
+        ruleType: outcome.ruleProposal.ruleType,
+        syntaxKind: normalized.syntaxKind,
+        filePath: repositoryPlan.filePath,
+        repositoryEdit: repositoryPlan.edit,
+    };
+}
+
+/**
+ * Derive the chronological rule order recorded by the browser phase applicator.
+ *
+ * The phase runner installs every network rule before navigation, then applies the remaining rules
+ * after navigation. Rules retain their original relative order inside each group. This helper
+ * deliberately preserves every input rule so unsupported or skipped inputs still fail the
+ * exact-length provenance check instead of being silently forgiven here.
+ *
+ * @param rules - Runner-owned rules supplied to one validation phase.
+ * @returns The exact chronological order expected in the phase's applied-rules evidence.
+ */
+function expectedRuleApplicationOrder(rules: readonly string[]): string[] {
+    const networkRules: string[] = [];
+    const postNavigationRules: string[] = [];
+    for (const rule of rules) {
+        if (normalizeRule(rule).kind === RuleKind.Network) {
+            networkRules.push(rule);
+        } else {
+            postNavigationRules.push(rule);
+        }
+    }
+    return [...networkRules, ...postNavigationRules];
+}
+
+/**
+ * Parse the complete rule-accounting ledger emitted for one validation phase.
+ *
+ * @param phase - Untrusted factual phase record.
+ * @returns Schema-valid ledger, or undefined when the phase predates or violates the contract.
+ */
+function parseRuleApplications(phase: Record<string, unknown>): RuleApplicationFact[] | undefined {
+    const parsed = v.safeParse(v.array(RuleApplicationFactSchema), phase.ruleApplications);
+    return parsed.success ? parsed.output : undefined;
+}
+
+/**
+ * Check that one phase ledger is an exact, duplicate-free partition of trusted input rules.
+ *
+ * `appliedRules` remains the browser execution order, while `ruleApplications` retains the exact
+ * input order and explicitly accounts for safely unsupported rules.
+ *
+ * @param phase - Untrusted factual phase record.
+ * @param expectedRules - Exact trusted rules supplied to the phase.
+ * @returns Parsed complete ledger, or undefined when membership or execution facts diverge.
+ */
+function verifiedRuleApplicationPartition(
+    phase: Record<string, unknown>,
+    expectedRules: readonly string[],
+): RuleApplicationFact[] | undefined {
+    if (new Set(expectedRules).size !== expectedRules.length) {
+        return undefined;
+    }
+    const facts = parseRuleApplications(phase);
+    if (
+        !facts ||
+        facts.length !== expectedRules.length ||
+        new Set(facts.map((fact) => fact.rule)).size !== facts.length ||
+        !facts.every((fact, index) => fact.rule === expectedRules[index])
+    ) {
+        return undefined;
+    }
+    const appliedRules = Array.isArray(phase.appliedRules) ? phase.appliedRules : undefined;
+    const expectedAppliedRules = expectedRuleApplicationOrder(
+        facts.filter((fact) => fact.status === 'applied').map((fact) => fact.rule),
+    );
+    if (
+        !appliedRules ||
+        appliedRules.length !== expectedAppliedRules.length ||
+        !appliedRules.every((rule, index) => rule === expectedAppliedRules[index])
+    ) {
+        return undefined;
+    }
+    return facts;
+}
+
+/**
+ * Apply the runner-bound visual-review gate to a model-proposed patch.
+ *
+ * A candidate remains eligible for the browser-unverified path only when no candidate validation
+ * was attempted. Once the runner has any factual result, the final candidate must be the matching
+ * verified rule. This prevents a model from bypassing a failed validation by rewriting the rule in
+ * its final response without applying the rewritten form.
+ *
+ * @param candidatePatch - Candidate extracted from the model outcome.
+ * @param hasMatchingValidation - Whether apply_rule produced evidence for this exact rule.
+ * @param candidateVerified - Whether the matching runner-bound vision review verified the rule.
+ * @param hasAnyValidation - Whether apply_rule attempted any candidate during this run.
+ * @returns The publishable candidate, or null when factual evidence did not verify the final rule.
+ */
+export function candidatePatchAfterFactualValidation(
+    candidatePatch: CandidatePatch | null,
+    hasMatchingValidation: boolean,
+    candidateVerified: boolean,
+    hasAnyValidation = hasMatchingValidation,
+): CandidatePatch | null {
+    if (candidatePatch && hasAnyValidation && (!hasMatchingValidation || !candidateVerified)) {
+        return null;
+    }
+    return candidatePatch;
+}
+
+/**
+ * Determine whether the sealed agent trace contains an apply-rule attempt.
+ *
+ * Tool dispatch is recorded even when validation returns early or throws before it can persist a
+ * factual artifact. Treating that call as an attempt keeps the publication gate fail-closed.
+ *
+ * @param trace - Sealed runner trace returned by the agent loop.
+ * @returns Whether the runner dispatched the apply_rule tool at least once.
+ */
+export function traceHasApplyRuleAttempt(trace: RunTrace): boolean {
+    return trace.events.some(
+        (event) => event.type === 'tool_call' && event.payload.tool === 'apply_rule',
+    );
+}
+
+/**
+ * Prevent reasoning-only fallback from publishing a model-proposed filter mutation.
+ *
+ * A screenshot and repository search can support a useful report, but without a usable live browser
+ * they cannot prove that the guessed selector exists or that the page remains intact.
+ *
+ * @param candidatePatch - Candidate remaining after runner-bound visual review.
+ * @param browserUsable - Whether the configured live browser produced usable evidence.
+ * @returns The candidate only when usable browser evidence was available, otherwise null.
+ */
+export function candidatePatchAfterBrowserEvidence(
+    candidatePatch: CandidatePatch | null,
+    browserUsable: boolean,
+): CandidatePatch | null {
+    return browserUsable ? candidatePatch : null;
+}
+
+/**
+ * Derive the product outcome without conflating missing tool evidence with non-reproduction.
+ *
+ * @param outcome - Explicit structured outcome returned by the agent.
+ * @param candidatePatch - Candidate patch extracted from the outcome, when present.
+ * @param browserUsable - Whether browser preflight produced usable evidence.
+ * @param symptomObservation - Explicit vision observation of the reporter-defined symptom.
+ * @returns The product status for the serialized result.
+ */
+export function deriveFixRunStatus(
+    outcome: FixOutcome,
+    candidatePatch: CandidatePatch | null,
+    browserUsable: boolean,
+    symptomObservation: SymptomObservation,
+): FixRunStatus {
+    if (candidatePatch) {
+        return FixRunStatus.PatchProposed;
+    }
+    if (outcome.outcome === FixOutcomeKind.ResolveWithoutPatch && browserUsable) {
+        if (outcome.runStatus === FixRunStatus.NotReproduced) {
+            return symptomObservation === SymptomObservation.NotReproduced
+                ? outcome.runStatus
+                : FixRunStatus.AnalysisOnly;
+        }
+        return symptomObservation === SymptomObservation.Reproduced
+            ? outcome.runStatus
+            : FixRunStatus.AnalysisOnly;
+    }
+    if (
+        outcome.outcome === FixOutcomeKind.ProposeClose &&
+        outcome.reproductionStatus === ReproductionStatus.NotReproduced &&
+        outcome.policyDecision.decision === 'allow_rule_generation' &&
+        browserUsable &&
+        symptomObservation === SymptomObservation.NotReproduced
+    ) {
+        return FixRunStatus.NotReproduced;
+    }
+    return FixRunStatus.AnalysisOnly;
+}
+
+/**
+ * Determine whether a complete runner-bound experiment has a verified visual-agent review.
+ *
+ * Browser measurements remain evidence only. This function checks mechanical provenance and
+ * evidence binding; it never interprets whether page content is semantically correct.
+ *
+ * @param factual - Parsed collect-only candidate experiment artifact.
+ * @param candidatePatch - Candidate patch expected in Phase C.
+ * @param expectedContext - Runner-owned issue URL and pinned repository baseline.
+ * @param visualReview - Typed semantic review produced from the experiment's four screenshots.
+ * @returns True only when mechanical experiment provenance is complete and vision verified it.
+ */
+export function isCandidatePatchVerified(
+    factual: unknown,
+    candidatePatch: CandidatePatch,
+    expectedContext?: TrustedValidationContext,
+    visualReview?: CandidateVisualReview,
+): boolean {
+    if (factual === null || typeof factual !== 'object' || !expectedContext || !visualReview) {
+        return false;
+    }
+    const parsedReview = v.safeParse(CandidateVisualReviewSchema, visualReview);
+    if (!parsedReview.success || parsedReview.output.verdict !== 'verified') {
+        return false;
+    }
+    const review = parsedReview.output;
+    const record = factual as Record<string, unknown>;
+    let recomputedBaselineHash: string;
+    try {
+        recomputedBaselineHash = calculateTrustedBaselineHash(
+            expectedContext.reportedUrl,
+            expectedContext.existingRules,
+        );
+    } catch {
+        return false;
+    }
+    const recordedContext = record.trustedValidationContext as Record<string, unknown> | undefined;
+    if (
+        expectedContext.baselineHash !== recomputedBaselineHash ||
+        recordedContext?.reportedUrl !== expectedContext.reportedUrl ||
+        recordedContext.baselineHash !== recomputedBaselineHash ||
+        recordedContext.existingRuleCount !== expectedContext.existingRules.length
+    ) {
+        return false;
+    }
+
+    const candidateRuleHash = createHash('sha256').update(candidatePatch.rule).digest('hex');
+    // A candidate validated more than once carries an execution suffix, so the identity is
+    // compared through the parser rather than against the bare legacy form.
+    const reviewIdentity = parseCandidateValidationArtifactId(review.validationArtifactId);
+    if (
+        review.candidateRuleHash !== candidateRuleHash ||
+        reviewIdentity === null ||
+        reviewIdentity.candidateShortHash !== candidateRuleHash.slice(0, 12)
+    ) {
+        return false;
+    }
+
+    const phaseA = record.phaseA as Record<string, unknown> | undefined;
+    const phaseB = record.phaseB as Record<string, unknown> | undefined;
+    const phaseC = record.phaseC as Record<string, unknown> | undefined;
+    if (!phaseA || !phaseB || !phaseC) {
+        return false;
+    }
+    if (
+        phaseA.url !== expectedContext.reportedUrl ||
+        phaseB.url !== expectedContext.reportedUrl ||
+        phaseC.url !== expectedContext.reportedUrl ||
+        phaseA.error ||
+        phaseB.error ||
+        phaseC.error
+    ) {
+        return false;
+    }
+    const phasesHaveCompleteVisualArtifacts = [phaseA, phaseB, phaseC].every(
+        (phase) =>
+            typeof phase.screenshotArtifactId === 'string' &&
+            phase.screenshotArtifactId.length > 0 &&
+            typeof phase.fullPageScreenshotArtifactId === 'string' &&
+            phase.fullPageScreenshotArtifactId.length > 0,
+    );
+    if (!phasesHaveCompleteVisualArtifacts) {
+        return false;
+    }
+
+    const phaseARuleApplications = verifiedRuleApplicationPartition(phaseA, []);
+    const phaseBRuleApplications = verifiedRuleApplicationPartition(
+        phaseB,
+        expectedContext.existingRules,
+    );
+    const phaseCExpectedRules = [...expectedContext.existingRules, candidatePatch.rule];
+    const phaseCRuleApplications = verifiedRuleApplicationPartition(phaseC, phaseCExpectedRules);
+    const candidateApplication = phaseCRuleApplications?.at(-1);
+    if (
+        !phaseARuleApplications ||
+        !phaseBRuleApplications ||
+        !phaseCRuleApplications ||
+        candidateApplication?.rule !== candidatePatch.rule ||
+        candidateApplication?.status !== 'applied' ||
+        !phaseBRuleApplications.every((fact, index) => {
+            const phaseCFact = phaseCRuleApplications[index];
+            return phaseCFact?.rule === fact.rule && phaseCFact.status === fact.status;
+        })
+    ) {
+        return false;
+    }
+
+    const controlViewportId = phaseC.sameDocumentControlScreenshotArtifactId;
+    const controlFullPageId = phaseC.sameDocumentControlFullPageScreenshotArtifactId;
+    const hasAnySameDocumentControl =
+        typeof controlViewportId === 'string' || typeof controlFullPageId === 'string';
+    let beforeViewportId = phaseB.screenshotArtifactId;
+    let beforeFullPageId = phaseB.fullPageScreenshotArtifactId;
+    if (hasAnySameDocumentControl) {
+        const parsedControlViewport = v.safeParse(
+            ValidationViewportPositionSchema,
+            phaseC.sameDocumentControlViewport,
+        );
+        const parsedCandidateViewport = v.safeParse(
+            ValidationViewportPositionSchema,
+            phaseC.candidateViewport,
+        );
+        if (
+            phaseC.sameDocumentControlError ||
+            typeof controlViewportId !== 'string' ||
+            controlViewportId.length === 0 ||
+            typeof controlFullPageId !== 'string' ||
+            controlFullPageId.length === 0 ||
+            !parsedControlViewport.success ||
+            !parsedCandidateViewport.success ||
+            Math.abs(parsedControlViewport.output.x - parsedCandidateViewport.output.x) > 1 ||
+            Math.abs(parsedControlViewport.output.y - parsedCandidateViewport.output.y) > 1
+        ) {
+            return false;
+        }
+        beforeViewportId = controlViewportId;
+        beforeFullPageId = controlFullPageId;
+    }
+
+    return (
+        review.beforeViewportArtifactId === beforeViewportId &&
+        review.afterViewportArtifactId === phaseC.screenshotArtifactId &&
+        review.beforeFullPageArtifactId === beforeFullPageId &&
+        review.afterFullPageArtifactId === phaseC.fullPageScreenshotArtifactId
+    );
+}
+
+/**
+ * One fix path's inputs to the shared candidate verdict.
+ *
+ * The three defaulted fields are the only places the hosted, legacy, and agentic paths genuinely
+ * disagree; every other step of the verdict is identical for all three.
+ */
+export interface CandidateVerdictRequest {
+    /**
+     * Candidate the safety-enforced terminal outcome proposes, or null when it proposes none.
+     */
+    proposedCandidate: CandidatePatch | null;
+
+    /**
+     * Runner-bound validation selected for that exact candidate, when the run produced one.
+     */
+    selectedValidation: CandidateValidationSelection | undefined;
+
+    /**
+     * Sealed run trace, read for whether any candidate validation was ever dispatched.
+     */
+    trace: RunTrace;
+
+    /**
+     * Every artifact the recorder registered during the run.
+     */
+    artifacts: ArtifactRef[];
+
+    /**
+     * Trusted baseline context the verified candidate is checked against, when one exists.
+     */
+    trustedValidationContext?: TrustedValidationContext;
+
+    /**
+     * Whether the live browser produced usable evidence for this run.
+     */
+    browserUsable: boolean;
+
+    /**
+     * Extra precondition on semantic verification, defaulting to satisfied.
+     *
+     * The agentic path binds a verified candidate to the exact browser session that proved it, and
+     * a candidate with no such environment is not verified however good its review reads. The
+     * hosted and legacy paths have no per-session binding to check.
+     */
+    boundToVerifiedEnvironment?: boolean;
+
+    /**
+     * What counts as complete visual evidence behind a semantically verified candidate.
+     *
+     * Defaults to the verified screenshot set being present. The agentic path demands more: the
+     * whole serialized candidate binding, of which the screenshots are one part.
+     *
+     * @param verifiedScreenshots - Screenshot set backing the verified candidate, when complete.
+     * @returns Whether the evidence behind the candidate is complete.
+     */
+    completeCandidateEvidence?: (
+        verifiedScreenshots: VerifiedCandidateScreenshotPaths | undefined,
+    ) => boolean;
+
+    /**
+     * Whether a candidate may publish when the run validated nothing at all, defaulting to no.
+     *
+     * The hosted runner allows it — a run that never reached apply_rule still publishes the model's
+     * proposal as a draft for a human to judge. Both local cores refuse: their whole purpose is the
+     * runner-bound proof, so an unproven candidate is downgraded to analysis-only.
+     */
+    publishableWithoutValidation?: boolean;
+}
+
+/**
+ * The verdict every fix path reaches from the same candidate evidence.
+ */
+export interface CandidateVerdict {
+    /**
+     * Whether the run dispatched, or produced an artifact for, any candidate validation.
+     */
+    hasAnyValidation: boolean;
+
+    /**
+     * Whether the runner-bound review semantically verified the exact proposed candidate.
+     */
+    semanticallyVerified: boolean;
+
+    /**
+     * Screenshot set backing a semantically verified candidate, or undefined when incomplete.
+     */
+    verifiedScreenshots: VerifiedCandidateScreenshotPaths | undefined;
+
+    /**
+     * Whether the candidate is verified with complete evidence behind it.
+     */
+    candidateVerified: boolean;
+
+    /**
+     * The candidate remaining after the factual-validation gate, before the browser-evidence gate.
+     *
+     * Null here means the run had validation evidence that did not back this exact rule, which is
+     * the rejection a fix path reports differently from an unusable browser.
+     */
+    candidateAfterValidation: CandidatePatch | null;
+
+    /**
+     * The candidate this run may publish, or null once a gate refused it.
+     */
+    candidatePatch: CandidatePatch | null;
+}
+
+/**
+ * Reach the candidate verdict: what the evidence proves, and what the run may publish because of
+ * it.
+ *
+ * The sequence is the same everywhere — semantic review, complete visual evidence, the
+ * factual-validation gate, then the browser-evidence gate — so it lives here once instead of being
+ * restated by each fix path.
+ *
+ * `hasAnyValidation` deliberately takes the widest of the definitions the three paths carried
+ * before they shared this function: a traced apply_rule dispatch _or_ a persisted validation
+ * artifact. The legacy and agentic cores read the trace alone, so a run whose trace was truncated
+ * after the artifact landed now reports a validation rejection where it once reported no validation
+ * at all. That is the fail-closed direction — the artifact is proof the runner did judge this exact
+ * candidate, and forgiving it would let a truncated trace publish an unproven rule as if nothing
+ * had ever been tried.
+ *
+ * @param request - The run's candidate evidence and the three path-specific gates.
+ * @returns The verdict and the publishable candidate it leaves.
+ */
+export function resolveCandidateVerdict(request: CandidateVerdictRequest): CandidateVerdict {
+    const {
+        proposedCandidate,
+        selectedValidation,
+        artifacts,
+        browserUsable,
+        boundToVerifiedEnvironment = true,
+        publishableWithoutValidation = false,
+    } = request;
+    // A validation artifact without a traced apply_rule call cannot happen from a complete trace,
+    // but counting it keeps the publication gate fail-closed if one is ever truncated.
+    const hasAnyValidation =
+        traceHasApplyRuleAttempt(request.trace) || hasPersistedCandidateValidation(artifacts);
+    const semanticallyVerified =
+        proposedCandidate !== null &&
+        boundToVerifiedEnvironment &&
+        isCandidatePatchVerified(
+            selectedValidation?.factualValidation,
+            proposedCandidate,
+            request.trustedValidationContext,
+            selectedValidation?.visualReview,
+        );
+    const verifiedScreenshots = verifiedCandidateScreenshotPaths(
+        selectedValidation,
+        artifacts,
+        semanticallyVerified,
+    );
+    const completeEvidence =
+        request.completeCandidateEvidence ?? ((screenshots) => screenshots !== undefined);
+    const candidateVerified = semanticallyVerified && completeEvidence(verifiedScreenshots);
+    const candidateAfterValidation = candidatePatchAfterFactualValidation(
+        proposedCandidate,
+        selectedValidation !== undefined,
+        candidateVerified,
+        hasAnyValidation,
+    );
+    const candidatePatch = candidatePatchAfterBrowserEvidence(
+        candidateVerified || publishableWithoutValidation ? candidateAfterValidation : null,
+        browserUsable,
+    );
+    return {
+        hasAnyValidation,
+        semanticallyVerified,
+        verifiedScreenshots,
+        candidateVerified,
+        candidateAfterValidation,
+        candidatePatch,
+    };
+}

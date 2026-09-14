@@ -1,0 +1,17 @@
+.git
+.env
+.env.*
+!.env.example
+node_modules
+dist
+artifacts
+traces
+replays
+coverage
+tmp
+.benchmark/run
+.live/docker-output
+# `lab/`, `tests/`, `scripts/` and `benchmark/` are deliberately kept: the lab recipe (`Dockerfile`)
+# does an unqualified `COPY . .` and builds them, while nothing in either image reads `.sdd`.
+.sdd
+*.log

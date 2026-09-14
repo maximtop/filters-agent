@@ -1,0 +1,11 @@
+diff --git a/dist/index.node.js b/dist/index.node.js
+index 0b9de42b8b83cd02292a56fb2d50d622f1e8bab3..05567bc70a853c9d373f8bc729ba65179335ac49 100644
+--- a/dist/index.node.js
++++ b/dist/index.node.js
+@@ -12,5 +12,5 @@ export { LinterConsoleReporter } from './linter/cli/reporters/console.js';
+ export { scan } from './linter/cli/scan.js';
+ export { walk } from './linter/cli/walk.js';
+ export { buildConfigForDirectory } from './linter/cli/config-builder.js';
+-export { configFinder, findNextConfig, findNextRootConfig } from './linter/cli/config-finder.js';
++export { configFinder } from './linter/cli/config-finder.js';
+ export { NoConfigError } from './linter/cli/errors/no-config-error.js';

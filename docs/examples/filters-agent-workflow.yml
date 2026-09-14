@@ -1,0 +1,77 @@
+# Example workflow for the `filters-agent` action. Copy this into a filter-list repository's
+# `.github/workflows/` to connect it — see ../../README.md for the full connection steps.
+#
+# This file is a template, not active configuration, which is why it lives in docs/examples/
+# rather than .github/workflows/: nobody labels issues here, so an `issues: labeled` trigger left
+# active in this repository would simply never fire.
+name: 'filters-agent'
+
+on:
+    # `labeled`, not `opened`: every run is a paid LLM call, so a run only starts on a label a
+    # maintainer adds themselves, deliberately, rather than on every issue anyone opens. GitHub
+    # cannot filter by label name in this block — `labeled` fires for any label — so the job below
+    # re-checks it.
+    issues:
+        types:
+            - labeled
+    workflow_dispatch:
+        inputs:
+            issueNumber:
+                description: 'Issue number to analyze'
+                required: true
+                type: string
+
+# The report comment posts from the workflow token, and issue reading needs only read access to
+# repository contents — no elevated scope.
+permissions:
+    contents: read
+    issues: write
+
+jobs:
+    analyze:
+        # Manual dispatch always runs; an issue event runs only for the label this workflow owns.
+        if: ${{ github.event_name == 'workflow_dispatch' || github.event.label.name == 'filters-agent' }}
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v6
+              with:
+                  # The action takes its own token, so dropping the checkout credential keeps it out of
+                  # .git/config in the mounted workspace, where run commands could read it.
+                  persist-credentials: false
+
+            # A released tag (for example @v1) replaces @main once one exists; @main tracks the
+            # action's default branch.
+            - name: Analyze the issue
+              id: agent
+              uses: maximtop/filters-agent@main
+              with:
+                  # Mandatory in every run: the action only serves GitHub-read modes, and the report
+                  # comment posts through this token (the issues: write permission above).
+                  githubToken: ${{ github.token }}
+                  # Only the API key is a secret; the endpoint and the two model slugs below are
+                  # plain values in this file. Replace all three with your own provider's — shown
+                  # here in the shape an OpenRouter-compatible endpoint takes.
+                  llmBaseUrl: https://openrouter.ai/api/v1
+                  llmApiKey: ${{ secrets.FILTERS_AGENT_LLM_API_KEY }}
+                  llmModel: <reasoning model slug>
+                  llmVisionModel: <vision model slug>
+                  # The label event carries the issue number directly; a manual dispatch carries it
+                  # as the issueNumber input instead.
+                  issueNumber: ${{ github.event.issue.number || inputs.issueNumber }}
+                  # repository, checkoutPath and artifactsDir are not passed: the binding falls back to
+                  # the runner's GITHUB_REPOSITORY and GITHUB_WORKSPACE. Inside the action's container
+                  # the default artifacts directory is filters-agent-artifacts/artifacts under the
+                  # checkout, and the artifacts-dir output is already workspace-relative, so the upload
+                  # step below resolves it unchanged. The checkout's default instruction
+                  # (.github/filters-agent/AGENTS.md) is probed automatically; pass instructionPath to
+                  # override it.
+
+            # A failed run is the one whose entry-result.json matters most, so the upload does not wait
+            # for success; it is skipped only when the job was cancelled or the action exited before it
+            # published an artifacts directory (missing inputs, missing browser).
+            - name: Upload run artifacts
+              if: ${{ !cancelled() && steps.agent.outputs.artifacts-dir != '' }}
+              uses: actions/upload-artifact@v4
+              with:
+                  name: filters-agent-artifacts-${{ github.run_number }}
+                  path: ${{ steps.agent.outputs.artifacts-dir }}
