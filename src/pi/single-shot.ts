@@ -10,6 +10,7 @@ import {
     type SingleShotResult,
     type SingleShotStructuredOptions,
 } from './single-shot-types';
+import type { Logger } from '../logger/logger';
 import type { PiRuntime } from './runtime';
 import { completeOnce } from './single-shot-completion';
 import { toPiMessages } from './single-shot-input';
@@ -196,10 +197,12 @@ export async function runStructuredSingleShot<T>(
     const usages: CompletionUsage[] = [];
     let lastFailure = 'unknown validation failure';
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+        const startedAt = Date.now();
         const message = await completeOnce(runtime, model, systemPrompt, messages, {
             ...options,
             sessionId,
         });
+        const durationMs = Date.now() - startedAt;
         if (message.stopReason !== TurnStopReason.Stop) {
             // Account for the attempt before returning: a provider call that failed is still a
             // provider call, and dropping it let a run whose last call failed report COMPLETE
@@ -215,6 +218,7 @@ export async function runStructuredSingleShot<T>(
                     message: failureMessage,
                     attempts: attempt,
                     model: model.id,
+                    durationMs,
                 },
                 'single-shot LLM call failed: provider or daemon error',
             );
@@ -226,7 +230,9 @@ export async function runStructuredSingleShot<T>(
                 model: model.id,
             };
         }
-        usages.push(toCompletionUsage(model.id, message.usage));
+        const usage = toCompletionUsage(model.id, message.usage);
+        usages.push(usage);
+        logSingleShotCompletion(options.logger, model.id, message, durationMs, usage, attempt);
         try {
             return {
                 kind: SingleShotResultKind.Parsed,
@@ -272,6 +278,43 @@ export async function runStructuredSingleShot<T>(
 }
 
 /**
+ * Log one completed single-shot call with its wall time and token counts.
+ *
+ * A single-shot call has no turn in the trace: a live run spent 22 minutes inside the intake
+ * extraction with nothing logged in between, and that silence was indistinguishable from a hang
+ * until the call returned. Wall time beside the token counts is what tells a trickling stream from
+ * a long answer.
+ *
+ * @param logger - Diagnostics sink; nothing is logged without one.
+ * @param modelId - Model the call was bound to.
+ * @param message - The completed assistant message.
+ * @param durationMs - Wall time from the request start to the completed message.
+ * @param usage - The call's token accounting.
+ * @param attempt - One-based attempt index within the single-shot call.
+ */
+function logSingleShotCompletion(
+    logger: Logger | undefined,
+    modelId: string,
+    message: AssistantMessage,
+    durationMs: number,
+    usage: CompletionUsage,
+    attempt: number,
+): void {
+    logger?.info(
+        {
+            model: modelId,
+            stopReason: message.stopReason,
+            durationMs,
+            attempt,
+            inputTokens: usage.input,
+            outputTokens: usage.output,
+            reasoningTokens: usage.reasoningTokens,
+        },
+        'single-shot LLM call completed',
+    );
+}
+
+/**
  * Bind one model handle into the consumer-facing single-shot client.
  *
  * @param runtime - The pi runtime the handle belongs to.
@@ -297,6 +340,7 @@ export function createSingleShotClient(
             }),
         text: async (options: SingleShotCallOptions): Promise<SingleShotResult<string>> => {
             const converted = await toPiMessages(options.messages);
+            const startedAt = Date.now();
             const message = await completeOnce(
                 runtime,
                 model,
@@ -310,8 +354,17 @@ export function createSingleShotClient(
                     ...options,
                 },
             );
+            const durationMs = Date.now() - startedAt;
             const usages = [toCompletionUsage(model.id, message.usage)];
             if (message.stopReason === TurnStopReason.Stop) {
+                logSingleShotCompletion(
+                    options.logger ?? defaults.logger,
+                    model.id,
+                    message,
+                    durationMs,
+                    usages[0]!,
+                    1,
+                );
                 return {
                     kind: SingleShotResultKind.Parsed,
                     value: contentText(message.content),
@@ -331,6 +384,7 @@ export function createSingleShotClient(
                     message: failureMessage,
                     attempts: 1,
                     model: model.id,
+                    durationMs,
                 },
                 'single-shot LLM call failed: provider or daemon error',
             );
