@@ -2,6 +2,7 @@ import type { Api, AssistantMessage, Message, Model } from '@earendil-works/pi-a
 import { ReasoningEffort, type ActiveReasoningEffort } from '../config/reasoning-effort';
 import type { SingleShotCallOptions } from './single-shot-types';
 import type { PiRuntime } from './runtime';
+import { isTransientGatewayFailure } from './transient-gateway-retry';
 
 /**
  * One bounded provider completion for the single-shot mechanism: the pi request mapping (sampling,
@@ -33,6 +34,12 @@ import type { PiRuntime } from './runtime';
  * the dominant existing behavior.
  */
 const DEFAULT_TEMPERATURE = 0;
+
+/**
+ * Base delay before a transient-failure retry of one single-shot call; multiplied by the retry
+ * ordinal, so the second retry waits twice as long.
+ */
+const TRANSIENT_RETRY_DELAY_MS = 1_000;
 
 /**
  * Map the configured reasoning effort onto the provider request field, or onto nothing.
@@ -107,9 +114,53 @@ export type SingleShotCompletionOptions = Omit<SingleShotCallOptions, 'messages'
  * @param systemPrompt - Optional system prompt.
  * @param messages - Pi message list.
  * @param options - Call controls, including the cache-routing session id.
- * @returns The raw assistant message (pi resolves provider failures instead of throwing).
+ * @returns The raw assistant message (pi resolves provider failures instead of throwing). A
+ *   transient gateway failure mid-stream — the same set the agent loop's seam retries
+ *   (`isTransientGatewayFailure`) — is retried here up to `options.maxRetries` times with a short
+ *   growing delay: pi's own transport retry (`maxRetries` on the request) decides on the HTTP
+ *   status of the request phase alone, so a fault after the headers surfaced as an error message
+ *   and was never retried on this path; a live run's candidate visual review went "unavailable" on
+ *   one such fault. A caller abort and every deterministic failure return at once.
  */
 export async function completeOnce(
+    runtime: PiRuntime,
+    model: Model<Api>,
+    systemPrompt: string | undefined,
+    messages: Message[],
+    options: SingleShotCompletionOptions,
+): Promise<AssistantMessage> {
+    const maxRetries = options.maxRetries ?? 0;
+    for (let retry = 0; ; retry += 1) {
+        const message = await completeUnretried(runtime, model, systemPrompt, messages, options);
+        if (
+            retry >= maxRetries ||
+            options.signal?.aborted === true ||
+            !isTransientGatewayFailure(message)
+        ) {
+            return message;
+        }
+        options.logger?.warn(
+            { message: message.errorMessage, retry: retry + 1, maxRetries, model: model.id },
+            'single-shot LLM call met a transient gateway failure mid-stream; retrying',
+        );
+        await new Promise<void>((resolve) => {
+            const timer = setTimeout(resolve, TRANSIENT_RETRY_DELAY_MS * (retry + 1));
+            timer.unref();
+        });
+    }
+}
+
+/**
+ * One streamed completion with the inactivity bound, no retry: what {@link completeOnce} repeats.
+ *
+ * @param runtime - The pi runtime the call goes through.
+ * @param model - Bound model handle.
+ * @param systemPrompt - Optional system prompt.
+ * @param messages - Pi message list.
+ * @param options - Call controls, including the cache-routing session id.
+ * @returns The raw assistant message (pi resolves provider failures instead of throwing).
+ */
+async function completeUnretried(
     runtime: PiRuntime,
     model: Model<Api>,
     systemPrompt: string | undefined,

@@ -128,10 +128,15 @@ interface RetryDecidingSession {
  * overflow, a zero-output `length` stop) require a non-error stop reason, which the first guard has
  * already excluded.
  *
+ * Exported for the single-shot path: a vision or extraction call meets the same gateway faults
+ * mid-stream, and pi's transport retry there decides on the HTTP status of the request phase alone
+ * — a fault after the headers surfaces as an error message and was never retried, so one stream
+ * fault on a candidate's visual review left the review "unavailable" in a live run.
+ *
  * @param message - The failed turn's assistant message, as pi hands it to its own predicate.
  * @returns True when the turn should be retried despite pi classifying it as terminal.
  */
-function isTransientGatewayFailure(message: AssistantMessage): boolean {
+export function isTransientGatewayFailure(message: AssistantMessage): boolean {
     if (message.stopReason !== TurnStopReason.Error) {
         return false;
     }
