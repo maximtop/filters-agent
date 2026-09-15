@@ -197,9 +197,9 @@ export interface SingleShotCallOptions {
 
     /**
      * Reasoning effort for this call, overriding the bound client's default (mapped from
-     * `llm.reasoningEffort` at the wiring sites). `off` — and an absent value — sends no reasoning
-     * parameter. It reaches the wire only for a model registered `reasoning: true`, so it is inert
-     * on a client bound to the vision model and live on one bound to a reasoning model.
+     * `llm.singleShotReasoningEffort` at the wiring sites). `off` — and an absent value — sends no
+     * reasoning parameter. It reaches the wire only for a model registered `reasoning: true`, so it
+     * is inert on a client bound to the vision model and live on one bound to a reasoning model.
      */
     reasoningEffort?: ReasoningEffort;
 
@@ -282,8 +282,9 @@ export interface SingleShotClientDefaults {
     maxRetries?: number;
 
     /**
-     * Reasoning effort applied to every call of this client, mapped from `llm.reasoningEffort` by
-     * `createConfiguredSingleShotClient`; a call may override it.
+     * Reasoning effort applied to every call of this client, mapped from
+     * `llm.singleShotReasoningEffort` by `createConfiguredSingleShotClient`; a call may override
+     * it.
      */
     reasoningEffort?: ReasoningEffort;
 

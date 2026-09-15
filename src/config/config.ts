@@ -133,12 +133,28 @@ export const DEFAULT_VISION_MAX_OUTPUT_TOKENS = DEFAULT_MODEL_MAX_OUTPUT_TOKENS;
  * down to it. The vision model is registered `reasoning: false`, so pi sends nothing for it
  * whatever this says.
  *
- * This is the ONLY place the level is defaulted. `reasoningEffort` is a required configuration
- * field, so every consumer — the loop session's `thinkingLevel`, the single-shot clients' request
- * field — reads a value that is always present, and no layer downstream may substitute one: handing
- * pi no level at all silently buys pi's own default of `medium`.
+ * This is the ONLY place the loop level is defaulted. `reasoningEffort` is a required configuration
+ * field, so its consumer — the loop session's `thinkingLevel` — reads a value that is always
+ * present, and no layer downstream may substitute one: handing pi no level at all silently buys
+ * pi's own default of `medium`. The single-shot clients carry their own level,
+ * {@link DEFAULT_SINGLE_SHOT_REASONING_EFFORT}.
  */
 const DEFAULT_REASONING_EFFORT = ReasoningEffort.High;
+
+/**
+ * Reasoning effort every single-shot call carries when `LLM_SINGLE_SHOT_REASONING_EFFORT` names
+ * none: the intake extraction, the benchmark reviewer and every vision verdict.
+ *
+ * One step below the loop's `high`, at the maintainer's call (2026-09-15): a single-shot call
+ * answers one bounded structured question — extract the report from an issue, describe one
+ * screenshot — and its thinking is paid on the run's critical path with nothing to plan across
+ * turns. On the live bench a run spent 22 minutes inside the intake extraction and its vision calls
+ * spent 173k of 177k output tokens on reasoning; the loop keeps `high` because it plans an
+ * investigation across many turns. The vision model is registered `reasoning: false`, so pi sends
+ * nothing for it whatever this says; the level reaches the wire on the reasoning model's single
+ * shots.
+ */
+const DEFAULT_SINGLE_SHOT_REASONING_EFFORT = ReasoningEffort.Medium;
 
 const CoreConfigSchema = v.object({
     llm: v.object({
@@ -149,6 +165,7 @@ const CoreConfigSchema = v.object({
         requestTimeoutMs: v.pipe(v.number(), v.integer(), v.minValue(30_000), v.maxValue(300_000)),
         requestMaxAttempts: v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(3)),
         reasoningEffort: v.picklist(REASONING_EFFORT_VALUES),
+        singleShotReasoningEffort: v.picklist(REASONING_EFFORT_VALUES),
         contextWindowTokens: v.pipe(v.number(), v.integer(), v.minValue(1)),
         maxOutputTokens: v.pipe(v.number(), v.integer(), v.minValue(1)),
         visionMaxOutputTokens: v.pipe(v.number(), v.integer(), v.minValue(1)),
@@ -287,6 +304,8 @@ function buildRawCoreConfig(env: Record<string, string | undefined>): Record<str
             // level is in force that no request ever carries — the exact drift this field exists
             // to make visible.
             reasoningEffort: env.LLM_REASONING_EFFORT ?? DEFAULT_REASONING_EFFORT,
+            singleShotReasoningEffort:
+                env.LLM_SINGLE_SHOT_REASONING_EFFORT ?? DEFAULT_SINGLE_SHOT_REASONING_EFFORT,
             // The three catalog limits are defaulted HERE and nowhere else, like the bounds above:
             // every layer that registers a model reads a value that is always present, so a
             // deployment's configured limit can never be shadowed by a downstream fallback.
