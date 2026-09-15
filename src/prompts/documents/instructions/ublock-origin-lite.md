@@ -83,6 +83,18 @@ A maintainer who wants the candidate inside uBOL's shipped rulesets takes the DN
 instead: rebuild those rulesets from the list with the candidate merged and record the elapsed
 wall time — the runner measurement the open question about the rebuild's job-time fit needs.
 
+## Placement
+
+An accepted rule goes at the end of this repository's current-year filters file, preceded by a
+comment line holding nothing but the issue URL — the placement the linked contributing guide
+describes. The host takes it from this one declaration and proposes exactly that:
+
+placement: filters/filters-{{year}}.txt comment: ! {{issueUrl}}
+
+The run fills the year from the date it runs on and the URL from the issue it is working, so the
+line needs no editing between runs. The custom-filters file named under State verification is the
+in-browser application path only; it never receives the proposed rule.
+
 ## Issue selection
 
 Take issues reported through the uBOL report form that report broken filtering on real pages —
@@ -131,9 +143,10 @@ holds in uBlock Origin.
 
 {{listPlace}}
 
-Proposed placement: appended at the end of the current year's filters file, with the issue URL in
-a preceding comment. The file named above is that list file; the custom-filters file the run
-verified against is the in-browser application path only.
+Proposed placement: the file and comment line the Placement section declares — the end of the
+current year's filters file, behind a comment holding the issue URL. The file named above is that
+list file; the custom-filters file the run verified against is the in-browser application path
+only.
 
 ### Missing information
 

@@ -112,6 +112,7 @@ import type { MatchedIssueScreenshot } from '../types/site-analysis';
 import type { IssueFacts } from '../types/issue-facts';
 import { parseRuleApplication } from '../knowledge/instruction-application';
 import type { LoadedInstruction } from '../knowledge/instruction-loader';
+import type { DeclaredPlacement } from '../types/declared-placement';
 import type { LlmConfig } from '../config/config';
 import type { PiRuntime } from '../pi/runtime';
 import type { RunUsageCollector } from '../pi/usage-collector';
@@ -449,6 +450,13 @@ export interface AgentRuntimeOptions {
      * instruction.
      */
     instruction?: LoadedInstruction;
+
+    /**
+     * The placement this run's instruction declares, rendered once by the core at run start. It is
+     * the answer `resolve_placement` gives and the file the candidate's edit appends to; absent
+     * leaves the deterministic language-and-section routing in charge.
+     */
+    declaredPlacement?: DeclaredPlacement;
 
     /**
      * Validated LLM provider configuration the bounded application sessions are launched with.
@@ -1368,6 +1376,9 @@ export class AgentRuntime {
                 allowedIssueNumber: options.issue.number,
                 checkoutPath: options.filtersPath,
                 placementMap: listCatalog.placementMap ?? undefined,
+                ...(options.declaredPlacement === undefined
+                    ? {}
+                    : { declaredPlacement: options.declaredPlacement }),
                 visionTools: {
                     artifactsDir: options.artifactsDir,
                     recorder: options.recorder,
@@ -3227,6 +3238,9 @@ export class AgentRuntime {
             // The same walked map the base registry received: the run never walks the filter tree
             // a second time for the checkout tools.
             placementMap: this.listCatalog.placementMap ?? undefined,
+            ...(this.options.declaredPlacement === undefined
+                ? {}
+                : { declaredPlacement: this.options.declaredPlacement }),
             browserTools: {
                 session,
                 analyzer,

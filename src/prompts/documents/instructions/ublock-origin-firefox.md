@@ -87,6 +87,18 @@ enabled set from the declaration above — the lists Firefox applied when it for
 and records that the user-filter state itself was credited from the file's content alone (see
 `docs/modules/browser-with-extension.md`).
 
+## Placement
+
+An accepted rule goes at the end of this repository's current-year filters file, preceded by a
+comment line holding nothing but the issue URL — the placement the linked contributing guide
+describes. The host takes it from this one declaration and proposes exactly that:
+
+placement: filters/filters-{{year}}.txt comment: ! {{issueUrl}}
+
+The run fills the year from the date it runs on and the URL from the issue it is working, so the
+line needs no editing between runs. The user-filters file named under State verification is the
+in-browser application path only; it never receives the proposed rule.
+
 ## Issue selection
 
 Take issues that report broken filtering on real pages — ads, banners, trackers or similar
@@ -133,9 +145,9 @@ uBlock Origin in Firefox, installed from the signed release XPI named under Prep
 
 {{listPlace}}
 
-Proposed placement: appended at the end of the current year's filters file, with the issue URL in
-a preceding comment. The file named above is that list file; the user-filters file the run
-verified against is the in-browser application path only.
+Proposed placement: the file and comment line the Placement section declares — the end of the
+current year's filters file, behind a comment holding the issue URL. The file named above is that
+list file; the user-filters file the run verified against is the in-browser application path only.
 
 ### Missing information
 

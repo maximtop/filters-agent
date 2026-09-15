@@ -11,6 +11,7 @@ import * as v from 'valibot';
 import { FixOutcomeKind, ReproductionStatus, type FixOutcome } from '../pr/fix-outcome';
 import { planRepositoryEdit } from '../repo/repository-edit';
 import { RuleKind, normalizeRule } from '../repo/rule-normalizer';
+import type { DeclaredPlacement } from '../types/declared-placement';
 import { RepositoryEditKind } from '../types/repository-edit-kind';
 import { parseCandidateValidationArtifactId } from '../types/candidate-artifact-identity';
 import type { CandidateVisualReview } from '../types/candidate-visual-review';
@@ -43,13 +44,21 @@ import {
  * The model-echoed placement carries no in-file position by schema; the exact insertion point is
  * host-planned here from the pinned checkout and travels on `repositoryEdit`.
  *
+ * A run whose instruction declares its placement plans against that declaration: the patch keeps
+ * the declared file, appends at its end, and carries the declared comment line. Without the
+ * declaration the planner may retarget the patch to a shared-rule owner in another file, which is
+ * exactly what a repository that stated where its rules go did not ask for.
+ *
  * @param outcome - Parsed LLM fix outcome.
  * @param checkoutPath - Optional pinned checkout used to plan a domain-list extension.
+ * @param declaredPlacement - The run's declared placement, rendered once at run start, when its
+ *   instruction declares one.
  * @returns A candidate patch for draft-PR outcomes, otherwise null.
  */
 export function candidatePatchFromOutcome(
     outcome: FixOutcome,
     checkoutPath?: string,
+    declaredPlacement?: DeclaredPlacement,
 ): CandidatePatch | null {
     if (outcome.outcome !== FixOutcomeKind.DraftPr) {
         return null;
@@ -66,6 +75,7 @@ export function candidatePatchFromOutcome(
               filePath,
               rule,
               outcome.ruleProposal.duplicateCheck.matches.map((match) => match.rule),
+              declaredPlacement,
           )
         : { filePath, edit: { kind: RepositoryEditKind.Insert } };
     return {

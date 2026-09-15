@@ -10,6 +10,7 @@ import {
     normalizeRule,
 } from '../repo/rule-normalizer';
 import { DuplicateClass, RiskLevel, RuleType } from '../types/rule-proposal';
+import type { DeclaredPlacement } from '../types/declared-placement';
 import { planRepositoryEdit } from '../repo/repository-edit';
 import { scoreRisk } from '../risk/risk-scorer';
 import { lintRule } from '../rules/aglint-linter';
@@ -37,6 +38,16 @@ export interface CandidateSafetyOptions {
      * exception is the dominant human remedy; for every other class they stay rejected.
      */
     problemType?: ProblemType;
+
+    /**
+     * The run's declared placement, rendered once at run start, when its instruction declares one.
+     *
+     * The gate re-plans the edit to verify the target, so it must plan the same edit the patch
+     * will: against the declared file, appending at its end. Planning the routed way instead would
+     * reject a declared placement for an ambiguity — a shared-rule owner elsewhere — that the
+     * declaration has already settled.
+     */
+    declaredPlacement?: DeclaredPlacement;
 }
 
 /**
@@ -257,6 +268,7 @@ export function enforceCandidateSafety(
                 proposal.placement.filePath,
                 proposal.rule,
                 proposal.duplicateCheck.matches.map((match) => match.rule),
+                options.declaredPlacement,
             );
         } catch (error) {
             const detail = error instanceof Error ? error.message : String(error);

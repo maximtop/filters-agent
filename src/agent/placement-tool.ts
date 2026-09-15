@@ -1,10 +1,12 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { bindDeclaredPlacement } from '../repo/declared-placement';
 import {
     PlacementRuleType,
     PLACEMENT_RULE_TYPE_VALUES,
     type PlacementInput,
 } from '../repo/placement-resolver';
+import type { DeclaredPlacement } from '../types/declared-placement';
 import { PlacementBasis } from '../types/placement-basis';
 import type { PlacementMap } from '../types/repo-context';
 import { RepositoryEditKind } from '../types/repository-edit-kind';
@@ -63,6 +65,12 @@ export interface PlannedInsertion {
      * Exact line the rule is planned to precede; absent for an end-of-file append.
      */
     insertBeforeRule?: string;
+
+    /**
+     * Comment line the edit writes immediately before the rule, when the run instruction's
+     * placement declaration asks for one.
+     */
+    commentLine?: string;
 }
 
 /**
@@ -214,6 +222,13 @@ export interface ResolvePlacementToolOptions {
      * Guidance gate: a rejection payload while rule guidance has not been consulted yet.
      */
     requireGuidance: () => Record<string, unknown> | undefined;
+
+    /**
+     * The run instruction's placement declaration, rendered for this run. Supplied, it is the
+     * answer to every placement question this run asks: the repository has said where its rules go
+     * and the map-based routing never runs.
+     */
+    declaredPlacement?: DeclaredPlacement;
 }
 
 /**
@@ -222,12 +237,16 @@ export interface ResolvePlacementToolOptions {
  * visibility only - candidate build reruns the same pure planner on the same pinned checkout, and
  * the model cannot dictate a position.
  *
- * @param options - Pinned checkout root, its placement map, and the guidance gate shared with the
- *   other candidate-evaluation tools.
+ * A run whose instruction declares a placement answers with that declaration instead: the declared
+ * file at full confidence with no alternative, and an end-of-file insertion carrying the declared
+ * comment line.
+ *
+ * @param options - Pinned checkout root, its placement map, the guidance gate shared with the other
+ *   candidate-evaluation tools, and the run's declared placement when it has one.
  * @returns The registrable tool definition and handler.
  */
 export function createResolvePlacementTool(options: ResolvePlacementToolOptions): ToolHandler {
-    const { checkoutPath, map, ownedListPaths, requireGuidance } = options;
+    const { checkoutPath, map, ownedListPaths, requireGuidance, declaredPlacement } = options;
     return {
         definition: {
             type: 'function',
@@ -280,11 +299,18 @@ export function createResolvePlacementTool(options: ResolvePlacementToolOptions)
                     return nonOwnedTargetRejection(similar.filePath);
                 }
             }
-            const resolution = resolvePlacement(resolutionInput, map);
+            const declaredTarget =
+                declaredPlacement === undefined
+                    ? undefined
+                    : bindDeclaredPlacement(checkoutPath, declaredPlacement);
+            const resolution = resolvePlacement(resolutionInput, map, declaredTarget);
             // Defense in depth over the model trust boundary: the map only names checkout files,
             // so a resolved pick is owned by construction — the check exists to keep that
-            // construction honest even if the resolver's target inventory ever widens.
+            // construction honest even if the resolver's target inventory ever widens. A declared
+            // placement is run configuration rather than a model claim, and its file may not be in
+            // the checkout at all yet, so ownership has nothing to say about it.
             if (
+                declaredPlacement === undefined &&
                 resolution.filePath.length > 0 &&
                 !namesOwnedPath(ownedListPaths, resolution.filePath)
             ) {
@@ -299,12 +325,19 @@ export function createResolvePlacementTool(options: ResolvePlacementToolOptions)
                     resolution.filePath,
                     candidateRule,
                     resolutionInput.existingSimilarRules.map((entry) => entry.rule),
+                    declaredPlacement,
                 );
                 if (planned.edit.kind === RepositoryEditKind.Insert) {
-                    const insertionLine =
+                    const plannedLine =
                         planned.edit.insertionPoint === undefined
                             ? appendLine(checkoutPath, planned.filePath)
                             : planned.edit.insertionPoint + 1;
+                    // A declared comment takes the planned position and the rule follows it, so
+                    // the reported line stays the line the rule itself occupies.
+                    const insertionLine =
+                        plannedLine === undefined || planned.edit.precedingComment === undefined
+                            ? plannedLine
+                            : plannedLine + 1;
                     plan = {
                         available: true,
                         filePath: planned.filePath,
@@ -314,6 +347,9 @@ export function createResolvePlacementTool(options: ResolvePlacementToolOptions)
                         ...(planned.edit.anchorRule === undefined
                             ? {}
                             : { insertBeforeRule: planned.edit.anchorRule }),
+                        ...(planned.edit.precedingComment === undefined
+                            ? {}
+                            : { commentLine: planned.edit.precedingComment }),
                     };
                 } else if (planned.edit.kind === RepositoryEditKind.ExtendDomains) {
                     plan = {

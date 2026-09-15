@@ -10,6 +10,7 @@ import {
     type InstructionGuidanceSource,
     type InstructionLinkedDocument,
 } from './guidance-source';
+import { parseInstructionPlacement, type InstructionPlacement } from './instruction-placement';
 import {
     downloadLinkedDocument,
     LinkedDocumentDownloadError,
@@ -54,6 +55,13 @@ export const InstructionLoadFailureCode = {
      * The instruction text exceeds MAX_INSTRUCTION_CHARACTERS; the message names the path.
      */
     InstructionTooLarge: 'instruction_too_large',
+
+    /**
+     * The instruction's `placement:` declaration cannot be read: a second declaration, a line that
+     * does not follow the grammar, an unusable path, or an unsupported placeholder. A run whose
+     * repository has stated where its rules go must not proceed on a guess about it.
+     */
+    InstructionPlacementInvalid: 'instruction_placement_invalid',
 } as const;
 
 /**
@@ -119,6 +127,12 @@ export interface LoadedInstruction {
      * no guidance role.
      */
     documents: readonly InstructionLinkedDocument[];
+
+    /**
+     * The placement the instruction declares, parsed once at load; absent when the instruction
+     * declares none and the deterministic placement routing stays in charge.
+     */
+    placement?: InstructionPlacement;
 }
 
 /**
@@ -415,6 +429,18 @@ export async function loadInstruction(
         );
     }
 
+    let placement: InstructionPlacement | undefined;
+    try {
+        placement = parseInstructionPlacement(content);
+    } catch (error) {
+        throw new InstructionLoadError(
+            InstructionLoadFailureCode.InstructionPlacementInvalid,
+            `Run instruction at ${describeInstructionPath(checkoutRoot, absolutePath)} declares ` +
+                `an unusable placement: ${describeCause(error)}`,
+            error,
+        );
+    }
+
     const documents: InstructionLinkedDocument[] = [];
     const boundRoles = new Set<GuidanceDocumentRole>();
     const takenTargets = new Set<string>();
@@ -447,6 +473,7 @@ export async function loadInstruction(
         content,
         sha256: sha256Hex(bytes),
         documents,
+        ...(placement === undefined ? {} : { placement }),
     };
 }
 

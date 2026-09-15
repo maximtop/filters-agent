@@ -127,6 +127,33 @@ export function extractInstructionSection(
 }
 
 /**
+ * List the instruction lines a declaration may be read from: every line outside a fenced code
+ * block, trimmed.
+ *
+ * Fenced text is example material — the section walk above already treats a fenced `##` line as
+ * inert — so a declaration quoted inside a fence must not bind either. A declaration read from the
+ * whole instruction rather than from one of its sections uses this; the section-scoped `launch:`
+ * and `read:` walks read the body {@link extractInstructionSection} returned.
+ *
+ * @param content - Instruction text as loaded.
+ * @returns Trimmed lines outside every fenced block, in document order.
+ */
+export function unfencedInstructionLines(content: string): string[] {
+    const lines: string[] = [];
+    let insideFence = false;
+    for (const line of content.split('\n')) {
+        if (FENCED_BLOCK_LINE_PATTERN.test(line)) {
+            insideFence = !insideFence;
+            continue;
+        }
+        if (!insideFence) {
+            lines.push(line.trim());
+        }
+    }
+    return lines;
+}
+
+/**
  * Extract the instruction's preparation section: the body of the first `##` heading whose text
  * contains the preparation keyword, up to the next `##` heading or the end of the instruction.
  *

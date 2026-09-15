@@ -30,6 +30,7 @@ import {
 } from './rule-normalizer';
 import { describeSharedRuleExtension } from './shared-rule-extension';
 import { CandidateOperation } from '../environment/filtering-environment';
+import type { DeclaredPlacement } from '../types/declared-placement';
 import type { PreparedFiltersCheckout } from '../local/filters-preparer';
 import type { LocalRunRecord } from '../local/run-output';
 import type { CandidatePatch } from '../types/fix-run-result';
@@ -325,6 +326,14 @@ export interface InsertRepositoryEdit {
      * How the insertion position was chosen; `append_eof` marks the anchorless fallback.
      */
     basis?: PlacementBasis;
+
+    /**
+     * Comment line written immediately before the inserted rule, when the run instruction's
+     * placement declaration asks for one — a uAssets-style repository precedes every added rule
+     * with a comment holding the issue URL. Absent everywhere else: the rule is the only line the
+     * edit adds.
+     */
+    precedingComment?: string;
 }
 
 /**
@@ -925,6 +934,38 @@ function planDomainBlockInsertion(targetPath: string, candidateRule: string): In
 }
 
 /**
+ * Plan the append-at-end edit one declared placement asks for.
+ *
+ * The declaration replaces the whole placement search: an instruction that says where its rules go
+ * also says how they are added — at the end of that file, behind the declared comment — so neither
+ * a shared-rule owner nor a domain block may retarget or reposition the edit.
+ *
+ * @param checkoutPath - Root of the pinned filters checkout.
+ * @param declared - The instruction's declaration, rendered for this run.
+ * @returns The declared file and its end-of-file insertion carrying the declared comment.
+ * @throws {Error} Naming the declared file when this checkout does not hold it, so the caller
+ *   reports a plan it cannot make instead of planning against a file that is not there.
+ */
+function planDeclaredAppend(checkoutPath: string, declared: DeclaredPlacement): RepositoryEditPlan {
+    const targetPath = resolveFilterPath(checkoutPath, declared.filePath);
+    if (!targetPath) {
+        throw new Error(
+            `The declared placement target does not exist in the checkout: ${declared.filePath}`,
+        );
+    }
+    return {
+        filePath: repositoryRelativePath(realpathSync(checkoutPath), targetPath),
+        edit: {
+            kind: RepositoryEditKind.Insert,
+            basis: PlacementBasis.AppendEof,
+            ...(declared.commentLine === undefined
+                ? {}
+                : { precedingComment: declared.commentLine }),
+        },
+    };
+}
+
+/**
  * Plan an exact repository edit for a locked candidate without modifying the checkout.
  *
  * A standard domain-scoped cosmetic rule extends a unique existing multi-domain rule found across
@@ -935,6 +976,8 @@ function planDomainBlockInsertion(targetPath: string, candidateRule: string): In
  * @param filePath - Repository-relative target filter file.
  * @param candidateRule - Locked issue-scoped candidate rule.
  * @param existingRuleHints - Exact repository rules surfaced by the agent's normalized search.
+ * @param declared - The run instruction's declared placement, rendered for this run; when it names
+ *   the target file it decides the edit on its own.
  * @returns Deterministic target file and insert or domain-extension edit.
  */
 export function planRepositoryEdit(
@@ -942,7 +985,11 @@ export function planRepositoryEdit(
     filePath: string,
     candidateRule: string,
     existingRuleHints: readonly string[] = [],
+    declared?: DeclaredPlacement,
 ): RepositoryEditPlan {
+    if (declared !== undefined && declared.filePath === filePath) {
+        return planDeclaredAppend(checkoutPath, declared);
+    }
     const targetPath = resolveFilterPath(checkoutPath, filePath);
     const checkoutRoot = realpathSync(checkoutPath);
     const extension = selectExtensionCandidate(
@@ -1310,7 +1357,19 @@ export function applyRepositoryEdit(
         if (edit.anchorRule !== undefined && lines[insertionPoint] !== edit.anchorRule) {
             throw new Error('The locked insertion anchor is stale.');
         }
-        lines.splice(insertionPoint, 0, candidateRule);
+        if (edit.precedingComment !== undefined && !isSingleLineRule(edit.precedingComment)) {
+            throw new Error('The locked preceding comment must be a non-empty single line.');
+        }
+        // The declared comment belongs to the insertion, so it lands with the rule in one splice:
+        // a repository that precedes every added rule with the issue URL gets both lines or
+        // neither, never a rule whose comment was written by some later step.
+        lines.splice(
+            insertionPoint,
+            0,
+            ...(edit.precedingComment === undefined
+                ? [candidateRule]
+                : [edit.precedingComment, candidateRule]),
+        );
     } else if (edit.kind === RepositoryEditKind.ExtendDomains) {
         const sourceIndex = edit.line - 1;
         if (

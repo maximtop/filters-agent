@@ -67,6 +67,28 @@ An instruction file switches the run to another blocker. Three examples ship und
 See [`docs/modules/browser-with-extension.md`](docs/modules/browser-with-extension.md) for the
 detail behind each route.
 
+### Where an accepted rule goes
+
+With no instruction the action places the rule the way the AdGuard filter repository is laid out:
+the page's language picks the filter, the rule's kind picks the section. A repository that files
+its rules elsewhere says so in its instruction, on one line:
+
+```
+placement: filters/filters-{{year}}.txt comment: ! {{issueUrl}}
+```
+
+The path is relative to your checkout and may carry `{{year}}`, the year the run starts on in UTC.
+The optional `comment:` part is the line written immediately before the rule and may carry
+`{{issueUrl}}`, the URL of the issue being worked; leave it out and no comment is written. The
+declaration wins over the language routing outright: the action proposes that file and appends the
+rule at its end. Keep the file in your repository — a declared file that is not in the checkout is
+still what the report names, but no edit can be proposed for it until it exists. Declare it once:
+a second `placement:` line, an absolute path, or a placeholder other than those two fails the run
+at start, naming the instruction.
+
+The two uBlock Origin examples declare the placement uAssets uses, so a repository that copies one
+in gets the current year's filters file and a preceding comment holding the issue URL.
+
 ## Inputs
 
 | Input | Required | Description |

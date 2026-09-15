@@ -426,6 +426,7 @@ export const RepositoryEditSchema = v.variant('kind', [
         insertionPoint: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0))),
         anchorRule: v.optional(v.pipe(v.string(), v.minLength(1), v.regex(/^[^\r\n]+$/))),
         basis: v.optional(v.picklist(PLACEMENT_BASIS_VALUES)),
+        precedingComment: v.optional(v.pipe(v.string(), v.minLength(1), v.regex(/^[^\r\n]+$/))),
     }),
     v.object({
         kind: v.literal(RepositoryEditKind.ExtendDomains),

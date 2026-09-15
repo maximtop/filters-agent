@@ -60,6 +60,7 @@ import {
     type FixCoreIssueInput,
     type FixCoreOptions,
 } from './fix-core-inputs';
+import { declaredPlacementForRun } from '../knowledge/instruction-placement';
 import { resolveRuleGuidanceSource } from './fix-core-inputs';
 import {
     acceptedCandidateDisposition,
@@ -125,6 +126,15 @@ export async function runAgenticFixCore(
         );
     }
     const issueNumber = facts.issueNumber;
+    // The run renders its instruction's placement declaration exactly once, here, and every
+    // consumer works from this one value: the placement tool answers with it, the safety gate
+    // plans against it, and the published patch appends behind its comment line. Rendering it per
+    // consumer would let a run that straddles a UTC new year answer with one year's file and
+    // publish into another's.
+    const declaredPlacement = declaredPlacementForRun(
+        options.instruction?.placement,
+        normalizedIssue.rawIssue.url,
+    );
     const domain = branchNameDomain(deriveBranchName(issueNumber, facts.reportedSiteUrls));
     const requestedBrowserMode = options.browserMode ?? BrowserMode.Auto;
     const allowedTargetUrls = facts.reportedSiteUrls;
@@ -325,6 +335,9 @@ export async function runAgenticFixCore(
                 // One dispatch, two branches: an instruction source replaces the KnowledgeBase
                 // behind lookup_rule_guidance for the whole run.
                 knowledgeGuidanceSource: resolveRuleGuidanceSource(options),
+                // Rendered once above and handed to every consumer: the placement tool answers
+                // with it, the safety gate plans against it, and the published patch writes it.
+                ...(declaredPlacement === undefined ? {} : { declaredPlacement }),
                 preloadedIssueScreenshots,
                 verbose: options.verbose,
                 diagnosticsDir: config.diagnosticsDir,
@@ -378,9 +391,14 @@ export async function runAgenticFixCore(
                 : domain,
             checkoutPath: config.repositoryPath,
             problemType: facts.problemType,
+            ...(declaredPlacement === undefined ? {} : { declaredPlacement }),
         });
         const outcome = candidateSafety.outcome;
-        const proposedCandidate = candidatePatchFromOutcome(outcome, config.repositoryPath);
+        const proposedCandidate = candidatePatchFromOutcome(
+            outcome,
+            config.repositoryPath,
+            declaredPlacement,
+        );
         // The rule an analysis-only run found and could not verify. It has no publication path by
         // design; carrying it typed is what stops it from surviving only inside the reasoning
         // prose, where the sarkisozleri.bbs.tr run left the rule a maintainer later landed.

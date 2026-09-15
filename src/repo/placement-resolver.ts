@@ -1,4 +1,10 @@
 import * as v from 'valibot';
+import {
+    DECLARED_PLACEMENT_CONFIDENCE,
+    DECLARED_PLACEMENT_REASON,
+    declaredPlacementAbsentReason,
+    type DeclaredPlacementTarget,
+} from './declared-placement';
 import type { FilterFileEntry, PlacementMap } from '../types/repo-context';
 
 /**
@@ -445,11 +451,34 @@ function similarRuleFile(
  * selects the section (exception → specific; ad/tracking network block → adservers when available;
  * otherwise specific). Every fallback lowers confidence and is explained in `reasons`.
  *
+ * A run whose instruction declares its placement never reaches that routing: the declaration is the
+ * answer, at full confidence and with no alternative, because the repository has already said where
+ * its rules go. The routing below is the AdGuard repository's own shape — language, then section —
+ * and applying it to a repository that declares something else is what filed an ad-network rule
+ * into a cookie-annoyance list in run 34996815226.
+ *
  * @param input - The site and rule context for the candidate rule.
  * @param map - The generated placement map for the checkout.
+ * @param declared - The run instruction's declared placement bound to the checkout, when the
+ *   instruction declares one; it decides the answer on its own.
  * @returns The resolved placement decision with confidence, alternatives, and reasons.
  */
-export function resolvePlacement(input: PlacementInput, map: PlacementMap): PlacementResolution {
+export function resolvePlacement(
+    input: PlacementInput,
+    map: PlacementMap,
+    declared?: DeclaredPlacementTarget,
+): PlacementResolution {
+    if (declared !== undefined) {
+        return {
+            filter: declared.title ?? declared.filePath,
+            filePath: declared.filePath,
+            confidence: DECLARED_PLACEMENT_CONFIDENCE,
+            alternatives: [],
+            reasons: declared.absentFromCheckout
+                ? [DECLARED_PLACEMENT_REASON, declaredPlacementAbsentReason(declared.filePath)]
+                : [DECLARED_PLACEMENT_REASON],
+        };
+    }
     const index = indexPlacementMap(map);
     const reasons: string[] = [];
     const lang = primaryLanguageSubtag(input.siteLanguage);
