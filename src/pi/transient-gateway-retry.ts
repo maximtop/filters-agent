@@ -83,6 +83,23 @@ const UPSTREAM_STREAM_FAULT_PATTERN =
     /\b(?:stream error|h2 protocol error|error reading a body from connection)\b/iu;
 
 /**
+ * The in-band upstream failure: a completion whose final chunk carries `finish_reason: "error"`.
+ *
+ * Pi's `mapStopReason` (`dist/api/openai-completions.js` of the pinned 0.84.1) turns any finish
+ * reason it does not know into an error turn whose message is exactly `Provider finish_reason:
+ * <reason>`. A gateway that routes to several upstreams answers with the bare reason `error` when
+ * the chosen upstream fails while generating — a live bench run got it on loop turn 2, 34
+ * completion tokens in, and sealed `provider-failure` after that single attempt. The same request
+ * sent again reaches another replica, which is what makes it worth retrying.
+ *
+ * Anchored to the whole message and to the bare reason on purpose: `content_filter` is a
+ * deterministic verdict on the request's content and must stay terminal, and `network_error` is
+ * already in pi's own retry list (`network.?error`). Only the reason that names nothing at all is
+ * ours to classify.
+ */
+const UPSTREAM_FINISH_REASON_ERROR_PATTERN = /^Provider finish_reason: error$/u;
+
+/**
  * The pinned-vendor slice of pi's `AgentSession` this seam replaces.
  *
  * `_isRetryableError` is `private` in pi's `.d.ts`, so it is reachable only through a cast; naming
@@ -101,14 +118,15 @@ interface RetryDecidingSession {
 /**
  * Decide whether a failed turn is a transient gateway-path failure pi does not recognize.
  *
- * Deliberately narrow, and the guards are shared by both patterns: only a turn that actually ended
- * in a provider error with a message, only a message whose LEADING status is in the Cloudflare
- * origin range or that names one of the enumerated upstream stream faults, and never a context
- * overflow — pi's rule that an overflow is handled by compaction rather than by retry is the one
- * part of its decision this seam must not override, so it is re-asserted here instead of being
- * assumed unreachable. `isContextOverflow` is called without a context window on purpose: its two
- * window-dependent cases (a silently accepted overflow, a zero-output `length` stop) require a
- * non-error stop reason, which the first guard has already excluded.
+ * Deliberately narrow, and the guards are shared by all three patterns: only a turn that actually
+ * ended in a provider error with a message, only a message whose LEADING status is in the
+ * Cloudflare origin range, that names one of the enumerated upstream stream faults, or that is the
+ * bare in-band `finish_reason: error`, and never a context overflow — pi's rule that an overflow is
+ * handled by compaction rather than by retry is the one part of its decision this seam must not
+ * override, so it is re-asserted here instead of being assumed unreachable. `isContextOverflow` is
+ * called without a context window on purpose: its two window-dependent cases (a silently accepted
+ * overflow, a zero-output `length` stop) require a non-error stop reason, which the first guard has
+ * already excluded.
  *
  * @param message - The failed turn's assistant message, as pi hands it to its own predicate.
  * @returns True when the turn should be retried despite pi classifying it as terminal.
@@ -126,7 +144,8 @@ function isTransientGatewayFailure(message: AssistantMessage): boolean {
     }
     return (
         TRANSIENT_GATEWAY_STATUS_PATTERN.test(errorMessage) ||
-        UPSTREAM_STREAM_FAULT_PATTERN.test(errorMessage)
+        UPSTREAM_STREAM_FAULT_PATTERN.test(errorMessage) ||
+        UPSTREAM_FINISH_REASON_ERROR_PATTERN.test(errorMessage)
     );
 }
 
