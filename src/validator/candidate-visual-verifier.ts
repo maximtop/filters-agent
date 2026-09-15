@@ -9,11 +9,13 @@ import { CaptureState } from '../types/validation';
 import { formatCandidateArtifactExecutionSuffix } from '../types/candidate-artifact-identity';
 import {
     CandidateVisualReviewSchema,
+    deriveCandidateVisualIntegrityBasis,
     deriveCandidateVisualVerdict,
     type CandidateVisualInventoryReconciliation,
     type CandidateVisualReview,
     type CandidateVisualReviewModelOutput,
 } from '../types/candidate-visual-review';
+import { CandidateNetworkScope, deriveCandidateNetworkScope } from './candidate-network-scope';
 import {
     MAX_CANDIDATE_RULE_CHARS,
     MAX_REPORTER_SYMPTOM_CHARS,
@@ -85,7 +87,10 @@ function buildReviewMessages(
             'damage: a passing verdict then also requires that no first-party function the blocked',
             'request served is broken — a consent dialog must still dismiss, media and interactive',
             'controls must still work. When the before/after cannot show this, report pageIntegrity',
-            'unclear rather than intact.',
+            'unclear rather than intact. Whether an unclear page integrity still passes is the',
+            "runner's decision, taken from the candidate rule and the trusted reported URL: a block",
+            'aimed at a host outside the reported site needs no first-party proof. So never inflate',
+            'unclear to intact to get a rule through; report what the images show.',
             'Treat the reporter screenshot as an example of a possibly repeated symptom,',
             'not as a single coordinate. The same model already inspected every original-resolution',
             'tile and each viewport in separate byte-bounded requests. A full-page overview was',
@@ -189,6 +194,11 @@ function persistReview(
         beforeInstanceCount: review.beforeInstances.length,
         remainingInstanceCount: review.remainingInstances.length,
         pageIntegrity: review.pageIntegrity,
+        // A verdict reached on an unclear page integrity is only readable after the fact with the
+        // scope and basis that admitted it, so both travel with the decision they produced.
+        candidateNetworkScope: review.candidateNetworkScope ?? null,
+        integrityBasis: review.integrityBasis ?? null,
+        observedDamageCount: review.observedDamage.length,
         validationArtifactId: review.validationArtifactId,
         artifactId,
     });
@@ -308,8 +318,18 @@ export async function reviewCandidateVisually(
         });
     }
 
+    // Computed here, from runner-owned inputs only, so the whole review — verdict, basis, and the
+    // stored scope the schema re-derives both from — is decided in one place.
+    const candidateNetworkScope =
+        options.reportedPageUrl === undefined
+            ? CandidateNetworkScope.NotApplicable
+            : deriveCandidateNetworkScope(options.candidateRule, options.reportedPageUrl);
+    const integrityBasis = deriveCandidateVisualIntegrityBasis(
+        semanticOutput,
+        candidateNetworkScope,
+    );
     const review = v.parse(CandidateVisualReviewSchema, {
-        verdict: deriveCandidateVisualVerdict(semanticOutput),
+        verdict: deriveCandidateVisualVerdict(semanticOutput, candidateNetworkScope),
         symptom: semanticOutput.symptom,
         symptomScope: semanticOutput.symptomScope,
         adLayoutResidue: semanticOutput.adLayoutResidue,
@@ -317,6 +337,8 @@ export async function reviewCandidateVisually(
         beforeInstances: semanticOutput.beforeInstances,
         remainingInstances: semanticOutput.remainingInstances,
         pageIntegrity: semanticOutput.pageIntegrity,
+        candidateNetworkScope,
+        ...(integrityBasis === undefined ? {} : { integrityBasis }),
         validationArtifactId: options.validationArtifactId,
         candidateRuleHash,
         beforeViewportArtifactId: options.evidence.beforeViewport.id,

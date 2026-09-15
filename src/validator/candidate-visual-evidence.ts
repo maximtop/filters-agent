@@ -160,6 +160,16 @@ export interface CandidateVisualVerifierOptions {
     browserFacts?: string;
 
     /**
+     * Trusted reported page URL the experiment navigated to, never model input.
+     *
+     * The review classifies the candidate against it to decide whether a network block reaches a
+     * host outside the reported site. A caller that supplies none leaves the candidate
+     * unclassified, which is the fail-closed direction: the review then keeps the contract that
+     * demands a visibly intact page.
+     */
+    reportedPageUrl?: string;
+
+    /**
      * Per-run directory where the trusted review JSON is persisted.
      */
     artifactsDir: string;

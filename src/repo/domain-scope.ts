@@ -93,6 +93,43 @@ function entityScopeBase(scope: string): string | undefined {
 }
 
 /**
+ * Return every registrable domain a hostname can be read as under the bounded suffix approximation.
+ *
+ * Because the public suffix is approximated by length rather than looked up, a hostname with three
+ * or more labels and a country-code-shaped final label has two readings — `www.site.bbs.tr` is
+ * either `bbs.tr` or `site.bbs.tr` — and both are returned, widest first.
+ *
+ * @param hostname - Queried hostname.
+ * @returns The candidate registrable domains; empty when the hostname carries no label beyond an
+ *   admitted public suffix.
+ */
+function registrableDomainForms(hostname: string): string[] {
+    const labels = hostnameLabels(hostname);
+    return publicSuffixStrippedForms(labels).map((remainder) => {
+        const remainderLabelCount = remainder.split('.').length;
+        return labels.slice(remainderLabelCount - 1).join('.');
+    });
+}
+
+/**
+ * Whether two hostnames belong to the same site under the bounded suffix approximation.
+ *
+ * One agreeing reading is enough. That is the conservative direction for a caller asking this in
+ * order to treat a foreign host differently from the page's own: an over-wide suffix reading makes
+ * two unrelated hostnames look related and so withholds the foreign-host treatment, whereas the
+ * opposite error would grant it to the page's own site.
+ *
+ * @param hostname - One queried hostname.
+ * @param other - The hostname it is compared against.
+ * @returns Whether some reading of both hostnames names the same registrable domain.
+ */
+export function sharesRegistrableDomain(hostname: string, other: string): boolean {
+    const forms = registrableDomainForms(hostname);
+    const otherForms = registrableDomainForms(other);
+    return forms.some((form) => otherForms.includes(form));
+}
+
+/**
  * Whether a domain entry names an entity instead of one concrete domain.
  *
  * @param scope - Normalized domain entry, negation marker already stripped.

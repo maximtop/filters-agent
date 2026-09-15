@@ -11,6 +11,7 @@ import { describeCulpritRemoval } from '../repo/culprit-removal';
 import { describeCulpritReplacement } from '../repo/culprit-replacement';
 import { describeSharedRuleExtension } from '../repo/shared-rule-extension';
 import { NOT_OBSERVED_TEXT } from '../environment/environment-proofs';
+import { CandidateVisualIntegrityBasis } from '../types/candidate-visual-review';
 import type { FixRunResult } from '../types/fix-run-result';
 import { RepositoryEditKind } from '../types/repository-edit-kind';
 import type {
@@ -189,6 +190,19 @@ export function renderCandidateForReview(result: FixRunResult): string[] {
 }
 
 /**
+ * What each verified review's page-safety basis says to a maintainer reading the report.
+ *
+ * A bare `unclear` page integrity beside a verified verdict reads as a contradiction, so the reason
+ * the runner accepted it is spelled out next to it rather than left to be reconstructed from the
+ * rule text.
+ */
+const CANDIDATE_VISUAL_INTEGRITY_BASIS_TEXT: Record<CandidateVisualIntegrityBasis, string> = {
+    [CandidateVisualIntegrityBasis.Intact]: 'the page was observed intact',
+    [CandidateVisualIntegrityBasis.ThirdPartyNetworkCleanBeforeAfter]:
+        'third-party host block, clean before/after with no observed damage',
+};
+
+/**
  * Render the typed semantic verdict produced by the dedicated vision model.
  *
  * @param result - Locked core run result.
@@ -208,6 +222,14 @@ export function renderCandidateVisualReview(result: FixRunResult): string[] {
         `- Symptom scope: ${review.symptomScope}`,
         `- Full-page coverage: \`${review.coverageComplete ? 'complete' : 'incomplete'}\``,
         `- Page integrity: \`${review.pageIntegrity}\``,
+        `- Candidate network scope: \`${review.candidateNetworkScope ?? 'n/a'}\``,
+        `- Integrity basis: ${
+            review.integrityBasis === undefined
+                ? '`n/a`'
+                : `\`${review.integrityBasis}\` — ${
+                      CANDIDATE_VISUAL_INTEGRITY_BASIS_TEXT[review.integrityBasis]
+                  }`
+        }`,
         `- Model: \`${review.model}\``,
         `- Validation artifact: \`${review.validationArtifactId}\``,
         `- Rationale: ${review.rationale}`,

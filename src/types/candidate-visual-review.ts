@@ -1,4 +1,8 @@
 import * as v from 'valibot';
+import {
+    CANDIDATE_NETWORK_SCOPE_VALUES,
+    CandidateNetworkScope,
+} from '../validator/candidate-network-scope';
 import { CANDIDATE_VALIDATION_ARTIFACT_ID_PATTERN } from './candidate-artifact-identity';
 
 /**
@@ -110,6 +114,34 @@ export const CandidateVisualPageIntegrity = {
 export const CANDIDATE_VISUAL_PAGE_INTEGRITY_VALUES = Object.values(CandidateVisualPageIntegrity);
 
 /**
+ * What a verified review's page-safety claim rests on.
+ */
+export const CandidateVisualIntegrityBasis = {
+    /**
+     * Vision observed the page intact after the candidate applied.
+     */
+    Intact: 'intact',
+
+    /**
+     * Vision could not prove first-party function for a network candidate, and did not have to: the
+     * candidate blocks a host outside the reported site, the before/after is clean, and no damage
+     * was observed.
+     */
+    ThirdPartyNetworkCleanBeforeAfter: 'third_party_network_clean_before_after',
+} as const;
+
+/**
+ * CandidateVisualIntegrityBasis value.
+ */
+export type CandidateVisualIntegrityBasis =
+    (typeof CandidateVisualIntegrityBasis)[keyof typeof CandidateVisualIntegrityBasis];
+
+/**
+ * Every integrity basis value, for schemas and exhaustive listings.
+ */
+export const CANDIDATE_VISUAL_INTEGRITY_BASIS_VALUES = Object.values(CandidateVisualIntegrityBasis);
+
+/**
  * One visual occurrence tied to an exact runner-owned screenshot or tile artifact.
  */
 export const CandidateVisualInstanceSchema = v.strictObject({
@@ -180,6 +212,18 @@ export const CandidateVisualAdLayoutResidueSchema = v.picklist(
  */
 export const CandidateVisualPageIntegritySchema = v.picklist(
     CANDIDATE_VISUAL_PAGE_INTEGRITY_VALUES,
+);
+
+/**
+ * Runner-computed relation between the candidate rule and the reported page's own site.
+ */
+export const CandidateVisualNetworkScopeSchema = v.picklist(CANDIDATE_NETWORK_SCOPE_VALUES);
+
+/**
+ * Runner-derived record of what a verified review's page-safety claim rests on.
+ */
+export const CandidateVisualIntegrityBasisSchema = v.picklist(
+    CANDIDATE_VISUAL_INTEGRITY_BASIS_VALUES,
 );
 
 /**
@@ -260,6 +304,8 @@ export const CandidateVisualReviewSchema = v.pipe(
             v.maxLength(MAX_VISUAL_INSTANCES),
         ),
         pageIntegrity: CandidateVisualPageIntegritySchema,
+        candidateNetworkScope: v.optional(CandidateVisualNetworkScopeSchema),
+        integrityBasis: v.optional(CandidateVisualIntegrityBasisSchema),
         validationArtifactId: v.pipe(v.string(), v.regex(CANDIDATE_VALIDATION_ARTIFACT_ID_PATTERN)),
         candidateRuleHash: v.pipe(v.string(), v.regex(/^[a-f0-9]{64}$/)),
         beforeViewportArtifactId: ArtifactIdSchema,
@@ -280,10 +326,17 @@ export const CandidateVisualReviewSchema = v.pipe(
         ),
         inventoryReconciliation: v.optional(CandidateVisualInventoryReconciliationSchema),
     }),
-    v.check(
-        (review) => review.verdict === deriveCandidateVisualVerdict(review),
-        'Visual review verdict must match its semantic observations.',
-    ),
+    v.check((review) => {
+        const scope = review.candidateNetworkScope;
+        return (
+            review.verdict === deriveCandidateVisualVerdict(review, scope) &&
+            // A review written before the basis existed carries none and is left alone; one that
+            // states a basis must state the basis its own observations and scope produce, so the
+            // annotation a maintainer reads can never disagree with the verdict beside it.
+            (review.integrityBasis === undefined ||
+                review.integrityBasis === deriveCandidateVisualIntegrityBasis(review, scope))
+        );
+    }, 'Visual review verdict and integrity basis must match its semantic observations.'),
 );
 
 /**
@@ -340,13 +393,40 @@ export type CandidateVisualFullPageOverviewEvidence = v.InferOutput<
 export type CandidateVisualReview = v.InferOutput<typeof CandidateVisualReviewSchema>;
 
 /**
+ * Whether a clean before/after is the whole page-safety evidence this candidate can produce.
+ *
+ * The visual reviewer is told to report `pageIntegrity: unclear` for a network candidate whenever
+ * images cannot show that a first-party interactive function the blocked request served still
+ * works. For a block aimed outside the reported site there is no such function to lose: the host
+ * serves the page nothing it owns, so a resolved symptom with no residue and no observed damage is
+ * the complete case. The runner decides this from the rule text and the trusted reported URL, so a
+ * model cannot reach it by overstating `intact`.
+ *
+ * @param output - Parsed semantic output returned by the visual model.
+ * @param scope - Runner-computed scope of the candidate, absent for a review that predates it.
+ * @returns Whether an unclear page integrity may still carry a verified verdict.
+ */
+function unclearIntegrityIsComplete(
+    output: CandidateVisualReviewModelOutput,
+    scope: CandidateNetworkScope | undefined,
+): boolean {
+    return (
+        output.pageIntegrity === CandidateVisualPageIntegrity.Unclear &&
+        output.observedDamage.length === 0 &&
+        scope === CandidateNetworkScope.ThirdPartyHostBlock
+    );
+}
+
+/**
  * Derives the final verdict from the model's independent symptom and integrity judgments.
  *
  * @param output - Parsed semantic output returned by the visual model.
+ * @param scope - Runner-computed scope of the candidate, absent for a review that predates it.
  * @returns The final candidate verdict enforced by the runner.
  */
 export function deriveCandidateVisualVerdict(
     output: CandidateVisualReviewModelOutput,
+    scope?: CandidateNetworkScope,
 ): CandidateVisualVerdict {
     if (
         output.symptom === CandidateVisualSymptom.NotResolved ||
@@ -362,10 +442,50 @@ export function deriveCandidateVisualVerdict(
         output.adLayoutResidue === CandidateVisualAdLayoutResidue.Absent &&
         output.coverageComplete &&
         output.beforeInstances.length > 0 &&
-        output.pageIntegrity === CandidateVisualPageIntegrity.Intact
+        (output.pageIntegrity === CandidateVisualPageIntegrity.Intact ||
+            unclearIntegrityIsComplete(output, scope))
     ) {
         return CandidateVisualVerdict.Verified;
     }
 
     return CandidateVisualVerdict.Inconclusive;
+}
+
+/**
+ * Derives what a verified review's page-safety claim rests on, so a report can show it.
+ *
+ * @param output - Parsed semantic output returned by the visual model.
+ * @param scope - Runner-computed scope of the candidate, absent for a review that predates it.
+ * @returns The basis of a verified verdict, or undefined when the verdict is not verified.
+ */
+export function deriveCandidateVisualIntegrityBasis(
+    output: CandidateVisualReviewModelOutput,
+    scope?: CandidateNetworkScope,
+): CandidateVisualIntegrityBasis | undefined {
+    if (deriveCandidateVisualVerdict(output, scope) !== CandidateVisualVerdict.Verified) {
+        return undefined;
+    }
+    return output.pageIntegrity === CandidateVisualPageIntegrity.Intact
+        ? CandidateVisualIntegrityBasis.Intact
+        : CandidateVisualIntegrityBasis.ThirdPartyNetworkCleanBeforeAfter;
+}
+
+/**
+ * Whether a review leaves the page usable enough for the run to build on it.
+ *
+ * This is the one place the whole path asks that question, so a candidate the review verified and
+ * one the run may carry to a draft PR cannot be decided on different readings of the same record. A
+ * page vision saw intact is usable. So is the third-party network case: the basis is only ever
+ * stored on a verified review, and the schema's invariant re-derives it from the review's own
+ * observations and runner-computed scope, so reading it here inherits that proof rather than
+ * re-stating the conditions behind it.
+ *
+ * @param review - Trusted runner-bound review of the candidate.
+ * @returns Whether the reviewed page counts as usable.
+ */
+export function isCandidateVisualPageUsable(review: CandidateVisualReview): boolean {
+    return (
+        review.pageIntegrity === CandidateVisualPageIntegrity.Intact ||
+        review.integrityBasis === CandidateVisualIntegrityBasis.ThirdPartyNetworkCleanBeforeAfter
+    );
 }

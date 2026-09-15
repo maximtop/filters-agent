@@ -17,7 +17,7 @@ import type { SingleShotClient } from '../pi/single-shot-types';
 import type { TraceRecorder } from '../tracer/trace-recorder';
 import {
     CandidateVisualVerdict,
-    CandidateVisualPageIntegrity,
+    isCandidateVisualPageUsable,
     type CandidateVisualReview,
 } from '../types/candidate-visual-review';
 import type { ReproProfile } from '../types/repro-profile';
@@ -587,8 +587,7 @@ export class BrowserExtensionAdsObserver {
                 symptomPresent,
                 pageUsable:
                     observed.structure.probeSucceeded &&
-                    (visualReview === null ||
-                        visualReview.pageIntegrity === CandidateVisualPageIntegrity.Intact),
+                    (visualReview === null || isCandidateVisualPageUsable(visualReview)),
             },
             navigationVerified: observed.result.error === undefined,
             artifacts: observed.artifacts,
@@ -676,6 +675,7 @@ export class BrowserExtensionAdsObserver {
             evidence,
             reporterSymptom: this.options.reporterSymptom,
             symptomKind: this.options.symptomKind ?? SymptomKind.Ads,
+            reportedPageUrl: this.options.trustedValidationContext.reportedUrl,
             browserFacts: JSON.stringify({
                 validatedSelector: selector,
                 ruleKind: normalizeRule(this.options.candidateRule).kind,
@@ -726,7 +726,7 @@ export class BrowserExtensionAdsObserver {
             verified:
                 visual.review.verdict === CandidateVisualVerdict.Verified &&
                 !this.symptomPresentInPhase(candidatePhase) &&
-                visual.review.pageIntegrity === CandidateVisualPageIntegrity.Intact,
+                isCandidateVisualPageUsable(visual.review),
             screenshotArtifactIds: [
                 beforeViewport.artifactId,
                 afterViewport.artifactId,
