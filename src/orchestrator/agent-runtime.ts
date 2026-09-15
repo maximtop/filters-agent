@@ -1678,13 +1678,33 @@ export class AgentRuntime {
     ): AgentRuntimeCandidateValidationBinding | undefined {
         const reference = this.candidateValidationReferences.get(validationArtifactId);
         const state = reference ? this.sessionStates.get(reference.sessionId) : undefined;
-        if (
-            !reference ||
-            !state ||
-            reference.visualReview.verdict !== CandidateVisualVerdict.Verified ||
-            reference.visualReview.validationArtifactId !== validationArtifactId
-        ) {
+        // Every refusal below is logged with what it read: a verified review that never became
+        // a candidate patch left a live run analysis-only with no line saying which predicate
+        // withheld the binding.
+        const refuse = (reason: string, detail: Record<string, unknown> = {}): undefined => {
+            createLogger({ verbose: this.options.verbose ?? false }).info(
+                { validationArtifactId, reason, ...detail },
+                'verified candidate binding withheld',
+            );
             return undefined;
+        };
+        if (!reference) {
+            return refuse('no validation reference recorded for the artifact');
+        }
+        if (!state) {
+            return refuse('the validating session state is gone', {
+                sessionId: reference.sessionId,
+            });
+        }
+        if (reference.visualReview.verdict !== CandidateVisualVerdict.Verified) {
+            return refuse('the recorded visual review is not verified', {
+                verdict: reference.visualReview.verdict,
+            });
+        }
+        if (reference.visualReview.validationArtifactId !== validationArtifactId) {
+            return refuse('the recorded visual review names another validation artifact', {
+                reviewValidationArtifactId: reference.visualReview.validationArtifactId,
+            });
         }
         // A desktop candidate has no extension to bind: its executor proof is the candidate
         // phase's CLI proof, and the session provably ran with extension mode none.
@@ -1695,17 +1715,29 @@ export class AgentRuntime {
                 state.extension ||
                 state.settingsEvidence
             ) {
-                return undefined;
+                return refuse('a CLI candidate proof sits on a session that ran an extension', {
+                    extensionMode: state.extensionMode,
+                });
             }
         } else if (!this.isTerminalCurrentPreparedState(state)) {
-            return undefined;
+            return refuse('the validating session is not a terminal current prepared session', {
+                sessionId: state.sessionId,
+                extensionMode: state.extensionMode,
+                hasExtension: state.extension !== undefined,
+                selectedSettingsProfileKind: state.selectedSettingsProfileKind,
+                baselineReadBack: state.extensionBaselineReadBack !== undefined,
+                declaredBaselineListKeys: state.declaredBaselineListKeys !== undefined,
+                reporterSettingsImportRequired: this.requiresCurrentReporterSettings(),
+            });
         }
         const validationIdentity = parseCandidateValidationArtifactId(validationArtifactId);
         const visualIdentity = parseCandidateVisualReviewArtifactId(
             reference.visualReviewArtifactId,
         );
         if (!candidateArtifactIdentitiesEqual(validationIdentity, visualIdentity)) {
-            return undefined;
+            return refuse('the validation and visual-review artifact identities differ', {
+                visualReviewArtifactId: reference.visualReviewArtifactId,
+            });
         }
         const validationArtifact = this.resolveCandidateArtifactEvidence(
             validationArtifactId,
@@ -1739,7 +1771,14 @@ export class AgentRuntime {
             !beforeFullPage ||
             !afterFullPage
         ) {
-            return undefined;
+            return refuse('a candidate evidence artifact does not resolve to one typed record', {
+                validationArtifact: validationArtifact !== undefined,
+                visualReviewArtifact: visualReviewArtifact !== undefined,
+                beforeViewport: beforeViewport !== undefined,
+                afterViewport: afterViewport !== undefined,
+                beforeFullPage: beforeFullPage !== undefined,
+                afterFullPage: afterFullPage !== undefined,
+            });
         }
         const evidence = environmentEvidence(state);
         return {

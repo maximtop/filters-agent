@@ -471,6 +471,22 @@ export async function runAgenticFixCore(
                 ).slice(0, 12),
             });
         }
+        // The one line that says how a terminal proposal became, or failed to become, a candidate
+        // patch: a live run accepted a draft-PR terminal over a verified review and still ended
+        // analysis-only with nothing in the log naming the step that dropped it.
+        logger.info(
+            {
+                outcome: outcome.outcome,
+                proposedRule: proposedCandidate?.rule,
+                validationArtifactId: selectedValidation?.validationArtifactId,
+                boundToVerifiedEnvironment: verifiedCandidateEnvironment !== undefined,
+                candidateVerified,
+                candidateValidationEvidence: candidateValidationEvidence !== undefined,
+                browserUsable: browserState.usable,
+                candidatePatch: candidatePatch !== null,
+            },
+            'candidate verdict resolved',
+        );
         const noPatchDecision =
             outcome.outcome === FixOutcomeKind.ResolveWithoutPatch ||
             (outcome.outcome === FixOutcomeKind.ProposeClose &&
