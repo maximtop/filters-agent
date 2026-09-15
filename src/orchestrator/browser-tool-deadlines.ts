@@ -39,3 +39,20 @@ const BROWSER_LAUNCH_READINESS_ENVELOPE_MS = 4 * 60_000;
  */
 export const BROWSER_LAUNCH_DEADLINE_MS =
     APPLICATION_SESSION_BUDGET_MS + BROWSER_LAUNCH_READINESS_ENVELOPE_MS;
+
+/**
+ * Hard deadline for one apply_rule candidate validation.
+ *
+ * The three-phase A/B/C validation navigates the reporter page and captures bounded full-page tiles
+ * in every phase; very tall pages (tens of thousands of pixels) legitimately exceed the generic
+ * browser bound while still making progress, so the candidate path gets its own limit.
+ *
+ * Thirty minutes, raised from fifteen on 2026-09-15: every phase ends in vision calls, and on a
+ * reasoning vision model at the gateway's throughput of the hour those ran 200-260 s each (4-9k
+ * reasoning tokens per verdict), so a validation that was progressing normally — sessions launched,
+ * phases applied, verdicts arriving — was cut at 15 minutes twice in one live run and the run spent
+ * its whole wall-clock budget re-trying it. Each vision call is separately bounded by the
+ * single-shot inactivity deadline and the vision tool deadline, so this limit only has to cover a
+ * validation that is making progress, not one that hangs.
+ */
+export const APPLY_RULE_TOOL_DEADLINE_MS = 30 * 60_000;

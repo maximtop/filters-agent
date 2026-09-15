@@ -149,7 +149,11 @@ import {
     type EvidenceSessionLaunchRequest,
 } from './filtering-executors';
 import { registerLifecycleTools, type RuntimeLifecycleToolsHost } from './runtime-lifecycle-tools';
-import { BROWSER_LAUNCH_DEADLINE_MS, BROWSER_TOOL_DEADLINE_MS } from './browser-tool-deadlines';
+import {
+    APPLY_RULE_TOOL_DEADLINE_MS,
+    BROWSER_LAUNCH_DEADLINE_MS,
+    BROWSER_TOOL_DEADLINE_MS,
+} from './browser-tool-deadlines';
 import {
     terminalSymptomObservation,
     validateTerminalOutcome as judgeTerminalOutcome,
@@ -349,24 +353,6 @@ const AGENT_RUNTIME_OPEN_PAGE_RETRIES = 1;
  * able to crowd the reporter's own words out of the context window.
  */
 const MAX_REPORTER_SCREENSHOT_OBSERVATION_LENGTH = 2_000;
-
-/**
- * Hard deadline for one apply_rule candidate validation.
- *
- * The three-phase A/B/C validation navigates the reporter page and captures bounded full-page tiles
- * in every phase; very tall pages (tens of thousands of pixels) legitimately exceed the generic
- * browser bound while still making progress, so the candidate path gets its own limit.
- *
- * Thirty minutes, raised from fifteen on 2026-09-15: every phase ends in vision calls, and on a
- * reasoning vision model at the gateway's throughput of the hour those ran 200-260 s each (4-9k
- * reasoning tokens per verdict), so a validation that was progressing normally — sessions launched,
- * phases applied, verdicts arriving — was cut at 15 minutes twice in one live run and the run spent
- * its whole wall-clock budget re-trying it. Each vision call is separately bounded by the
- * single-shot inactivity deadline and the vision tool deadline, so this limit only has to cover a
- * validation that is making progress, not one that hangs.
- */
-const APPLY_RULE_TOOL_DEADLINE_MS = 30 * 60_000;
-
 /**
  * Free-form page-script evaluations allowed per browser session.
  *
