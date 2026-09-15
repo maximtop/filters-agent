@@ -105,6 +105,13 @@ inputs:
         description: >-
             Model slug used for vision steps that read screenshots.
         required: true
+    llmProviderRouting:
+        description: >-
+            JSON routing preferences for an OpenRouter-compatible gateway, sent as the `provider`
+            object on every request — for example {"ignore":["Together"]} to route around a faulting
+            upstream provider. Plain configuration, not a secret; leave it unset for a gateway that
+            does not understand the field.
+        required: false
 
 outputs:
     artifacts-dir:

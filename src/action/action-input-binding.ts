@@ -16,6 +16,7 @@ import {
     LLM_API_KEY_VAR,
     LLM_BASE_URL_VAR,
     LLM_MODEL_VAR,
+    LLM_PROVIDER_ROUTING_VAR,
     LLM_VISION_MODEL_VAR,
 } from '../config/config';
 import { ConfigError } from '../config/config-error';
@@ -149,6 +150,14 @@ const AgentActionInputName = {
      * `loadCoreConfig` reads the LLM slice from.
      */
     llmVisionModel: 'llmVisionModel',
+
+    /**
+     * The `llmProviderRouting` input; lands in the `LLM_PROVIDER_ROUTING` environment variable
+     * `loadCoreConfig` validates the gateway routing document from. Optional like every other
+     * environment-channel input: an unset or blank value leaves the variable out, and the run sends
+     * no `provider` field at all.
+     */
+    llmProviderRouting: 'llmProviderRouting',
 } as const;
 
 /**
@@ -169,6 +178,7 @@ const AGENT_ACTION_INPUT_ENV_VAR: Partial<Record<AgentActionInputName, string>> 
     [AgentActionInputName.llmApiKey]: LLM_API_KEY_VAR,
     [AgentActionInputName.llmModel]: LLM_MODEL_VAR,
     [AgentActionInputName.llmVisionModel]: LLM_VISION_MODEL_VAR,
+    [AgentActionInputName.llmProviderRouting]: LLM_PROVIDER_ROUTING_VAR,
 };
 
 /**

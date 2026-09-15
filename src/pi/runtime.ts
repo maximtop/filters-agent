@@ -1,6 +1,7 @@
 import { InMemoryCredentialStore, type Api, type Model } from '@earendil-works/pi-ai';
 import { ModelRuntime } from '@earendil-works/pi-coding-agent';
 import type { LlmConfig } from '../config/config';
+import type { ProviderRouting } from '../config/provider-routing';
 
 /**
  * Pi runtime setup: turn application provider configuration into a ready pi model runtime — the
@@ -79,6 +80,25 @@ const OPENAI_COMPATIBLE_COMPAT = {
 } as const;
 
 /**
+ * The compatibility settings one catalog entry carries: the gateway's fixed OpenAI-completions
+ * flags, plus the deployment's routing preferences when it configured any.
+ *
+ * Absent stays absent. Pi puts a `provider` object on the request only for an entry whose compat
+ * carries `openRouterRouting`, and a gateway that is not OpenRouter ignores or rejects that field,
+ * so an unconfigured deployment must send no `provider` at all — an empty object would be a
+ * configured preference on the wire.
+ *
+ * @param providerRouting - The configured routing document, or `undefined` when none is set.
+ * @returns The entry's compat settings.
+ */
+function gatewayCompat(providerRouting: ProviderRouting | undefined) {
+    return {
+        ...OPENAI_COMPATIBLE_COMPAT,
+        ...(providerRouting === undefined ? {} : { openRouterRouting: providerRouting }),
+    };
+}
+
+/**
  * The provider registration shape accepted by `ModelRuntime.registerProvider`.
  *
  * Pi-coding-agent's public index does not re-export `ProviderConfigInput`, so the type is lifted
@@ -108,6 +128,7 @@ export type PiRuntimeConfig = Pick<
     | 'contextWindowTokens'
     | 'maxOutputTokens'
     | 'visionMaxOutputTokens'
+    | 'providerRouting'
 >;
 
 /**
@@ -147,6 +168,18 @@ export interface PiRuntime {
      * when the two configured ids are identical.
      */
     visionModel: Model<Api>;
+
+    /**
+     * The gateway routing preferences this runtime was configured with, or `undefined` when the
+     * deployment set none.
+     *
+     * Kept on the handle because routing is a property of the RUN, not of one registration: a model
+     * registered later on this runtime (`registerAdditionalTextModel`) must steer exactly like the
+     * two registered at creation, and the handle is the only thing it is given. Without it, a
+     * deployment that routes around a faulting upstream would still send the reviewer's requests
+     * into it.
+     */
+    providerRouting?: ProviderRouting;
 }
 
 /**
@@ -192,7 +225,7 @@ export function registerAdditionalTextModel(runtime: PiRuntime, modelId: string)
                 cost: { ...UNPRICED_MODEL_COST },
                 contextWindow: runtime.reasoningModel.contextWindow,
                 maxTokens: runtime.reasoningModel.maxTokens,
-                compat: { ...OPENAI_COMPATIBLE_COMPAT },
+                compat: gatewayCompat(runtime.providerRouting),
             },
         ],
     });
@@ -205,7 +238,9 @@ export function registerAdditionalTextModel(runtime: PiRuntime, modelId: string)
  *
  * `contextWindow` is not decoration — pi measures its auto-compaction threshold (`contextWindow −
  * reserveTokens`) against it on every request — and it is one number for the gateway, not per role,
- * so it is shared here. It is required configuration, defaulted once in `config.ts`.
+ * so it is shared here. It is required configuration, defaulted once in `config.ts`. The compat
+ * settings are shared for the same reason: routing is the gateway's, so both roles steer alike and
+ * every loop turn and single-shot call of the run carries the same preference.
  *
  * @param config - Validated provider configuration.
  * @returns The shared slice of a catalog entry.
@@ -214,7 +249,7 @@ function sharedCatalogFields(config: PiRuntimeConfig) {
     return {
         cost: { ...UNPRICED_MODEL_COST },
         contextWindow: config.contextWindowTokens,
-        compat: { ...OPENAI_COMPATIBLE_COMPAT },
+        compat: gatewayCompat(config.providerRouting),
     };
 }
 
@@ -333,6 +368,7 @@ export async function createPiRuntime(config: PiRuntimeConfig): Promise<PiRuntim
     await modelRuntime.setRuntimeApiKey(OPENAI_COMPATIBLE_VISION_PROVIDER_ID, config.apiKey);
     return {
         modelRuntime,
+        providerRouting: config.providerRouting,
         reasoningModel: resolveModel(
             modelRuntime,
             OPENAI_COMPATIBLE_PROVIDER_ID,

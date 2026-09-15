@@ -90,6 +90,7 @@ detail behind each route.
 | `llmApiKey` | Yes | API key of the LLM provider; pass it from a repository secret. |
 | `llmModel` | Yes | Default reasoning-model slug for the run's LLM sessions. |
 | `llmVisionModel` | Yes | Model slug used for vision steps that read screenshots. |
+| `llmProviderRouting` | No | JSON routing preferences for an OpenRouter-compatible gateway, sent as the `provider` object on every request — for example `{"ignore":["Together"]}` to route around a faulting upstream provider. Plain configuration, not a secret; leave it unset for a gateway that does not understand the field. |
 
 ### Outputs
 

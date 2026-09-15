@@ -8,6 +8,7 @@ import {
     type RepositoryIdentitySources,
     type RepositorySlug,
 } from './repository-identity';
+import { ProviderRoutingSchema } from './provider-routing';
 import { REASONING_EFFORT_VALUES, ReasoningEffort } from './reasoning-effort';
 
 export { ConfigError };
@@ -33,6 +34,13 @@ export const LLM_MODEL_VAR = 'LLM_MODEL';
  * Environment variable naming the vision-model slug used for screenshot-reading steps.
  */
 export const LLM_VISION_MODEL_VAR = 'LLM_VISION_MODEL';
+
+/**
+ * Environment variable carrying the gateway routing preferences as one JSON document. The one place
+ * this name is spelled; the action's `llmProviderRouting` input binding imports it instead of
+ * respelling it.
+ */
+export const LLM_PROVIDER_ROUTING_VAR = 'LLM_PROVIDER_ROUTING';
 
 /**
  * Environment variable carrying the GitHub API token every GitHub-reading seam authenticates with,
@@ -162,6 +170,11 @@ const CoreConfigSchema = v.object({
         apiKey: v.pipe(v.string(), v.minLength(1)),
         model: v.pipe(v.string(), v.minLength(1)),
         visionModel: v.pipe(v.string(), v.minLength(1)),
+        // Absent by default and absent on the wire: a routing document is an OpenAI-compatible
+        // GATEWAY feature (OpenRouter's `provider` request object), and a gateway that is not
+        // OpenRouter ignores or rejects the field, so only a deployment whose gateway understands
+        // it sets one. See `provider-routing.ts` for the document's shape.
+        providerRouting: v.optional(ProviderRoutingSchema),
         requestTimeoutMs: v.pipe(v.number(), v.integer(), v.minValue(30_000), v.maxValue(300_000)),
         requestMaxAttempts: v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(3)),
         reasoningEffort: v.picklist(REASONING_EFFORT_VALUES),
@@ -295,6 +308,10 @@ function buildRawCoreConfig(env: Record<string, string | undefined>): Record<str
             apiKey: env.LLM_API_KEY,
             model: env.LLM_MODEL,
             visionModel: env.LLM_VISION_MODEL,
+            // Passed through raw, like the reasoning level below: the JSON document is parsed and
+            // validated by the schema, so a malformed document or a misspelled routing key fails
+            // the load naming `llm.providerRouting` instead of being quietly discarded.
+            providerRouting: env[LLM_PROVIDER_ROUTING_VAR],
             requestTimeoutMs:
                 parseOptionalNumber(env.LLM_REQUEST_TIMEOUT_MS) ?? DEFAULT_REQUEST_TIMEOUT_MS,
             requestMaxAttempts:

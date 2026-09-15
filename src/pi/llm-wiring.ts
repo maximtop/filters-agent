@@ -52,6 +52,7 @@ export async function createPiRuntimeFromConfig(
         contextWindowTokens: llm.contextWindowTokens,
         maxOutputTokens: llm.maxOutputTokens,
         visionMaxOutputTokens: llm.visionMaxOutputTokens,
+        providerRouting: llm.providerRouting,
     });
 }
 

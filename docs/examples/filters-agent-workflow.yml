@@ -55,6 +55,10 @@ jobs:
                   llmApiKey: ${{ secrets.FILTERS_AGENT_LLM_API_KEY }}
                   llmModel: <reasoning model slug>
                   llmVisionModel: <vision model slug>
+                  # Optional plain config, not a secret: routing preferences an
+                  # OpenRouter-compatible gateway takes as the request's provider object, to route
+                  # around an upstream provider that is faulting.
+                  # llmProviderRouting: '{"ignore":["Together"]}'
                   # The label event carries the issue number directly; a manual dispatch carries it
                   # as the issueNumber input instead.
                   issueNumber: ${{ github.event.issue.number || inputs.issueNumber }}
