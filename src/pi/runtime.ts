@@ -248,6 +248,15 @@ function reasoningCatalogEntry(config: PiRuntimeConfig): CatalogEntry {
  * message transform reads it per resolved handle and replaces every image part with a placeholder
  * when it does not carry `'image'` — see the module note.
  *
+ * `reasoning` follows the slug: pi puts a reasoning level on the wire only for an entry registered
+ * `reasoning: true`, and the only vision model this runtime can vouch for as a reasoning model is
+ * the reasoning model itself. When both roles name one slug the vision entry is registered with
+ * reasoning support so `llm.singleShotReasoningEffort` reaches its calls: registered without it, a
+ * live run's vision verdicts carried no level at all and the gateway's own default let the model
+ * spend 6.8k of 7k output tokens on thinking per call, four minutes each, until `apply_rule` hit
+ * its deadline. A distinct vision slug (a model this runtime knows nothing about) stays `reasoning:
+ * false`, so no level is sent to a model that may refuse the parameter.
+ *
  * @param config - Validated provider configuration.
  * @returns The vision entry with its configured completion cap.
  */
@@ -256,7 +265,7 @@ function visionCatalogEntry(config: PiRuntimeConfig): CatalogEntry {
         ...sharedCatalogFields(config),
         id: config.visionModel,
         name: config.visionModel,
-        reasoning: false,
+        reasoning: config.visionModel === config.model,
         input: ['text', 'image'],
         maxTokens: config.visionMaxOutputTokens,
     };
