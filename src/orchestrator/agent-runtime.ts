@@ -4358,7 +4358,14 @@ export class AgentRuntime {
                     let pendingCandidate: PendingCandidateAttempt | undefined;
                     let freshLedgerKey: string | undefined;
                     if (name === 'apply_rule') {
-                        if (!this.guidanceConsulted) {
+                        // The guidance precondition holds only where guidance exists. A run
+                        // without a rule-guidance session advertises lookup_rule_guidance as a
+                        // gated stub, and demanding the call anyway blocked every candidate on
+                        // the built-in AdGuard route: live run 35135670034 could validate nothing.
+                        if (
+                            !this.guidanceConsulted &&
+                            this.baseToolNames.has('lookup_rule_guidance')
+                        ) {
                             return {
                                 error: 'Call lookup_rule_guidance before the first candidate.',
                                 errorKind: 'guidance_required',
