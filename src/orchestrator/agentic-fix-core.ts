@@ -55,7 +55,10 @@ import { wireRuntimeExecutors, type RuntimeExecutorWiring } from './agent-runtim
 import { BrowserExtensionExecutorName } from '../environment/executor-name';
 import { prepareRunExtension } from './pre-run-preparation';
 import type { PreparedExtension } from '../local/prepared-extension';
-import type { AgentRuntimeEnvironmentEvidence } from './agent-runtime-session-evidence';
+import {
+    sessionBaselineCredited,
+    type AgentRuntimeEnvironmentEvidence,
+} from './agent-runtime-session-evidence';
 import { isTargetEnvironmentFallbackReason } from '../types/browser-fallback-origin';
 import {
     type FixCoreDependencies,
@@ -88,8 +91,8 @@ import {
     selectConfigurationSpecificEnvironmentMatrix,
     serializeAgentBrowserSessions,
     serializeAgentExtensionProvenance,
-    serializeAgentSettingsEvidence,
     serializeConfigurationSpecificEnvironmentMatrix,
+    publishedSessionSettingsEvidence,
     serializeVerifiedCandidateBinding,
     symptomFromTerminal,
 } from './agentic-run-evidence';
@@ -478,7 +481,8 @@ export async function runAgenticFixCore(
             browserState.fallbackReason = exhaustedTargetFailure.fallbackReason;
             browserState.fallbackDetail = exhaustedTargetFailure.detail;
         }
-        const { candidatePatch, candidateVerified, verifiedScreenshots } = resolveCandidateVerdict({
+        const { candidatePatch, candidateVerified, verifiedScreenshots, semanticRefusal } =
+            resolveCandidateVerdict({
             proposedCandidate,
             selectedValidation,
             trace: run.trace,
@@ -503,15 +507,21 @@ export async function runAgenticFixCore(
         );
         if (runtimeCandidateBinding !== undefined && candidateValidationEvidence === undefined) {
             // The experiment already proved this candidate; losing it here silently would leave
-            // the run reporting no patch with nothing to explain why.
+            // the run reporting no patch with nothing to explain why. The preflight sink is only
+            // installed by the lab's local cycle, so the run log carries the names as well.
+            const failures = describeVerifiedCandidateBindingFailure(
+                runtimeCandidateBinding,
+                selectedValidation,
+                verifiedScreenshots,
+            ).slice(0, 12);
             recordPreflightDiagnostic('run', {
                 note: 'verified_candidate_binding_not_serialized',
-                failures: describeVerifiedCandidateBindingFailure(
-                    runtimeCandidateBinding,
-                    selectedValidation,
-                    verifiedScreenshots,
-                ).slice(0, 12),
+                failures,
             });
+            logger.warn(
+                { validationArtifactId: runtimeCandidateBinding.validationArtifactId, failures },
+                'verified candidate binding did not serialize into publication evidence',
+            );
         }
         // The one line that says how a terminal proposal became, or failed to become, a candidate
         // patch: a live run accepted a draft-PR terminal over a verified review and still ended
@@ -523,6 +533,7 @@ export async function runAgenticFixCore(
                 validationArtifactId: selectedValidation?.validationArtifactId,
                 boundToVerifiedEnvironment: verifiedCandidateEnvironment !== undefined,
                 candidateVerified,
+                semanticRefusal,
                 candidateValidationEvidence: candidateValidationEvidence !== undefined,
                 browserUsable: browserState.usable,
                 candidatePatch: candidatePatch !== null,
@@ -614,7 +625,7 @@ export async function runAgenticFixCore(
             resultContext.domain = new URL(boundEnvironment.targetUrl).hostname;
         }
         const settingsEnvironment =
-            boundEnvironment?.extension && boundEnvironment.settingsEvidence
+            boundEnvironment?.extension && sessionBaselineCredited(boundEnvironment)
                 ? boundEnvironment
                 : runtime.getLatestVerifiedSettingsEnvironment();
         const settingsEvidence = settingsEnvironment?.settingsEvidence;
@@ -747,8 +758,13 @@ export async function runAgenticFixCore(
                 preparedExtensionProvenance,
             );
         }
-        if (settingsEvidence) {
-            finalResult.settingsEvidence = serializeAgentSettingsEvidence(settingsEvidence);
+        // Published through the same function as the bound session's record and the candidate
+        // binding, so a declared-baseline session carries its settings on all three alike.
+        const publishedSettings = settingsEnvironment
+            ? publishedSessionSettingsEvidence(settingsEnvironment)
+            : undefined;
+        if (publishedSettings) {
+            finalResult.settingsEvidence = publishedSettings;
         }
         provisionalResult = finalResult;
     } catch (error) {

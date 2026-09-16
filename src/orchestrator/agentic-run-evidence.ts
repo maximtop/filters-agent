@@ -10,7 +10,7 @@ import { SETTINGS_PROOF_FILE_NAME, writeSettingsProof } from '../local/settings-
 import type { AdGuardExtensionSettingsEvidence } from '../browser/adguard-extension-state-shapes';
 import type { PreparedExtension } from '../local/prepared-extension';
 import { ExtensionLaunchFamily } from '../environment/extension-launch';
-import { adguardListKey } from '../environment/filter-list-ref';
+import { adguardListKey, type FilterListKey } from '../environment/filter-list-ref';
 import { FixOutcomeKind, ReproductionStatus, type FixOutcome } from '../pr/fix-outcome';
 import type { TraceRecorder } from '../tracer/trace-recorder';
 import {
@@ -110,6 +110,62 @@ export function serializeAgentSettingsEvidence(
         stealthEnabled: evidence.stealthEnabled,
         limitsExceeded: evidence.limitsExceeded,
     };
+}
+
+/**
+ * Publish the settings a declared-baseline session ran with.
+ *
+ * A blocker that declares its own list selection is credited from that declaration (32-AFK
+ * Decision 3): there is no live state to read back, so the declared keys are the enabled set. The
+ * MV3 fields do not apply to such a blocker — it has no rulesets, no Stealth mode and no rule
+ * limits — and the record says so plainly rather than inventing an observation.
+ *
+ * @param profileKind - The settings profile the model selected for the session.
+ * @param listKeys - The declared list selection the session was credited with.
+ * @returns The published settings evidence of the declared baseline.
+ */
+export function serializeDeclaredBaselineSettings(
+    profileKind: AgentSettingsEvidence['profileKind'],
+    listKeys: readonly FilterListKey[],
+): AgentSettingsEvidence {
+    return {
+        profileKind,
+        enabledListKeys: [...listKeys],
+        activeRulesetListKeys: [],
+        stealthEnabled: null,
+        limitsExceeded: false,
+    };
+}
+
+/**
+ * The settings evidence one session publishes: the read-back's when the session was credited by a
+ * live state read, the declared selection when the blocker declared its own baseline, and nothing
+ * when the session was credited by neither.
+ *
+ * The browser-session records, the final result and the candidate binding all publish through
+ * this one function, so the binding can never disagree with the session it names. Before it
+ * existed the binding demanded a read-back record, and a uBlock Origin session in Firefox — credited
+ * by its declared lists — lost its verified candidate at the very last step.
+ *
+ * @param environment - Detached evidence of one runtime session.
+ * @returns The published settings evidence, or undefined for an uncredited session.
+ */
+export function publishedSessionSettingsEvidence(
+    environment: AgentRuntimeEnvironmentEvidence,
+): AgentSettingsEvidence | undefined {
+    if (environment.settingsEvidence !== undefined) {
+        return serializeAgentSettingsEvidence(environment.settingsEvidence);
+    }
+    if (
+        environment.declaredBaselineListKeys !== undefined &&
+        environment.selectedSettingsProfileKind !== undefined
+    ) {
+        return serializeDeclaredBaselineSettings(
+            environment.selectedSettingsProfileKind,
+            environment.declaredBaselineListKeys,
+        );
+    }
+    return undefined;
 }
 
 /**
@@ -333,8 +389,9 @@ export function serializeAgentBrowserSessions(
         if (environment.extension) {
             session.extensionProvenance = serializeAgentExtensionProvenance(environment.extension);
         }
-        if (environment.settingsEvidence) {
-            session.settingsEvidence = serializeAgentSettingsEvidence(environment.settingsEvidence);
+        const settingsEvidence = publishedSessionSettingsEvidence(environment);
+        if (settingsEvidence) {
+            session.settingsEvidence = settingsEvidence;
         }
         return session;
     });
@@ -442,12 +499,15 @@ export function describeVerifiedCandidateBindingFailure(
             failures.push('extension provenance differs from the bound session');
         }
         if (
-            binding.settingsEvidence === undefined ||
-            binding.environment.settingsEvidence === undefined ||
             JSON.stringify(binding.settingsEvidence) !==
-                JSON.stringify(binding.environment.settingsEvidence)
+            JSON.stringify(binding.environment.settingsEvidence)
         ) {
             failures.push('settings evidence differs from the bound session');
+        }
+        if (publishedSessionSettingsEvidence(binding.environment) === undefined) {
+            failures.push(
+                'the bound session was credited by neither a settings read-back nor a declared baseline',
+            );
         }
     }
     return failures;
@@ -510,15 +570,15 @@ export function serializeVerifiedCandidateBinding(
             afterFullPage: binding.afterFullPage,
         };
     }
+    const publishedSettings = publishedSessionSettingsEvidence(binding.environment);
     if (
         binding.environment.extensionMode !== ExtensionMode.Prepared ||
         binding.extension === undefined ||
         binding.environment.extension === undefined ||
         JSON.stringify(binding.extension) !== JSON.stringify(binding.environment.extension) ||
-        binding.settingsEvidence === undefined ||
-        binding.environment.settingsEvidence === undefined ||
         JSON.stringify(binding.settingsEvidence) !==
-            JSON.stringify(binding.environment.settingsEvidence)
+            JSON.stringify(binding.environment.settingsEvidence) ||
+        publishedSettings === undefined
     ) {
         return undefined;
     }
@@ -526,7 +586,7 @@ export function serializeVerifiedCandidateBinding(
         validationArtifactId: binding.validationArtifactId,
         sessionId: binding.sessionId,
         extensionProvenance: serializeAgentExtensionProvenance(binding.extension),
-        settingsEvidence: serializeAgentSettingsEvidence(binding.settingsEvidence),
+        settingsEvidence: publishedSettings,
         validationArtifact: binding.validationArtifact,
         visualReviewArtifact: binding.visualReviewArtifact,
         beforeViewport: binding.beforeViewport,

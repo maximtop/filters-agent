@@ -261,29 +261,42 @@ export function deriveFixRunStatus(
 }
 
 /**
- * Determine whether a complete runner-bound experiment has a verified visual-agent review.
+ * Name why a runner-bound experiment does not carry a verified visual-agent review, or nothing
+ * when it does.
  *
  * Browser measurements remain evidence only. This function checks mechanical provenance and
- * evidence binding; it never interprets whether page content is semantically correct.
+ * evidence binding; it never interprets whether page content is semantically correct. Every
+ * refusal is named: a live run that lost a verified candidate here could not say which of a dozen
+ * bindings had slipped, and the answer cost a day of reruns.
  *
  * @param factual - Parsed collect-only candidate experiment artifact.
  * @param candidatePatch - Candidate patch expected in Phase C.
  * @param expectedContext - Runner-owned issue URL and pinned repository baseline.
  * @param visualReview - Typed semantic review produced from the experiment's four screenshots.
- * @returns True only when mechanical experiment provenance is complete and vision verified it.
+ * @returns The refusal, or undefined when mechanical experiment provenance is complete and vision
+ *   verified it.
  */
-export function isCandidatePatchVerified(
+export function candidatePatchVerificationRefusal(
     factual: unknown,
     candidatePatch: CandidatePatch,
     expectedContext?: TrustedValidationContext,
     visualReview?: CandidateVisualReview,
-): boolean {
-    if (factual === null || typeof factual !== 'object' || !expectedContext || !visualReview) {
-        return false;
+): string | undefined {
+    if (factual === null || typeof factual !== 'object') {
+        return 'the factual validation record is missing';
+    }
+    if (!expectedContext) {
+        return 'the trusted validation context is missing';
+    }
+    if (!visualReview) {
+        return 'the visual review is missing';
     }
     const parsedReview = v.safeParse(CandidateVisualReviewSchema, visualReview);
-    if (!parsedReview.success || parsedReview.output.verdict !== 'verified') {
-        return false;
+    if (!parsedReview.success) {
+        return 'the visual review does not parse';
+    }
+    if (parsedReview.output.verdict !== 'verified') {
+        return `the visual review verdict is ${parsedReview.output.verdict}`;
     }
     const review = parsedReview.output;
     const record = factual as Record<string, unknown>;
@@ -293,17 +306,29 @@ export function isCandidatePatchVerified(
             expectedContext.reportedUrl,
             expectedContext.existingRules,
         );
-    } catch {
-        return false;
+    } catch (error) {
+        return `the trusted baseline hash could not be recomputed: ${(error as Error).message}`;
     }
     const recordedContext = record.trustedValidationContext as Record<string, unknown> | undefined;
+    if (expectedContext.baselineHash !== recomputedBaselineHash) {
+        return 'the trusted context does not hash to its own rules';
+    }
+    if (recordedContext?.reportedUrl !== expectedContext.reportedUrl) {
+        return (
+            `the recorded validation URL ${String(recordedContext?.reportedUrl)} differs from ` +
+            `the trusted ${expectedContext.reportedUrl}`
+        );
+    }
     if (
-        expectedContext.baselineHash !== recomputedBaselineHash ||
-        recordedContext?.reportedUrl !== expectedContext.reportedUrl ||
         recordedContext.baselineHash !== recomputedBaselineHash ||
         recordedContext.existingRuleCount !== expectedContext.existingRules.length
     ) {
-        return false;
+        return (
+            `the recorded baseline (${String(recordedContext.existingRuleCount)} rules, hash ` +
+            `${String(recordedContext.baselineHash).slice(0, 12)}) differs from the verdict-time ` +
+            `baseline (${expectedContext.existingRules.length} rules, hash ` +
+            `${recomputedBaselineHash.slice(0, 12)})`
+        );
     }
 
     const candidateRuleHash = createHash('sha256').update(candidatePatch.rule).digest('hex');
@@ -315,24 +340,24 @@ export function isCandidatePatchVerified(
         reviewIdentity === null ||
         reviewIdentity.candidateShortHash !== candidateRuleHash.slice(0, 12)
     ) {
-        return false;
+        return 'the visual review identity does not match the candidate rule';
     }
 
     const phaseA = record.phaseA as Record<string, unknown> | undefined;
     const phaseB = record.phaseB as Record<string, unknown> | undefined;
     const phaseC = record.phaseC as Record<string, unknown> | undefined;
     if (!phaseA || !phaseB || !phaseC) {
-        return false;
+        return 'a phase record is missing from the factual validation';
     }
     if (
         phaseA.url !== expectedContext.reportedUrl ||
         phaseB.url !== expectedContext.reportedUrl ||
-        phaseC.url !== expectedContext.reportedUrl ||
-        phaseA.error ||
-        phaseB.error ||
-        phaseC.error
+        phaseC.url !== expectedContext.reportedUrl
     ) {
-        return false;
+        return 'a phase URL differs from the trusted reported URL';
+    }
+    if (phaseA.error || phaseB.error || phaseC.error) {
+        return 'a phase recorded an error';
     }
     const phasesHaveCompleteVisualArtifacts = [phaseA, phaseB, phaseC].every(
         (phase) =>
@@ -342,7 +367,7 @@ export function isCandidatePatchVerified(
             phase.fullPageScreenshotArtifactId.length > 0,
     );
     if (!phasesHaveCompleteVisualArtifacts) {
-        return false;
+        return 'a phase lacks its viewport or full-page screenshot';
     }
 
     const phaseARuleApplications = verifiedRuleApplicationPartition(phaseA, []);
@@ -353,18 +378,22 @@ export function isCandidatePatchVerified(
     const phaseCExpectedRules = [...expectedContext.existingRules, candidatePatch.rule];
     const phaseCRuleApplications = verifiedRuleApplicationPartition(phaseC, phaseCExpectedRules);
     const candidateApplication = phaseCRuleApplications?.at(-1);
+    if (!phaseARuleApplications || !phaseBRuleApplications || !phaseCRuleApplications) {
+        return 'a phase rule-application ledger does not partition the trusted rules';
+    }
     if (
-        !phaseARuleApplications ||
-        !phaseBRuleApplications ||
-        !phaseCRuleApplications ||
         candidateApplication?.rule !== candidatePatch.rule ||
-        candidateApplication?.status !== 'applied' ||
+        candidateApplication?.status !== 'applied'
+    ) {
+        return `phase C did not apply the candidate (status ${String(candidateApplication?.status)})`;
+    }
+    if (
         !phaseBRuleApplications.every((fact, index) => {
             const phaseCFact = phaseCRuleApplications[index];
             return phaseCFact?.rule === fact.rule && phaseCFact.status === fact.status;
         })
     ) {
-        return false;
+        return 'phase C changed the baseline rule applications of phase B';
     }
 
     const controlViewportId = phaseC.sameDocumentControlScreenshotArtifactId;
@@ -393,18 +422,21 @@ export function isCandidatePatchVerified(
             Math.abs(parsedControlViewport.output.x - parsedCandidateViewport.output.x) > 1 ||
             Math.abs(parsedControlViewport.output.y - parsedCandidateViewport.output.y) > 1
         ) {
-            return false;
+            return 'the same-document control capture is incomplete or misaligned';
         }
         beforeViewportId = controlViewportId;
         beforeFullPageId = controlFullPageId;
     }
 
-    return (
-        review.beforeViewportArtifactId === beforeViewportId &&
-        review.afterViewportArtifactId === phaseC.screenshotArtifactId &&
-        review.beforeFullPageArtifactId === beforeFullPageId &&
-        review.afterFullPageArtifactId === phaseC.fullPageScreenshotArtifactId
-    );
+    if (
+        review.beforeViewportArtifactId !== beforeViewportId ||
+        review.afterViewportArtifactId !== phaseC.screenshotArtifactId ||
+        review.beforeFullPageArtifactId !== beforeFullPageId ||
+        review.afterFullPageArtifactId !== phaseC.fullPageScreenshotArtifactId
+    ) {
+        return 'the visual review screenshots are not the phase artifacts';
+    }
+    return undefined;
 }
 
 /**
@@ -491,6 +523,11 @@ export interface CandidateVerdict {
     semanticallyVerified: boolean;
 
     /**
+     * Why the runner-bound review did not verify the candidate, when it did not.
+     */
+    semanticRefusal?: string;
+
+    /**
      * Screenshot set backing a semantically verified candidate, or undefined when incomplete.
      */
     verifiedScreenshots: VerifiedCandidateScreenshotPaths | undefined;
@@ -546,15 +583,18 @@ export function resolveCandidateVerdict(request: CandidateVerdictRequest): Candi
     // but counting it keeps the publication gate fail-closed if one is ever truncated.
     const hasAnyValidation =
         traceHasApplyRuleAttempt(request.trace) || hasPersistedCandidateValidation(artifacts);
-    const semanticallyVerified =
-        proposedCandidate !== null &&
-        boundToVerifiedEnvironment &&
-        isCandidatePatchVerified(
-            selectedValidation?.factualValidation,
-            proposedCandidate,
-            request.trustedValidationContext,
-            selectedValidation?.visualReview,
-        );
+    const semanticRefusal =
+        proposedCandidate === null
+            ? 'no candidate was proposed'
+            : !boundToVerifiedEnvironment
+              ? 'the candidate is not bound to a verified browser environment'
+              : candidatePatchVerificationRefusal(
+                    selectedValidation?.factualValidation,
+                    proposedCandidate,
+                    request.trustedValidationContext,
+                    selectedValidation?.visualReview,
+                );
+    const semanticallyVerified = semanticRefusal === undefined;
     const verifiedScreenshots = verifiedCandidateScreenshotPaths(
         selectedValidation,
         artifacts,
@@ -576,6 +616,7 @@ export function resolveCandidateVerdict(request: CandidateVerdictRequest): Candi
     return {
         hasAnyValidation,
         semanticallyVerified,
+        ...(semanticRefusal === undefined ? {} : { semanticRefusal }),
         verifiedScreenshots,
         candidateVerified,
         candidateAfterValidation,
