@@ -43,6 +43,25 @@ const ADGUARD_SCREENSHOT_HOST = 'cdn.adguardcdn.com';
 const ADGUARD_SCREENSHOT_PATH_PREFIX = '/sitereports/';
 
 /**
+ * Hosts of the AdGuard report front-ends that store a report's screenshots themselves, beside the
+ * CDN above: the same front-ends `TRUSTED_REPORT_SETTINGS_HOSTS` trusts for settings imports.
+ *
+ * A live issue (upstream AdguardFilters #241594, 2026-09-16) linked its screenshot from
+ * `reports.adguard.info/stcdn/sitereports/…`, and the downloader refused it as no reporter image
+ * namespace, so the run analyzed the report without its only screenshot.
+ */
+const ADGUARD_REPORT_FRONTEND_HOSTS: ReadonlySet<string> = new Set([
+    'reports.adguard.com',
+    'reports.adguard.info',
+    'reports.adguard.app',
+]);
+
+/**
+ * Path prefix the report front-ends store site-report screenshots under.
+ */
+const ADGUARD_REPORT_FRONTEND_SCREENSHOT_PATH_PREFIX = '/stcdn/sitereports/';
+
+/**
  * Determine whether a URL lies in a namespace that serves nothing but reporter-uploaded images.
  *
  * This is the single definition of "a reporter image host", shared by two callers with different
@@ -66,9 +85,15 @@ export function isReporterImageNamespace(url: URL): boolean {
     if (GITHUB_USER_IMAGE_HOSTS.has(hostname)) {
         return true;
     }
-    return (
+    if (
         hostname === ADGUARD_SCREENSHOT_HOST &&
         url.pathname.startsWith(ADGUARD_SCREENSHOT_PATH_PREFIX)
+    ) {
+        return true;
+    }
+    return (
+        ADGUARD_REPORT_FRONTEND_HOSTS.has(hostname) &&
+        url.pathname.startsWith(ADGUARD_REPORT_FRONTEND_SCREENSHOT_PATH_PREFIX)
     );
 }
 
