@@ -966,6 +966,22 @@ function planDeclaredAppend(checkoutPath: string, declared: DeclaredPlacement): 
 }
 
 /**
+ * Whether the run's declared placement settles the edit for this target: the declaration names
+ * the candidate's own file, so the plan is an append at the end of that list and never a routed
+ * domain extension of a shared-rule owner.
+ *
+ * @param filePath - Repository-relative target filter file of the candidate.
+ * @param declared - The run instruction's declared placement, when its instruction declares one.
+ * @returns Whether the declaration owns the edit shape for this target.
+ */
+export function isDeclaredAppendTarget(
+    filePath: string,
+    declared?: DeclaredPlacement,
+): declared is DeclaredPlacement {
+    return declared !== undefined && declared.filePath === filePath;
+}
+
+/**
  * Plan an exact repository edit for a locked candidate without modifying the checkout.
  *
  * A standard domain-scoped cosmetic rule extends a unique existing multi-domain rule found across
@@ -987,7 +1003,7 @@ export function planRepositoryEdit(
     existingRuleHints: readonly string[] = [],
     declared?: DeclaredPlacement,
 ): RepositoryEditPlan {
-    if (declared !== undefined && declared.filePath === filePath) {
+    if (isDeclaredAppendTarget(filePath, declared)) {
         return planDeclaredAppend(checkoutPath, declared);
     }
     const targetPath = resolveFilterPath(checkoutPath, filePath);

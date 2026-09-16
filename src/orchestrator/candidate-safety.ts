@@ -11,7 +11,7 @@ import {
 } from '../repo/rule-normalizer';
 import { DuplicateClass, RiskLevel, RuleType } from '../types/rule-proposal';
 import type { DeclaredPlacement } from '../types/declared-placement';
-import { planRepositoryEdit } from '../repo/repository-edit';
+import { isDeclaredAppendTarget, planRepositoryEdit } from '../repo/repository-edit';
 import { scoreRisk } from '../risk/risk-scorer';
 import { lintRule } from '../rules/aglint-linter';
 import { parseSafeCssInjectionRule } from '../rules/safe-css-injection';
@@ -300,9 +300,15 @@ export function enforceCandidateSafety(
         }
         // Exceptions never resolve to a domain extension (the extension selector refuses them),
         // so a model-reported duplicate classification must not veto a valid exception insert.
+        // Neither does a declared placement: the declaration prescribes an append at the end of
+        // its list, so the classification stays advisory there and the deterministic checks
+        // around it — the exact-duplicate scan below, the experiment behind the verdict — carry
+        // the safety. The sarkisozleri.bbs.tr run lost its verified candidate to a `cross-filter`
+        // note about EasyList's own vendor rule for exactly this reason.
         if (
             proposal.duplicateCheck.classification !== DuplicateClass.None &&
-            !normalized.isException
+            !normalized.isException &&
+            !isDeclaredAppendTarget(proposal.placement.filePath, options.declaredPlacement)
         ) {
             const extensionEligibleClasses: DuplicateClass[] = [
                 DuplicateClass.Semantic,
