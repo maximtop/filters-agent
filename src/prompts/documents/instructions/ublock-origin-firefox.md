@@ -39,6 +39,8 @@ Your job is to fetch the XPI and declare how the host must install it.
       catalog.
     - `userFiltersKeyPath`: `["adminSettings", "userFilters"]` — the key inside that document the
       host fills with the exact contents of the user-filters file named under State verification.
+      Do not create or write that file yourself: the host creates and maintains it. Nothing here
+      needs the XPI unpacked or inspected; once it is saved and checked, finish.
 
 The managed-storage document, verbatim:
 
