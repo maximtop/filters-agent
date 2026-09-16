@@ -4,7 +4,13 @@ import { TOOL_GUIDANCE, TOOL_PARAMETER_SCHEMAS } from '../agent/tool-catalog';
 import { ToolName } from '../agent/tool-names';
 import { AdGuardExtensionMessageType } from '../browser/adguard-extension-message-types';
 import { DISABLE_STEALTH_SETTING } from '../browser/adguard-extension-settings';
-import { sendExtensionMessage } from '../browser/adguard-extension-state-transport';
+import { waitForAppInitialized } from '../browser/adguard-extension-state-read';
+import {
+    DEFAULT_READINESS_BUDGET_MS,
+    probeUntilReady,
+    sendExtensionMessage,
+    type ExtensionReadinessOptions,
+} from '../browser/adguard-extension-state-transport';
 import type { IBrowserSession } from '../browser/browser-interfaces';
 import type { AdaptedToolInput } from '../pi/session-tools';
 
@@ -182,23 +188,40 @@ function setAcceptableAds(
  * as the retired options-page driver's legacy import path did before the model performed this step
  * itself (`git show 1ea6e065^:src/browser/adguard-settings-import-protocol.ts`).
  *
+ * The page has only just loaded when this runs, and the extension's background message handlers
+ * register asynchronously after it: the very first message a live run sent from here met "Could
+ * not establish connection. Receiving end does not exist." from a listener that was not up yet
+ * (run 35139965168), and the whole prepared launch was thrown away for it. The export read
+ * therefore waits for the extension's readiness first and probes the export the way every
+ * host read-back of the blocker state does.
+ *
  * @param page - Prepared blocker management surface page the export is read from.
  * @param expectation - The prepared expectation the payload must express.
+ * @param readiness - Optional readiness budget; the shared default otherwise.
  * @returns The complete settings-import JSON document, ready for `applySettingsJson`.
- * @throws When the export does not parse as a JSON object, or carries no `filters` or
- *   `general-settings` section, or carries no `stealth` section to enable Tracking protection in
- *   when one is expected enabled.
+ * @throws When the extension does not become ready within the budget, or the export does not
+ *   parse as a JSON object, or carries no `filters` or `general-settings` section, or carries no
+ *   `stealth` section to enable Tracking protection in when one is expected enabled.
  */
 export async function buildExtensionSettingsPayload(
     page: Page,
     expectation: ExtensionSettingsPayloadExpectation,
+    readiness?: ExtensionReadinessOptions,
 ): Promise<string> {
-    const exported = v.parse(
-        SettingsExportResponseSchema,
-        await sendExtensionMessage(page, {
-            type: AdGuardExtensionMessageType.LoadSettingsJson,
-        }),
-    );
+    const readinessDeadlineAt = Date.now() + (readiness?.budgetMs ?? DEFAULT_READINESS_BUDGET_MS);
+    await waitForAppInitialized(page, readinessDeadlineAt);
+    const exported = await probeUntilReady({
+        page,
+        sharedDeadlineAt: readinessDeadlineAt,
+        label: "the extension's own settings export did not answer",
+        probe: async () =>
+            v.parse(
+                SettingsExportResponseSchema,
+                await sendExtensionMessage(page, {
+                    type: AdGuardExtensionMessageType.LoadSettingsJson,
+                }),
+            ),
+    });
     let root: Record<string, unknown>;
     try {
         root = v.parse(v.record(v.string(), v.unknown()), JSON.parse(exported.content));
