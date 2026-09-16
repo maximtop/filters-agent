@@ -202,6 +202,7 @@ import {
     type PhaseApplicationFlowHost,
     type PhaseApplicationModelRunnerFactory,
 } from './phase-application-flow-host';
+import { hostOwnedCheckoutFiles } from './blocker-file-target';
 import {
     buildFirefoxExtensionEnvironmentOptions,
     firefoxPreparedLaunch,
@@ -3837,9 +3838,15 @@ export class AgentRuntime {
             };
         }
         const candidateRule = candidate.normalized.canonical;
+        // The baseline is recomputed at the verdict after the host has written the candidate into
+        // the declared blocker-state file; both computations leave that file out.
         const trustedValidationContext = createTrustedValidationContext(
             state.targetUrl,
             this.options.filtersPath,
+            hostOwnedCheckoutFiles(
+                applicationInstructionContent(this.options.instruction),
+                this.options.filtersPath,
+            ),
         );
         const observerOptions: BrowserExtensionAdsObserverOptions = {
             candidateRule,

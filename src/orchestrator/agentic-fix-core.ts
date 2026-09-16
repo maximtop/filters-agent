@@ -38,6 +38,8 @@ import { AgentTerminationReason } from '../types/agent-termination-reason';
 import { InfrastructureFailureReason } from '../types/infrastructure-failure-reason';
 import { RunMode, TraceEventType } from '../types/trace';
 import { enforceCandidateSafety } from './candidate-safety';
+import { hostOwnedCheckoutFiles } from './blocker-file-target';
+import { applicationInstructionContent } from './phase-application-flow-host';
 import { branchNameDomain, deriveBranchName } from './fix-branch-name';
 import {
     candidatePatchFromOutcome,
@@ -385,15 +387,36 @@ export async function runAgenticFixCore(
                 .slice(0, 12)}`;
             terminalValidationEnvironment = runtime.getValidationEnvironment(validationArtifactId);
         }
+        // The between-phases application wrote the candidate into the instruction's declared
+        // blocker-state file, which lives inside the checkout: the checkout walks from here on —
+        // the gate's duplicate scan, the verdict's recomputed baseline — must not read that file
+        // back as repository content.
+        const hostOwnedFiles = hostOwnedCheckoutFiles(
+            applicationInstructionContent(options.instruction),
+            config.repositoryPath,
+        );
         const candidateSafety = enforceCandidateSafety(terminal, {
             reportedDomain: terminalValidationEnvironment
                 ? new URL(terminalValidationEnvironment.targetUrl).hostname
                 : domain,
             checkoutPath: config.repositoryPath,
             problemType: facts.problemType,
+            hostOwnedFiles,
             ...(declaredPlacement === undefined ? {} : { declaredPlacement }),
         });
         const outcome = candidateSafety.outcome;
+        if (candidateSafety.rejectionReason !== null) {
+            logger.warn(
+                {
+                    rule:
+                        terminal.outcome === FixOutcomeKind.DraftPr
+                            ? terminal.ruleProposal.rule
+                            : undefined,
+                    rejectionReason: candidateSafety.rejectionReason,
+                },
+                'candidate safety gate downgraded the accepted draft to analysis-only',
+            );
+        }
         const proposedCandidate = candidatePatchFromOutcome(
             outcome,
             config.repositoryPath,
@@ -428,6 +451,7 @@ export async function runAgenticFixCore(
         const trustedValidationContext = createTrustedValidationContext(
             validationEnvironment?.targetUrl ?? reportedUrl,
             config.repositoryPath,
+            hostOwnedFiles,
         );
         browserState.usable = runtime.hasBrowserEvidence();
         browserState.effectiveMode = browserState.usable

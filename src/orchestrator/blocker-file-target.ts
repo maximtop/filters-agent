@@ -97,3 +97,25 @@ export function resolveDeclaredBlockerFile(
     const resolution = resolveBlockerFileTarget(filtersPath, target);
     return 'path' in resolution ? resolution.path : undefined;
 }
+
+/**
+ * The files the run's host itself maintains inside the checkout: today exactly the declared
+ * file-backed blocker-state file, when the instruction declares one the host will read.
+ *
+ * A relative declared target lives inside the checkout by contract, and the between-phases
+ * application writes the candidate rule into it. Every later walk of the checkout that reads
+ * repository content — the safety gate's duplicate scan, the verdict's recomputed rule baseline —
+ * must skip these files, or it reads the run's own candidate back as repository content. The
+ * sarkisozleri.bbs.tr run lost its verified candidate exactly that way: the gate rejected it as
+ * already present in the checkout, and the recomputed baseline hash no longer matched the one the
+ * apply-time context recorded before the write.
+ *
+ * @param application - The run's application instruction content.
+ * @param filtersPath - The run's checkout root a relative target resolves against.
+ * @returns Absolute paths of the host-maintained files; empty when the instruction declares none
+ *   the host will read.
+ */
+export function hostOwnedCheckoutFiles(application: string, filtersPath: string): string[] {
+    const declared = resolveDeclaredBlockerFile(application, filtersPath);
+    return declared === undefined ? [] : [declared];
+}
