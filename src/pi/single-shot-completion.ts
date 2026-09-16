@@ -42,6 +42,19 @@ const DEFAULT_TEMPERATURE = 0;
 const TRANSIENT_RETRY_DELAY_MS = 1_000;
 
 /**
+ * Hard bound on one single-shot call's total duration, streamed progress or not.
+ *
+ * The inactivity bound measures silence, deliberately: a reasoning model that streams its thinking
+ * for minutes is alive. It therefore cannot end a generation that never stops. Live run
+ * 35066780225 (2026-09-16) spent 21 and then 24 minutes inside two vision calls that kept
+ * streaming the whole time — cut only by the 30-minute apply_rule deadline and by the provider
+ * itself — and those 46 minutes were most of its 60-minute investigation. Verified reviews of the
+ * same page finish in one to five minutes; a call still going at ten is a runaway, not a slow
+ * answer, and the run is better off with a named failure and its remaining budget.
+ */
+export const SINGLE_SHOT_CALL_CEILING_MS = 10 * 60_000;
+
+/**
  * Map the configured reasoning effort onto the provider request field, or onto nothing.
  *
  * The pi boundary in one place. Single-shot calls go through the API-typed streaming path, so the
@@ -64,6 +77,25 @@ function reasoningEffortRequestFields(effort: ReasoningEffort | undefined): {
     return effort === undefined || effort === ReasoningEffort.Off
         ? {}
         : { reasoningEffort: effort };
+}
+
+/**
+ * Describe the ceiling that ended one streamed completion, for the typed failure and its log line.
+ *
+ * @param ceilingMs - The total-duration bound the call outlived.
+ * @param streamedEvents - Events the stream had delivered before the abort.
+ * @param providerMessage - Pi's own error text for the aborted request, when it carried one.
+ * @returns The single-line failure message naming the ceiling.
+ */
+function ceilingMessage(
+    ceilingMs: number,
+    streamedEvents: number,
+    providerMessage: string | undefined,
+): string {
+    const ceiling =
+        `single-shot stream outlived its ${ceilingMs}ms ceiling while still streaming ` +
+        `(${streamedEvents} streamed events)`;
+    return providerMessage === undefined ? ceiling : `${ceiling}: ${providerMessage}`;
 }
 
 /**
@@ -168,11 +200,15 @@ async function completeUnretried(
     options: SingleShotCompletionOptions,
 ): Promise<AssistantMessage> {
     const stallBoundMs = options.timeoutMs;
-    // Composed before the request: the signal has to be in the options pi builds the request from.
+    const ceilingMs = options.ceilingMs;
+    // Composed before the request: the signals have to be in the options pi builds the request
+    // from.
     const stallController = new AbortController();
+    const ceilingController = new AbortController();
     const sources = [
         ...(options.signal === undefined ? [] : [options.signal]),
         ...(stallBoundMs === undefined ? [] : [stallController.signal]),
+        ...(ceilingMs === undefined ? [] : [ceilingController.signal]),
     ];
     const signal = sources.length === 0 ? undefined : AbortSignal.any(sources);
     const stream = runtime.modelRuntime.stream(
@@ -188,30 +224,40 @@ async function completeUnretried(
             ...(signal !== undefined ? { signal } : {}),
         },
     );
-    if (stallBoundMs === undefined) {
-        // No configured deadline, so there is no bound to arm; `result()` is what `complete()` is.
-        return await stream.result();
-    }
     let stalled = false;
+    let exceededCeiling = false;
     let streamedEvents = 0;
-    let timer: NodeJS.Timeout | undefined;
+    let stallTimer: NodeJS.Timeout | undefined;
     const armStallTimer = (): void => {
-        if (timer !== undefined) {
-            clearTimeout(timer);
+        if (stallBoundMs === undefined) {
+            return;
         }
-        timer = setTimeout(() => {
+        if (stallTimer !== undefined) {
+            clearTimeout(stallTimer);
+        }
+        stallTimer = setTimeout(() => {
             stalled = true;
             stallController.abort();
         }, stallBoundMs);
-        timer.unref();
+        stallTimer.unref();
     };
+    // The ceiling is armed once, with the request, and never re-armed: it bounds the whole call,
+    // which is exactly what the re-armed inactivity bound below cannot do.
+    const ceilingTimer =
+        ceilingMs === undefined
+            ? undefined
+            : setTimeout(() => {
+                  exceededCeiling = true;
+                  ceilingController.abort();
+              }, ceilingMs);
+    ceilingTimer?.unref();
     try {
         armStallTimer();
         // Every event is a sign of life — a text or thinking delta, a tool-call delta, the stream's
         // own start — so the deadline measures the gap since the last one and never the response's
         // total length: a model that streams its reasoning for many minutes is alive. The terminal
         // `done`/`error` event is the ending rather than progress, so only the events ahead of it
-        // are counted for the stall diagnostic.
+        // are counted for the diagnostics.
         for await (const event of stream) {
             if (event.type !== 'done' && event.type !== 'error') {
                 streamedEvents += 1;
@@ -219,15 +265,28 @@ async function completeUnretried(
             armStallTimer();
         }
     } finally {
-        if (timer !== undefined) {
-            clearTimeout(timer);
+        if (stallTimer !== undefined) {
+            clearTimeout(stallTimer);
+        }
+        if (ceilingTimer !== undefined) {
+            clearTimeout(ceilingTimer);
         }
     }
     const message = await stream.result();
-    return stalled && options.signal?.aborted !== true
-        ? {
-              ...message,
-              errorMessage: stallMessage(stallBoundMs, streamedEvents, message.errorMessage),
-          }
-        : message;
+    if (options.signal?.aborted === true) {
+        return message;
+    }
+    if (exceededCeiling && ceilingMs !== undefined) {
+        return {
+            ...message,
+            errorMessage: ceilingMessage(ceilingMs, streamedEvents, message.errorMessage),
+        };
+    }
+    if (stalled && stallBoundMs !== undefined) {
+        return {
+            ...message,
+            errorMessage: stallMessage(stallBoundMs, streamedEvents, message.errorMessage),
+        };
+    }
+    return message;
 }

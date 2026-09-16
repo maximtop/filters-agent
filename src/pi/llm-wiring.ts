@@ -16,6 +16,7 @@ import { createPiRuntime, type PiRuntime } from './runtime';
 import { createSingleShotClient } from './single-shot';
 import type { SingleShotClient } from './single-shot-types';
 import { meterSingleShotClient, type RunUsageCollector } from './usage-collector';
+import { SINGLE_SHOT_CALL_CEILING_MS } from './single-shot-completion';
 
 /**
  * Diagnostics and metering for one configured single-shot client.
@@ -90,6 +91,9 @@ export function createConfiguredSingleShotClient(
 ): SingleShotClient {
     const client = createSingleShotClient(runtime, model, {
         timeoutMs: llm.requestTimeoutMs,
+        // The total-duration ceiling beside the inactivity bound: a generation that never stops
+        // streaming is otherwise ended only by the tool deadline around it, half an hour later.
+        ceilingMs: SINGLE_SHOT_CALL_CEILING_MS,
         maxRetries: providerMaxRetries(llm),
         // The role's configured completion cap, sent explicitly: pi's typed completion path sends
         // only what the call passes, so without this a single-shot request carried no cap and the

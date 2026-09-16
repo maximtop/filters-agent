@@ -189,6 +189,14 @@ export interface SingleShotCallOptions {
     timeoutMs?: number;
 
     /**
+     * Hard bound on this call's total duration in milliseconds, streamed progress or not. The
+     * inactivity deadline above measures silence and so cannot end a generation that never stops
+     * producing; this one can. A call that outlives it is aborted and returns a provider-failure
+     * naming the ceiling.
+     */
+    ceilingMs?: number;
+
+    /**
      * SDK-level transport retries per request, derived once from the configured attempt bound by
      * `providerMaxRetries` in `./llm-wiring` (`llm.requestMaxAttempts - 1`); the bespoke backoff
      * semantics retired with the legacy provider.
@@ -275,6 +283,12 @@ export interface SingleShotClientDefaults {
      * {@link SingleShotCallOptions.timeoutMs}.
      */
     timeoutMs?: number;
+
+    /**
+     * Total-duration ceiling in milliseconds applied to every call of this client unless a call
+     * passes its own; see {@link SingleShotCallOptions.ceilingMs}.
+     */
+    ceilingMs?: number;
 
     /**
      * SDK-level transport retries per request.

@@ -332,6 +332,7 @@ export function createSingleShotClient(
         structured: <T>(options: SingleShotStructuredOptions<T>) =>
             runStructuredSingleShot(runtime, model, {
                 timeoutMs: defaults.timeoutMs,
+                ceilingMs: defaults.ceilingMs,
                 maxRetries: defaults.maxRetries,
                 maxTokens: defaults.maxTokens,
                 reasoningEffort: defaults.reasoningEffort,
@@ -348,6 +349,7 @@ export function createSingleShotClient(
                 converted.messages,
                 {
                     timeoutMs: defaults.timeoutMs,
+                    ceilingMs: defaults.ceilingMs,
                     maxRetries: defaults.maxRetries,
                     maxTokens: defaults.maxTokens,
                     reasoningEffort: defaults.reasoningEffort,
