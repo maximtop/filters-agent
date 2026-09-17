@@ -15,7 +15,6 @@ import { isDeclaredAppendTarget, planRepositoryEdit } from '../repo/repository-e
 import { scoreRisk } from '../risk/risk-scorer';
 import { lintRule } from '../rules/aglint-linter';
 import { parseSafeCssInjectionRule } from '../rules/safe-css-injection';
-import { RepositoryEditKind } from '../types/repository-edit-kind';
 
 /**
  * Repository and issue context needed for deterministic candidate validation.
@@ -245,9 +244,10 @@ export function enforceCandidateSafety(
                 'Candidate target cannot be verified without a checkout.',
             );
         }
-        let repositoryPlan: ReturnType<typeof planRepositoryEdit>;
+        // Planned for its refusals only: an unsafe or ambiguous target throws here, and the edit
+        // it would produce is the patch builder's to read, not this gate's.
         try {
-            repositoryPlan = planRepositoryEdit(
+            planRepositoryEdit(
                 options.checkoutPath,
                 proposal.placement.filePath,
                 proposal.rule,
@@ -262,34 +262,29 @@ export function enforceCandidateSafety(
                     : `Candidate target or repository placement is unsafe: ${detail}`,
             );
         }
-        // Exceptions never resolve to a domain extension (the extension selector refuses them),
-        // so a model-reported duplicate classification must not veto a valid exception insert.
-        // Neither does a declared placement: the declaration prescribes an append at the end of
-        // its list, so the classification stays advisory there and the deterministic checks
-        // around it — the exact-duplicate scan below, the experiment behind the verdict — carry
-        // the safety. The sarkisozleri.bbs.tr run lost its verified candidate to a `cross-filter`
-        // note about EasyList's own vendor rule for exactly this reason.
+        // The model's duplicate classification does not choose the edit. The planner above scans
+        // the checkout itself and answers extension-or-insertion deterministically, the
+        // exact-duplicate scan below refuses a rule that already exists, and the experiment behind
+        // the verdict proves the candidate does what the baseline does not. A `semantic`,
+        // `subsumed` or `cross-filter` note is the model saying related rules exist, and it used to
+        // cost the run its fix whenever those rules had a different body: nottinghampost.com lost a
+        // vision-verified `div[class^="sc-"]:has(…)` rule to a `semantic` note about the
+        // `aside > div[class^="sc-"]:has(…)` rule other Reach plc sites carry, which no domain
+        // extension could have turned into this fix; sarkisozleri.bbs.tr lost one to a
+        // `cross-filter` note about EasyList's own vendor rule. Only the two classes that say the
+        // candidate should not be added at all still stop it. Exceptions are exempt — an exception
+        // contradicts a blocking rule by design — and so is a declared placement, which
+        // prescribes its own append.
+        const refusingClasses: DuplicateClass[] = [DuplicateClass.Exact, DuplicateClass.Conflict];
         if (
-            proposal.duplicateCheck.classification !== DuplicateClass.None &&
+            refusingClasses.includes(proposal.duplicateCheck.classification) &&
             !normalized.isException &&
             !isDeclaredAppendTarget(proposal.placement.filePath, options.declaredPlacement)
         ) {
-            const extensionEligibleClasses: DuplicateClass[] = [
-                DuplicateClass.Semantic,
-                DuplicateClass.CrossFilter,
-                DuplicateClass.Subsumed,
-            ];
-            const extensionEligibleClass = extensionEligibleClasses.includes(
-                proposal.duplicateCheck.classification,
+            throw new CandidateSafetyError(
+                `Candidate duplicate check reported "${proposal.duplicateCheck.classification}": ` +
+                    'the rule duplicates or contradicts an existing one.',
             );
-            const plannedEdit = extensionEligibleClass
-                ? repositoryPlan.edit
-                : { kind: RepositoryEditKind.Insert };
-            if (plannedEdit.kind !== RepositoryEditKind.ExtendDomains) {
-                throw new CandidateSafetyError(
-                    'Candidate duplicate check did not resolve to a safe domain extension.',
-                );
-            }
         }
         const candidateCanonical = normalized.canonical;
         if (hasExactDuplicate(options.checkoutPath!, candidateCanonical)) {

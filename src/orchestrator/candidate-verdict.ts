@@ -10,7 +10,8 @@ import { createHash } from 'node:crypto';
 import * as v from 'valibot';
 import { FixOutcomeKind, ReproductionStatus, type FixOutcome } from '../pr/fix-outcome';
 import { planRepositoryEdit } from '../repo/repository-edit';
-import { RuleKind, normalizeRule } from '../repo/rule-normalizer';
+import { normalizeRule } from '../repo/rule-normalizer';
+import { appliedRulesMatch } from './applied-rules-match';
 import type { DeclaredPlacement } from '../types/declared-placement';
 import { RepositoryEditKind } from '../types/repository-edit-kind';
 import { parseCandidateValidationArtifactId } from '../types/candidate-artifact-identity';
@@ -88,30 +89,6 @@ export function candidatePatchFromOutcome(
 }
 
 /**
- * Derive the chronological rule order recorded by the browser phase applicator.
- *
- * The phase runner installs every network rule before navigation, then applies the remaining rules
- * after navigation. Rules retain their original relative order inside each group. This helper
- * deliberately preserves every input rule so unsupported or skipped inputs still fail the
- * exact-length provenance check instead of being silently forgiven here.
- *
- * @param rules - Runner-owned rules supplied to one validation phase.
- * @returns The exact chronological order expected in the phase's applied-rules evidence.
- */
-function expectedRuleApplicationOrder(rules: readonly string[]): string[] {
-    const networkRules: string[] = [];
-    const postNavigationRules: string[] = [];
-    for (const rule of rules) {
-        if (normalizeRule(rule).kind === RuleKind.Network) {
-            networkRules.push(rule);
-        } else {
-            postNavigationRules.push(rule);
-        }
-    }
-    return [...networkRules, ...postNavigationRules];
-}
-
-/**
  * Parse the complete rule-accounting ledger emitted for one validation phase.
  *
  * @param phase - Untrusted factual phase record.
@@ -125,8 +102,9 @@ function parseRuleApplications(phase: Record<string, unknown>): RuleApplicationF
 /**
  * Check that one phase ledger is an exact, duplicate-free partition of trusted input rules.
  *
- * `appliedRules` remains the browser execution order, while `ruleApplications` retains the exact
- * input order and explicitly accounts for safely unsupported rules.
+ * `ruleApplications` retains the exact input order and explicitly accounts for safely unsupported
+ * rules; `appliedRules` must name exactly its applied entries, in whatever order the producing
+ * route ran them (`appliedRulesMatch`).
  *
  * @param phase - Untrusted factual phase record.
  * @param expectedRules - Exact trusted rules supplied to the phase.
@@ -148,18 +126,8 @@ function verifiedRuleApplicationPartition(
     ) {
         return undefined;
     }
-    const appliedRules = Array.isArray(phase.appliedRules) ? phase.appliedRules : undefined;
-    const expectedAppliedRules = expectedRuleApplicationOrder(
-        facts.filter((fact) => fact.status === 'applied').map((fact) => fact.rule),
-    );
-    if (
-        !appliedRules ||
-        appliedRules.length !== expectedAppliedRules.length ||
-        !appliedRules.every((rule, index) => rule === expectedAppliedRules[index])
-    ) {
-        return undefined;
-    }
-    return facts;
+    const appliedFacts = facts.filter((fact) => fact.status === 'applied').map((fact) => fact.rule);
+    return appliedRulesMatch(phase.appliedRules, appliedFacts) ? facts : undefined;
 }
 
 /**

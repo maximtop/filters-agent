@@ -19,6 +19,7 @@ import {
 } from '../types/candidate-artifact-identity';
 import { ValidationViewportPositionSchema } from '../types/validation';
 import { RuleKind, normalizeRule } from '../repo/rule-normalizer';
+import { appliedRulesMatch } from './applied-rules-match';
 import {
     calculateTrustedBaselineHash,
     type TrustedValidationContext,
@@ -136,20 +137,6 @@ function runnerVisualReviewArtifactIdentity(
 }
 
 /**
- * Compare unknown applied rules with one exact runner-owned sequence.
- *
- * @param value - Unknown applied-rule field from the factual payload.
- * @param expected - Exact trusted rules in their expected order.
- * @returns Whether every value and position matches.
- */
-function appliedRuleSequenceMatches(value: unknown, expected: readonly string[]): boolean {
-    if (!Array.isArray(value) || value.length !== expected.length) {
-        return false;
-    }
-    return expected.every((rule, index) => value[index] === rule);
-}
-
-/**
  * Prove that a validation belongs to the current issue and repository baseline.
  *
  * @param record - Parsed factual-validation payload.
@@ -184,12 +171,9 @@ function hasTrustedProvenance(
         phaseA?.url === trustedContext.reportedUrl &&
         phaseB?.url === trustedContext.reportedUrl &&
         phaseC?.url === trustedContext.reportedUrl &&
-        appliedRuleSequenceMatches(phaseA?.appliedRules, []) &&
-        appliedRuleSequenceMatches(phaseB?.appliedRules, trustedContext.existingRules) &&
-        appliedRuleSequenceMatches(phaseC?.appliedRules, [
-            ...trustedContext.existingRules,
-            candidateRule,
-        ])
+        appliedRulesMatch(phaseA?.appliedRules, []) &&
+        appliedRulesMatch(phaseB?.appliedRules, trustedContext.existingRules) &&
+        appliedRulesMatch(phaseC?.appliedRules, [...trustedContext.existingRules, candidateRule])
     );
 }
 
