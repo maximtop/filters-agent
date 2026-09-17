@@ -43,6 +43,24 @@ export const LLM_VISION_MODEL_VAR = 'LLM_VISION_MODEL';
 export const LLM_PROVIDER_ROUTING_VAR = 'LLM_PROVIDER_ROUTING';
 
 /**
+ * Environment variable carrying the reasoning model's context window in tokens. The one place this
+ * name is spelled; the action's `llmContextWindowTokens` input binding imports it.
+ */
+export const LLM_CONTEXT_WINDOW_TOKENS_VAR = 'LLM_CONTEXT_WINDOW_TOKENS';
+
+/**
+ * Environment variable carrying the reasoning model's completion cap in tokens. The one place this
+ * name is spelled; the action's `llmMaxOutputTokens` input binding imports it.
+ */
+export const LLM_MAX_OUTPUT_TOKENS_VAR = 'LLM_MAX_OUTPUT_TOKENS';
+
+/**
+ * Environment variable carrying the vision model's completion cap in tokens. The one place this
+ * name is spelled; the action's `llmVisionMaxOutputTokens` input binding imports it.
+ */
+export const LLM_VISION_MAX_OUTPUT_TOKENS_VAR = 'LLM_VISION_MAX_OUTPUT_TOKENS';
+
+/**
  * Environment variable carrying the GitHub API token every GitHub-reading seam authenticates with,
  * report comments included. The one place this name is spelled; the action's `githubToken` input
  * binding imports it instead of respelling it.
@@ -329,12 +347,13 @@ function buildRawCoreConfig(env: Record<string, string | undefined>): Record<str
             // every layer that registers a model reads a value that is always present, so a
             // deployment's configured limit can never be shadowed by a downstream fallback.
             contextWindowTokens:
-                parseOptionalNumber(env.LLM_CONTEXT_WINDOW_TOKENS) ??
+                parseOptionalNumber(env[LLM_CONTEXT_WINDOW_TOKENS_VAR]) ??
                 DEFAULT_MODEL_CONTEXT_WINDOW_TOKENS,
             maxOutputTokens:
-                parseOptionalNumber(env.LLM_MAX_OUTPUT_TOKENS) ?? DEFAULT_MODEL_MAX_OUTPUT_TOKENS,
+                parseOptionalNumber(env[LLM_MAX_OUTPUT_TOKENS_VAR]) ??
+                DEFAULT_MODEL_MAX_OUTPUT_TOKENS,
             visionMaxOutputTokens:
-                parseOptionalNumber(env.LLM_VISION_MAX_OUTPUT_TOKENS) ??
+                parseOptionalNumber(env[LLM_VISION_MAX_OUTPUT_TOKENS_VAR]) ??
                 DEFAULT_VISION_MAX_OUTPUT_TOKENS,
         },
         headless: parseBool(env.HEADLESS, true),

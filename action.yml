@@ -105,6 +105,23 @@ inputs:
         description: >-
             Model slug used for vision steps that read screenshots.
         required: true
+    llmContextWindowTokens:
+        description: >-
+            Context window of the reasoning model, in tokens. The default (1048576) is the window of
+            the model the agent was tuned on; state your own model's window when it differs.
+        required: false
+    llmMaxOutputTokens:
+        description: >-
+            Completion cap sent with the reasoning model's requests, in tokens; defaults to 384000.
+            Set it to your model's own limit when that is lower.
+        required: false
+    llmVisionMaxOutputTokens:
+        description: >-
+            Completion cap sent with the vision model's requests, in tokens; defaults to 384000. A
+            gateway that routes by the requested cap finds no endpoint for a vision model whose own
+            limit is lower, so set it whenever llmVisionModel names a different model (65536 for
+            google/gemini-3.8-flash).
+        required: false
     llmProviderRouting:
         description: >-
             JSON routing preferences for an OpenRouter-compatible gateway, sent as the `provider`

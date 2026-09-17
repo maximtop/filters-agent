@@ -55,6 +55,10 @@ jobs:
                   llmApiKey: ${{ secrets.FILTERS_AGENT_LLM_API_KEY }}
                   llmModel: <reasoning model slug>
                   llmVisionModel: <vision model slug>
+                  # Optional: the limits default to those of the model the agent was tuned on. When the
+                  # vision model is a different one, state its completion limit — a gateway that routes
+                  # by the requested cap finds no endpoint for a model whose own limit is lower.
+                  # llmVisionMaxOutputTokens: '65536'
                   # Optional plain config, not a secret: routing preferences an
                   # OpenRouter-compatible gateway takes as the request's provider object, to route
                   # around an upstream provider that is faulting.

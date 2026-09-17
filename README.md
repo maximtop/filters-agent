@@ -181,6 +181,9 @@ in gets the current year's filters file and a preceding comment holding the issu
 | `llmApiKey` | Yes | API key of the LLM provider; pass it from a repository secret. |
 | `llmModel` | Yes | Default reasoning-model slug for the run's LLM sessions. |
 | `llmVisionModel` | Yes | Model slug used for vision steps that read screenshots. |
+| `llmContextWindowTokens` | No | Context window of the reasoning model, in tokens. The default (1048576) is the window of the model the agent was tuned on; state your own model's window when it differs. |
+| `llmMaxOutputTokens` | No | Completion cap sent with the reasoning model's requests, in tokens; defaults to 384000. Set it to your model's own limit when that is lower. |
+| `llmVisionMaxOutputTokens` | No | Completion cap sent with the vision model's requests, in tokens; defaults to 384000. A gateway that routes by the requested cap finds no endpoint for a vision model whose own limit is lower, so set it whenever `llmVisionModel` names a different model (65536 for `google/gemini-3.8-flash`). |
 | `llmProviderRouting` | No | JSON routing preferences for an OpenRouter-compatible gateway, sent as the `provider` object on every request — for example `{"ignore":["Together"]}` to route around a faulting upstream provider. Plain configuration, not a secret; leave it unset for a gateway that does not understand the field. |
 
 ### Outputs
