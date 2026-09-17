@@ -1,3 +1,4 @@
+import { applyRuleResultForModel } from './apply-rule-model-result';
 import { createHash, randomUUID } from 'node:crypto';
 import * as v from 'valibot';
 import { withToolDeadline } from '../pi/session-tools';
@@ -4596,7 +4597,10 @@ export class AgentRuntime {
                         this.recordCandidateVisualReview(pendingCandidate, result);
                     }
                     this.recordBrowserToolResult(name, result);
-                    return result;
+                    // Everything above read the complete result. The model gets the experiment
+                    // with its decision first and its bulk bounded, so the verdict is never the
+                    // part the tool-result limit cuts away.
+                    return name === 'apply_rule' ? applyRuleResultForModel(result) : result;
                 },
             });
             this.activeBrowserToolNames.add(name);
