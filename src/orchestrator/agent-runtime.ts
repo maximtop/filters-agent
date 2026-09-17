@@ -1,4 +1,7 @@
-import { applyRuleResultForModel } from './apply-rule-model-result';
+import {
+    applyRuleResultForModel,
+    unsupportedCandidateOperationRefusal,
+} from './apply-rule-model-result';
 import { createHash, randomUUID } from 'node:crypto';
 import * as v from 'valibot';
 import { withToolDeadline } from '../pi/session-tools';
@@ -3864,15 +3867,10 @@ export class AgentRuntime {
         // browser-extension route cannot, so the refusal is typed and terminal for the shape
         // instead of demoting the environment lock through an experiment limitation.
         if (candidate.operation !== CandidateOperation.Add && !this.cliEvidenceRoute) {
-            return {
-                validationSkipped: true,
-                error:
-                    `Candidate operation '${candidate.operation}' is not supported in the ` +
-                    'browser-extension environment; propose an added exception or replacement ' +
-                    'rule instead.',
-                errorKind: 'candidate_operation_unsupported',
-                retryable: false,
-            };
+            return unsupportedCandidateOperationRefusal(
+                candidate.operation,
+                'in the browser-extension environment',
+            );
         }
         const candidateRule = candidate.normalized.canonical;
         // The baseline is recomputed at the verdict, after the host has written the candidate into
@@ -4032,13 +4030,10 @@ export class AgentRuntime {
                     failure: null,
                 };
                 return {
-                    validationSkipped: true,
-                    error:
-                        `Candidate operation '${candidate.operation}' is not supported by ` +
-                        'this environment; propose an added exception or replacement rule ' +
-                        'instead.',
-                    errorKind: 'candidate_operation_unsupported',
-                    retryable: false,
+                    ...unsupportedCandidateOperationRefusal(
+                        candidate.operation,
+                        'by this environment',
+                    ),
                     limitation: experiment.limitation,
                 };
             }

@@ -5,11 +5,11 @@ import { isIncorrectBlockingReport, type ProblemType } from '../types/issue-fact
 import {
     RuleKind,
     SINGLE_LINE_RULE_MESSAGE,
-    effectiveRuleScopes,
     isSingleLineRule,
     normalizeRule,
 } from '../repo/rule-normalizer';
 import { DuplicateClass, RiskLevel, RuleType } from '../types/rule-proposal';
+import { candidateScopeProblem, normalizeScopeDomain } from './candidate-scope';
 import type { DeclaredPlacement } from '../types/declared-placement';
 import { isDeclaredAppendTarget, planRepositoryEdit } from '../repo/repository-edit';
 import { scoreRisk } from '../risk/risk-scorer';
@@ -78,20 +78,6 @@ class CandidateSafetyError extends Error {
         super(message);
         this.name = 'CandidateSafetyError';
     }
-}
-
-/**
- * Normalize a hostname for exact issue-scope comparison.
- *
- * @param domain - Raw hostname from issue or rule scope.
- * @returns Lowercase hostname without a leading `www.` or trailing root dot.
- */
-function normalizeDomain(domain: string): string {
-    return domain
-        .trim()
-        .toLowerCase()
-        .replace(/^www\./, '')
-        .replace(/\.$/, '');
 }
 
 /**
@@ -241,12 +227,10 @@ export function enforceCandidateSafety(
         // The scope gate below carries the rest of the exception policy: effectiveRuleScopes
         // never infers a scope for an exception, so a generic `@@||host^` without $domain=
         // (or a cosmetic exception without a domain prefix) fails closed here.
-        const expectedDomain = normalizeDomain(options.reportedDomain);
-        const scopes = effectiveRuleScopes(normalized, expectedDomain).map(normalizeDomain);
-        if (scopes.length !== 1 || scopes[0] !== expectedDomain) {
-            throw new CandidateSafetyError(
-                `Candidate must have exactly one positive scope for reported domain ${expectedDomain}.`,
-            );
+        const expectedDomain = normalizeScopeDomain(options.reportedDomain);
+        const scopeProblem = candidateScopeProblem(normalized, expectedDomain);
+        if (scopeProblem !== undefined) {
+            throw new CandidateSafetyError(scopeProblem);
         }
 
         const risk = scoreRisk(proposal.rule, { trustedReportedDomain: expectedDomain });

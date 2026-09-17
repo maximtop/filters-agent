@@ -27,12 +27,6 @@ import {
     MAX_CANDIDATE_VALIDATION_EXECUTIONS,
     MAX_TECHNICAL_BROWSER_FAILURES_PER_TARGET,
     candidateLedgerKey,
-    normalizePlacementDomain,
-    placementMatches,
-    placementRuleTypeForCandidate,
-    reportedDomainFromAllowedTargets,
-    type CandidatePlacementResolution,
-    type DraftFixOutcome,
 } from './agent-runtime-candidate-context';
 import type { AgentRuntimeEnvironmentEvidence } from './agent-runtime-session-evidence';
 import {
@@ -40,6 +34,10 @@ import {
     type TerminalSymptomPresenceEvidence,
 } from './no-patch-terminal-judgement';
 import { validateConfigurationSpecificEvidence } from './terminal-configuration-evidence';
+import {
+    validateCandidatePlacement,
+    validateCandidateScope,
+} from './terminal-candidate-prerequisites';
 import type { TerminalValidationView } from './terminal-validation-view';
 import {
     hasCompleteTerminalVision,
@@ -195,75 +193,6 @@ function accessField(
         return { [field]: classifyObservedPageAccess(state.pageAccessFacts) };
     }
     return {};
-}
-
-/**
- * Bind a draft proposal to the latest successful candidate-specific placement resolution.
- *
- * The model still chooses the candidate semantics. This check only prevents it from rewriting
- * deterministic filter, file, insertion, confidence, or alternative-placement facts after the
- * resolver has returned them.
- *
- * @param view - Read-only projection of the run the judgement reads.
- * @param outcome - Schema-valid draft decision proposed by the model.
- * @returns Retryable placement prerequisite, or undefined when the proposal is mechanically
- * bound.
- */
-function validateCandidatePlacement(
-    view: TerminalValidationView,
-    outcome: DraftFixOutcome,
-): FinishFixValidationRejection | undefined {
-    if (!view.baseToolNames.has('resolve_placement')) {
-        return undefined;
-    }
-    const candidate = normalizeRule(outcome.ruleProposal.rule);
-    const ruleType = placementRuleTypeForCandidate(candidate);
-    const reportedHostRaw = reportedDomainFromAllowedTargets(view.allowedTargetUrls);
-    const reportedHost = reportedHostRaw ? normalizePlacementDomain(reportedHostRaw) : undefined;
-    let applicable: CandidatePlacementResolution | undefined;
-    for (let index = view.candidatePlacementResolutions.length - 1; index >= 0; index -= 1) {
-        const entry = view.candidatePlacementResolutions[index]!;
-        if (
-            entry.candidateCanonical === candidate.canonical &&
-            entry.ruleType === ruleType &&
-            (reportedHost === undefined || entry.targetDomain === reportedHost)
-        ) {
-            applicable = entry;
-            break;
-        }
-    }
-    if (!applicable) {
-        return {
-            error:
-                'Call resolve_placement with this exact candidateRule, targetDomain, and ' +
-                'syntax-derived ruleType before finish_fix.',
-            errorKind: 'candidate_placement_resolution_required',
-            retryable: true,
-            requiredAction: 'resolve_candidate_placement',
-            requiredTool: 'resolve_placement',
-            candidateRule: candidate.canonical,
-            expectedRuleType: ruleType ?? null,
-            expectedTargetDomain: reportedHost ?? null,
-        };
-    }
-    if (placementMatches(outcome.ruleProposal.placement, applicable.resolution)) {
-        return undefined;
-    }
-    const { reasons: _reasons, ...expectedPlacement } = applicable.resolution;
-    return {
-        error:
-            'The draft placement does not match the latest deterministic resolver result for ' +
-            'this candidate. Copy the resolver placement fields exactly.',
-        errorKind: 'candidate_placement_mismatch',
-        retryable: true,
-        requiredAction: 'use_resolved_candidate_placement',
-        requiredTool: 'finish_fix',
-        candidateRule: candidate.canonical,
-        targetDomain: applicable.targetDomain,
-        ruleType: applicable.ruleType,
-        expectedPlacement,
-        actualPlacement: outcome.ruleProposal.placement,
-    };
 }
 
 /**
@@ -447,6 +376,12 @@ export function validateTerminalOutcome(
     const canonical = normalizeRule(outcome.ruleProposal.rule).canonical;
     // Terminal draft proposals are always additive candidates in the ledger.
     const ledgerKey = candidateLedgerKey(CandidateOperation.Add, canonical);
+    // Before the placement binding: a draft carrying an extension plan's merged line would
+    // otherwise be sent to resolve a placement for that line and end at the safety gate anyway.
+    const scopeRejection = validateCandidateScope(view, outcome);
+    if (scopeRejection) {
+        return scopeRejection;
+    }
     const placementRejection = validateCandidatePlacement(view, outcome);
     if (placementRejection) {
         return placementRejection;

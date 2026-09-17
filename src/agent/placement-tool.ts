@@ -107,7 +107,28 @@ export interface PlannedDomainExtension {
      * The rule as it would read with the candidate's domain included.
      */
     replacementRule: string;
+
+    /**
+     * What the agent does with this plan: it keeps its own single-domain candidate.
+     */
+    candidateContract: string;
 }
+
+/**
+ * What an extension plan asks of the agent, stated in the plan itself.
+ *
+ * The plan shows the merged line, and a model that sees a ready replacement takes it for the thing
+ * to test and submit. On nottinghampost.com it validated and submitted
+ * `nottinghampost.com,devonlive.com,…##div[data-tmdatatrack-type="commercial"]`, vision verified
+ * it, and the candidate safety gate then refused the draft for carrying four positive scopes — a
+ * verified fix lost to a contract nothing had told the model. The host performs the merge; the
+ * candidate stays the rule scoped to the reported domain, and that is the rule the experiment
+ * verifies.
+ */
+export const EXTEND_DOMAINS_CANDIDATE_CONTRACT =
+    'The host writes replacementRule into the file itself. Keep candidateRule scoped to the ' +
+    'reported domain alone in apply_rule and in finish_fix: that single-domain rule is what the ' +
+    'experiment verifies, and a candidate that carries the other domains is refused.';
 
 /**
  * The planner failed closed (for example on an ambiguous shared target); the agent reconsiders the
@@ -359,6 +380,7 @@ export function createResolvePlacementTool(options: ResolvePlacementToolOptions)
                         line: planned.edit.line,
                         originalRule: planned.edit.originalRule,
                         replacementRule: planned.edit.replacementRule,
+                        candidateContract: EXTEND_DOMAINS_CANDIDATE_CONTRACT,
                     };
                 } else {
                     plan = {
