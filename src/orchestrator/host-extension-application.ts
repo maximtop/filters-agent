@@ -54,6 +54,7 @@ import {
     type PhaseApplicationRunner,
     type PhaseApplicationRunnerResult,
 } from '../validator/phase-application-contract';
+import { importSettingsOnceSettled, replyRefused } from './host-settings-import';
 import { overDedicatedSurfacePage } from './phase-application-extension-surface';
 
 /**
@@ -93,6 +94,12 @@ export interface HostExtensionApplicationInput {
      * the shared transport default when the run configures none.
      */
     readinessBudgetMs?: number;
+
+    /**
+     * Pause between two settings imports while the extension still refuses the document; the module
+     * default when the run configures none.
+     */
+    importSettleDelayMs?: number;
 
     /**
      * Run logger receiving every step with its duration, and every failure with its caught error.
@@ -153,20 +160,6 @@ const REPLY_TOKEN_MAX = 40;
  */
 function replyToken(reply: unknown): string {
     return boundedText(JSON.stringify(reply) ?? String(reply), REPLY_TOKEN_MAX);
-}
-
-/**
- * Whether one extension reply is the protocol's explicit refusal.
- *
- * The pinned build answers `applySettingsJson` and `saveUserRules` with a boolean, and `false`
- * means it applied nothing. It is recorded as a step that did not do what it was asked rather than
- * thrown: the read-back still decides the phase, and it will say precisely what the state is.
- *
- * @param reply - Whatever the options application answered.
- * @returns True when the reply is exactly `false`.
- */
-function replyRefused(reply: unknown): boolean {
-    return reply === false;
 }
 
 /**
@@ -293,16 +286,20 @@ async function performExtensionApplication(
     await step(
         HostApplicationStep.ApplyExtensionSettings,
         async () =>
-            await sendExtensionMessage(page, {
-                type: AdGuardExtensionMessageType.ApplySettingsJson,
-                data: { json: settingsPayload },
-            }),
-        (reply) => ({
-            ok: !replyRefused(reply),
+            await importSettingsOnceSettled(
+                page,
+                settingsPayload,
+                readinessDeadlineAt,
+                input.importSettleDelayMs,
+                logger,
+                signal,
+            ),
+        (settled) => ({
+            ok: !replyRefused(settled.reply),
             summary:
                 `imported the ${settingsPayload.length}-byte settings document naming ` +
-                `${expectedFilterIds.length} official filter(s); the options application ` +
-                `answered ${replyToken(reply)}`,
+                `${expectedFilterIds.length} official filter(s) in ${settled.attempts} ` +
+                `attempt(s); the options application answered ${replyToken(settled.reply)}`,
         }),
     );
 
