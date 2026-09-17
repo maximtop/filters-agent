@@ -192,4 +192,10 @@ export interface CandidateVisualVerifierOptions {
      * surfaces as a provider failure, which this review already fails closed on.
      */
     signal?: AbortSignal;
+
+    /**
+     * How many of this operation's independent vision completions run at once; the shared default
+     * when absent. One keeps them strictly in order, which a scripted provider needs.
+     */
+    visionConcurrency?: number;
 }

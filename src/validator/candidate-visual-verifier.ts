@@ -1,3 +1,4 @@
+import { createCallLimiter } from '../pi/call-limiter';
 import { createHash } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -257,40 +258,56 @@ export async function reviewCandidateVisually(
                 options.evidence.afterTiles,
             ),
         };
-        const beforeTileInventory = await inventoryTileState(
-            options,
-            CaptureState.Before,
-            options.evidence.beforeTiles,
-        );
-        const afterTileInventory = await inventoryTileState(
-            options,
-            CaptureState.After,
-            options.evidence.afterTiles,
-        );
-        const beforeViewportInventory = await inventoryOverviewImage(
-            options,
-            CaptureState.Before,
-            CandidateVisualEvidenceSource.ViewportOverview,
-            options.evidence.beforeViewport,
-        );
-        const beforeFullPageInventory = await inventoryPlannedFullPageOverview(
-            options,
-            CaptureState.Before,
-            options.evidence.beforeFullPage,
-            fullPageOverviewEvidence.before,
-        );
-        const afterViewportInventory = await inventoryOverviewImage(
-            options,
-            CaptureState.After,
-            CandidateVisualEvidenceSource.ViewportOverview,
-            options.evidence.afterViewport,
-        );
-        const afterFullPageInventory = await inventoryPlannedFullPageOverview(
-            options,
-            CaptureState.After,
-            options.evidence.afterFullPage,
-            fullPageOverviewEvidence.after,
-        );
+        // Every inventory below is its own vision completion over its own images, and none reads
+        // another's answer, so they run side by side under one limiter; only the synthesis that
+        // follows needs them all. Enqueued in the order they used to run in, and the limiter is
+        // first come first served, so the calls still START in that order.
+        const limiter = createCallLimiter(options.visionConcurrency);
+        // Held in a constant: the closures below outlive this statement's narrowing of the `let`.
+        const overviewEvidence = fullPageOverviewEvidence;
+        const [
+            beforeTileInventory,
+            afterTileInventory,
+            beforeViewportInventory,
+            beforeFullPageInventory,
+            afterViewportInventory,
+            afterFullPageInventory,
+        ] = await Promise.all([
+            inventoryTileState(options, CaptureState.Before, options.evidence.beforeTiles, limiter),
+            inventoryTileState(options, CaptureState.After, options.evidence.afterTiles, limiter),
+            limiter.run(() =>
+                inventoryOverviewImage(
+                    options,
+                    CaptureState.Before,
+                    CandidateVisualEvidenceSource.ViewportOverview,
+                    options.evidence.beforeViewport,
+                ),
+            ),
+            limiter.run(() =>
+                inventoryPlannedFullPageOverview(
+                    options,
+                    CaptureState.Before,
+                    options.evidence.beforeFullPage,
+                    overviewEvidence.before,
+                ),
+            ),
+            limiter.run(() =>
+                inventoryOverviewImage(
+                    options,
+                    CaptureState.After,
+                    CandidateVisualEvidenceSource.ViewportOverview,
+                    options.evidence.afterViewport,
+                ),
+            ),
+            limiter.run(() =>
+                inventoryPlannedFullPageOverview(
+                    options,
+                    CaptureState.After,
+                    options.evidence.afterFullPage,
+                    overviewEvidence.after,
+                ),
+            ),
+        ]);
         const beforeInventory = combineStateInventories(
             [beforeTileInventory, beforeViewportInventory, beforeFullPageInventory],
             CaptureState.Before,

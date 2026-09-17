@@ -1,3 +1,4 @@
+import { createCallLimiter } from '../pi/call-limiter';
 import { createHash } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -109,6 +110,26 @@ function persistCaptureInventory(
 }
 
 /**
+ * How one image batch of a capture inspection ended: observed, or failed with a bounded reason.
+ */
+interface InventoryBatchOutcome {
+    /**
+     * The batch's image artifacts, inspected or missing as a whole.
+     */
+    artifactIds: string[];
+
+    /**
+     * The batch's inventory, when vision observed its coverage.
+     */
+    output?: v.InferOutput<typeof PreCandidateVisualBatchOutputSchema>;
+
+    /**
+     * Why the batch produced no inventory, when it did not.
+     */
+    failure?: string;
+}
+
+/**
  * Inspect one already captured full page through bounded structured vision batches.
  *
  * Successful batches are retained even when a different batch is unreadable. The caller can
@@ -144,40 +165,54 @@ export async function inspectFullPageVisualCapture(
     const inspectedArtifactIds: string[] = [];
     const batchFailures: FullPageVisualBatchFailure[] = [];
 
-    for (const [index, batch] of batches.entries()) {
-        if (options.signal?.aborted) {
-            // The tool deadline expired mid-batch. Every remaining batch is another paid vision
-            // completion whose answer the aborted call can no longer return, so the loop stops and
-            // the accounting below reports the uninspected artifacts as missing.
-            batchFailures.push({
-                artifactIds: batch.map((image) => image.id),
-                reason: 'The vision tool deadline stopped the batch before this image batch ran.',
-            });
+    // Every batch is its own vision completion over its own images, so they run side by side
+    // under one limiter. Each settles into its own outcome and the accounting below walks them in
+    // batch order, so the aggregate reads exactly as it did when the batches ran one by one.
+    const limiter = createCallLimiter(options.visionConcurrency);
+    const outcomes = await Promise.all(
+        batches.map((batch, index) =>
+            limiter.run(async (): Promise<InventoryBatchOutcome> => {
+                const artifactIds = batch.map((image) => image.id);
+                if (options.signal?.aborted) {
+                    // The tool deadline expired while this batch waited for its slot. It is
+                    // another paid vision completion whose answer the aborted call can no longer
+                    // return, so it is not sent and its artifacts are reported as missing.
+                    return {
+                        artifactIds,
+                        failure:
+                            'The vision tool deadline stopped the batch before this image batch ran.',
+                    };
+                }
+                const label =
+                    overviewVisionEligible && index === 0
+                        ? 'full-page overview'
+                        : `original-resolution tile batch ${
+                              overviewVisionEligible ? index : index + 1
+                          } of ${tileBatches.length}`;
+                try {
+                    const output = await inspectInventoryBatch(options, batch, label);
+                    return output.coverageObserved
+                        ? { artifactIds, output }
+                        : { artifactIds, failure: output.rationale.slice(0, 1_000) };
+                } catch (error) {
+                    return {
+                        artifactIds,
+                        failure: (error instanceof Error ? error.message : String(error)).slice(
+                            0,
+                            1_000,
+                        ),
+                    };
+                }
+            }),
+        ),
+    );
+    for (const outcome of outcomes) {
+        if (outcome.output === undefined) {
+            batchFailures.push({ artifactIds: outcome.artifactIds, reason: outcome.failure ?? '' });
             continue;
         }
-        const label =
-            overviewVisionEligible && index === 0
-                ? 'full-page overview'
-                : `original-resolution tile batch ${
-                      overviewVisionEligible ? index : index + 1
-                  } of ${tileBatches.length}`;
-        try {
-            const output = await inspectInventoryBatch(options, batch, label);
-            if (!output.coverageObserved) {
-                batchFailures.push({
-                    artifactIds: batch.map((image) => image.id),
-                    reason: output.rationale.slice(0, 1_000),
-                });
-                continue;
-            }
-            successfulOutputs.push(output);
-            inspectedArtifactIds.push(...batch.map((image) => image.id));
-        } catch (error) {
-            batchFailures.push({
-                artifactIds: batch.map((image) => image.id),
-                reason: (error instanceof Error ? error.message : String(error)).slice(0, 1_000),
-            });
-        }
+        successfulOutputs.push(outcome.output);
+        inspectedArtifactIds.push(...outcome.artifactIds);
     }
 
     const instances = successfulOutputs.flatMap((output) => output.instances);
