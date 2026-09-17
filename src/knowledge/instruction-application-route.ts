@@ -23,16 +23,16 @@ import { extractInstructionSection, unfencedInstructionLines } from './instructi
 /**
  * Built-in application routes an instruction may declare.
  *
- * One route exists today: the AdGuard Browser Extension in Chromium, whose application document is
- * the shipped conversion of the options-page driver and whose state the host reads back itself. A
- * repository whose blocker is that extension declares the route rather than copying the document's
- * steps into its own instruction, where they would then drift from the shipped ones.
+ * One route exists today: the AdGuard Browser Extension in Chromium, whose application document
+ * specifies a fixed message protocol the host both performs and reads back itself. A repository
+ * whose blocker is that extension declares the route rather than copying the document's steps into
+ * its own instruction, where they would then drift from the shipped ones.
  */
 export const ApplicationRoute = {
     /**
      * The built-in AdGuard Browser Extension route: the host prepares the pinned release, launches
-     * it in Chromium, the model applies through the extension's own options application, and the
-     * host reads the live extension state back.
+     * it in Chromium, performs the shipped document's message protocol itself in code, and reads
+     * the live extension state back. No model session is involved at any point.
      */
     AdguardExtension: 'adguard-extension',
 } as const;

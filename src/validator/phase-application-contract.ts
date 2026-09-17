@@ -6,12 +6,15 @@ import type { BlockerStateRead, BlockerStateReaderRegistry } from './blocker-sta
 
 /**
  * The declared vocabulary of the between-phases rules application (11-HITL): the goal a run
- * performs toward, its typed outcomes, the bounded session bounds, and the model-runner seam the
- * orchestrator implements over the pi session runner.
+ * performs toward, its typed outcomes, the bounded session bounds, and the runner seam the
+ * orchestrator implements the application itself over.
  *
- * Decision 1 of 11-HITL fixes the shape both sides code against: the model runs the instruction's
- * steps, the host reads the state back itself and credits only an exact match, and the action log
- * comes from the host-recorded tool trace, never the model's self-report.
+ * Decision 1 of 11-HITL fixes the shape both sides code against: something performs the
+ * instruction's steps, the host reads the state back itself and credits only an exact match, and
+ * the action log comes from the host's own record of what ran, never from a model's self-report.
+ * Two kinds of runner satisfy that seam today — a bounded model session for an instruction that
+ * writes its own application steps, and the host's own fixed message protocol on the built-in
+ * AdGuard route — and the procedure around them cannot tell which it was handed.
  */
 
 /**
@@ -95,7 +98,12 @@ export type PhaseApplicationOutcomeKind =
     (typeof PhaseApplicationOutcomeKind)[keyof typeof PhaseApplicationOutcomeKind];
 
 /**
- * Turn cap of one application session.
+ * Turn cap of one model-driven application session.
+ *
+ * This bound and {@link APPLICATION_SESSION_BUDGET_MS} govern the model-driven path alone — an
+ * instruction that writes its own `## Rule application` steps. The host-performed runner of the
+ * built-in AdGuard route spends no turns and is bounded by its own extension-readiness deadline and
+ * the request's abort signal instead.
  *
  * Why this value: application is a bounded procedure of enumerated steps, not an investigation. The
  * built-in AdGuard instruction's flow is six steps (open the options page, wait for the bootstrap,
@@ -108,7 +116,10 @@ export type PhaseApplicationOutcomeKind =
 export const APPLICATION_SESSION_MAX_TURNS = 16;
 
 /**
- * Wall-clock budget of one application session in milliseconds.
+ * Wall-clock budget of one model-driven application session in milliseconds.
+ *
+ * Like {@link APPLICATION_SESSION_MAX_TURNS} this governs the model-driven path alone; the
+ * host-performed AdGuard runner is bounded by its readiness deadline and the abort signal.
  *
  * Why this value: the 30-minute apply_rule deadline hosts two model-driven application passes plus
  * the observation phases they bracket. A pass is paced by the model, not by the browser: the bench
@@ -121,7 +132,11 @@ export const APPLICATION_SESSION_MAX_TURNS = 16;
 export const APPLICATION_SESSION_BUDGET_MS = 6 * 60_000;
 
 /**
- * Resolved bounds of one application session.
+ * Resolved bounds of one model-driven application session.
+ *
+ * A host-performed runner receives these too — the procedure resolves them before it knows which
+ * runner it holds — and ignores them: it spends no turns and bounds itself by the extension
+ * readiness deadline and the request's abort signal.
  */
 export interface PhaseApplicationBudget {
     /**
@@ -177,15 +192,21 @@ export interface PhaseApplicationSession {
 }
 
 /**
- * One bounded model session the procedure starts over the phase lease.
+ * Whoever performs one application's steps over the phase lease.
+ *
+ * Two implementations satisfy it: a bounded model session driving an instruction's own written
+ * steps (`orchestrator/application-session.ts`), and the host performing the built-in AdGuard
+ * route's fixed message protocol itself (`orchestrator/host-extension-application.ts`). The
+ * procedure that calls it never learns which — it reads the blocker state back itself either way
+ * and credits only an exact match.
  */
-export interface PhaseApplicationModelRunner {
+export interface PhaseApplicationRunner {
     /**
-     * Run the one bounded application session.
+     * Run the one application pass.
      *
      * @param request - The rendered task prompt, the lease session, the resolved budget, and the
      *   cancellation signal.
-     * @returns How the session ended and the host-recorded tool trace of what ran.
+     * @returns How the pass ended and the host-recorded trace of what ran.
      */
     run(request: PhaseApplicationRunnerRequest): Promise<PhaseApplicationRunnerResult>;
 }
@@ -195,7 +216,8 @@ export interface PhaseApplicationModelRunner {
  */
 export interface PhaseApplicationRunnerRequest {
     /**
-     * The rendered application task document.
+     * The rendered application task document. A host-performed runner ignores it: the procedure
+     * renders it before it knows which runner it holds, and the host follows the protocol in code.
      */
     prompt: string;
 
@@ -216,22 +238,24 @@ export interface PhaseApplicationRunnerRequest {
 }
 
 /**
- * How one runner's session ended, with the host-recorded trace of its tool calls.
+ * How one runner's pass ended, with the host-recorded trace of what it did.
  */
 export interface PhaseApplicationRunnerResult {
     /**
-     * Whether the session ended with an accepted terminal payload. The application verdict never
-     * depends on this: the host read-back decides, even when the seal failed.
+     * Whether the pass performed every step it was asked to: a model session ending with an
+     * accepted terminal payload, or a host runner completing its protocol. The application verdict
+     * never depends on this: the host read-back decides, even when the pass reports a failed step.
      */
     completed: boolean;
 
     /**
-     * Bounded detail of the non-completed ending, when there was one.
+     * Bounded detail of the non-completed ending, naming the step that did not finish.
      */
     detail?: string;
 
     /**
-     * The host-recorded tool calls of the session (never the model's self-report).
+     * The host-recorded steps of the pass: a model session's tool calls as the host saw them, or
+     * the host's own protocol steps — never a model's self-report.
      */
     actionLog: ActionLogEntry[];
 }
@@ -256,9 +280,9 @@ export interface PhaseApplicationInput {
     session: PhaseApplicationSession;
 
     /**
-     * The bounded model session runner.
+     * Whoever performs the application's steps: a bounded model session, or the host itself.
      */
-    modelRunner: PhaseApplicationModelRunner;
+    runner: PhaseApplicationRunner;
 
     /**
      * Reader registry the executor supplies; a declared method absent here is a refusal.

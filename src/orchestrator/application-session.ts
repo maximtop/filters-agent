@@ -1,5 +1,5 @@
 /**
- * The rule-application session runner: `PhaseApplicationModelRunner` implemented over the shared pi
+ * The rule-application session runner: `PhaseApplicationRunner` implemented over the shared pi
  * mode-session procedure with the page-tool subset of the phase lease.
  *
  * The session is short, narrow, and heavily observed: it renders the prompt the application
@@ -8,6 +8,11 @@
  * `finish_application` terminal. The host, not the model, owns the verdict: the runner returns only
  * how the session sealed and the host-recorded tool trace — the application procedure reads the
  * blocker state back itself and never consumes the model's self-report as credit.
+ *
+ * This is the runner of one application shape only: an instruction that writes its own `## Rule
+ * application` steps, for a blocker with its own way to add a rule. The built-in AdGuard route's
+ * steps are a fixed message protocol the host sends itself (`host-extension-application.ts`) and
+ * never reach this module.
  */
 import * as v from 'valibot';
 import { BrowserFallbackReason } from '../types/browser-fallback-reason';
@@ -32,7 +37,7 @@ import {
 import { withExecutionRecording, recordTerminalTool } from '../tracer/session-trace';
 import type { TraceRecorder } from '../tracer/trace-recorder';
 import type {
-    PhaseApplicationModelRunner,
+    PhaseApplicationRunner,
     PhaseApplicationRunnerResult,
 } from '../validator/phase-application-contract';
 import {
@@ -411,11 +416,11 @@ export function buildApplicationToolSet(
  * blocker state the steps left, and the application procedure reads that state back itself.
  *
  * @param dependencies - Runtime, provider configuration, recorder, lease session, and origin.
- * @returns The PhaseApplicationModelRunner implementation.
+ * @returns The model-driven PhaseApplicationRunner implementation.
  */
 export function createPhaseApplicationModelRunner(
     dependencies: PhaseApplicationRunnerDependencies,
-): PhaseApplicationModelRunner {
+): PhaseApplicationRunner {
     return {
         run: async (request): Promise<PhaseApplicationRunnerResult> => {
             const logger = dependencies.logger ?? createLogger();

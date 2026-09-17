@@ -1,11 +1,7 @@
-import type { BrowserContext } from 'playwright-core';
 import type {
     AdGuardExtensionOptionsData,
     AdGuardExtensionStateRead,
 } from '../browser/adguard-extension-state-shapes';
-import { DISABLE_STEALTH_SETTING } from '../browser/adguard-extension-settings';
-import { readAdGuardExtensionState as readAdGuardExtensionStateDefault } from '../browser/adguard-extension-state-read';
-import { findExtensionRuntime as findExtensionRuntimeDefault } from '../browser/extension-runtime-location';
 import type { IBrowserSession } from '../browser/browser-interfaces';
 import {
     EnvironmentPhaseConfigurationOutcome,
@@ -13,24 +9,20 @@ import {
 } from '../environment/browser-extension-environment';
 import { BlockerVerificationMethod } from '../environment/environment-proofs';
 import { ExtensionLaunchFamily } from '../environment/extension-launch';
-import { adguardListKey, parseAdguardListKey } from '../environment/filter-list-ref';
+import { parseAdguardListKey } from '../environment/filter-list-ref';
 import { createLogger } from '../logger/logger';
 import { parseRuleApplication } from '../knowledge/instruction-application';
 import { createPhaseApplicationModelRunner as buildPhaseApplicationModelRunner } from './application-session';
-import {
-    buildExtensionSettingsPayload,
-    type ExtensionSettingsPayloadExpectation,
-} from './application-write-channel';
+import { createHostExtensionApplicationRunner } from './host-extension-application';
 import type {
     ApplicationGoal,
-    PhaseApplicationModelRunner,
+    PhaseApplicationRunner,
 } from '../validator/phase-application-contract';
 import { runPhaseApplication } from '../validator/phase-application-procedure';
 import {
     fileBlockerStateReader,
     type BlockerStateReader,
 } from '../validator/blocker-state-readers';
-import { requireChromiumPreparedExtension } from '../local/prepared-extension';
 import type { AgentRuntimeSessionState } from './agent-runtime-session-evidence';
 import { resolveBlockerFileTarget } from './blocker-file-target';
 import {
@@ -38,35 +30,52 @@ import {
     runFirefoxFileBackedApplication,
 } from './phase-application-file-backed';
 import {
+    applicationFiltersMetadata,
+    buildExtensionSettingsPayloadOverDedicatedPage,
+    preparedBlockerSurfaceUrl,
+    readExtensionBlockerState,
+} from './phase-application-extension-surface';
+import {
     canonicalPhaseApplicationOrigin,
     expectedStealthEnabledFor,
-    filterLimitsExceededFor,
     requiredExtensionGroupIds,
 } from './phase-application-wiring';
 import { PhaseLabel } from '../types/validation';
-import type {
-    EnvironmentBlockerStateCapture,
-    PhaseApplicationFlowHost,
-    PhaseApplicationModelRunnerDependencies,
-    RuntimeApplicationOutcome,
+import {
+    hostPerformsApplication,
+    type PhaseApplicationFlowHost,
+    type PhaseApplicationModelRunnerDependencies,
+    type RuntimeApplicationOutcome,
 } from './phase-application-flow-host';
 
 /**
- * The between-phases application procedure: run the instruction's steps over a lease session, then
- * read the blocker state back and map the result onto the adapter's configuration seam.
+ * The between-phases application procedure: bring the blocker to the prepared state over a lease
+ * session, then read the blocker state back and map the result onto the adapter's configuration
+ * seam.
+ *
+ * Who performs the steps follows the run's application route, never the blocker's name: the
+ * built-in AdGuard route (a run with no instruction, or one declaring `application:
+ * adguard-extension`) is performed by the host itself in code (`host-extension-application.ts`),
+ * while an instruction that writes its own `## Rule application` gets the bounded model session
+ * (`application-session.ts`) — other blockers have their own simple way to add a rule and the model
+ * uses the one the instruction wrote. Both decisions come out of one resolution,
+ * `phase-application-flow-host.ts`'s `hostPerformsApplication`, which the document fill
+ * `applicationInstructionContent` is derived from too, so the contract in force and its performer
+ * can never disagree.
  *
  * This module owns the flow `agent-runtime.ts` used to run inline (`runApplication` through the
- * model-runner and read-back helpers it composes): the same operations, now taking their runtime
+ * runner and read-back helpers it composes): the same operations, now taking their runtime
  * dependencies as an explicit host object instead of `this`, so the flow is callable — and testable
  * — without the whole runtime class. `phase-application-flow-host.ts` declares the host and
- * dependency contracts this flow acts through and the shape one application call returns.
- * `phase-application-launch.ts` builds on this module for the launch-time Baseline application;
- * neither this module, `phase-application-flow-host.ts`, nor `phase-application-launch.ts` imports
- * `agent-runtime.ts`, so the dependency runs one way only.
+ * dependency contracts this flow acts through and the shape one application call returns;
+ * `phase-application-extension-surface.ts` owns the host's own dealings with the prepared
+ * extension's management surface. `phase-application-launch.ts` builds on this module for the
+ * launch-time Baseline application; none of these modules imports `agent-runtime.ts`, so the
+ * dependency runs one way only.
  */
 
 /**
- * Refuse a blocker read-back whose application session was already aborted.
+ * Refuse a blocker read-back whose application was already aborted.
  *
  * The abort means the launch tool already answered the model with its deadline result; the late
  * read-back must not run, and the application procedure logs the thrown error and seals the
@@ -88,6 +97,10 @@ function assertApplicationNotAborted(request: EnvironmentPhaseConfigurationReque
  * Build the bounded application-session runner for one configuration call, or undefined when the
  * request's deadline already aborted.
  *
+ * Reached only on the model-driven path: a run on the built-in AdGuard route performs its
+ * application on the host and never constructs a session runner, so an injected factory is never
+ * called for it either.
+ *
  * @param host - The runtime seam this flow acts through.
  * @param session - The lease session the runner acts on.
  * @param request - The phase-configuration request carrying cancellation.
@@ -98,7 +111,7 @@ function phaseApplicationModelRunner(
     host: PhaseApplicationFlowHost,
     session: IBrowserSession,
     request: EnvironmentPhaseConfigurationRequest,
-): PhaseApplicationModelRunner | undefined {
+): PhaseApplicationRunner | undefined {
     const { llm, piRuntime } = host;
     const logger = createLogger({ verbose: host.verbose });
     const depends: PhaseApplicationModelRunnerDependencies = {
@@ -128,85 +141,11 @@ function phaseApplicationModelRunner(
 }
 
 /**
- * Locate the prepared blocker's own management surface for the application session.
- *
- * @param host - The runtime seam this flow acts through.
- * @param state - Prepared session naming the verified extension build.
- * @param context - The lease session's persistent context to search.
- * @returns The options-page URL, or undefined when the runtime could not be located (the refusal
- *   detail is logged; the application proceeds with the read tools only).
- */
-async function preparedBlockerSurfaceUrl(
-    host: PhaseApplicationFlowHost,
-    state: AgentRuntimeSessionState,
-    context: BrowserContext,
-): Promise<string | undefined> {
-    const extension = state.extension;
-    if (!extension) {
-        return undefined;
-    }
-    const find = host.findExtensionRuntime ?? findExtensionRuntimeDefault;
-    try {
-        const runtime = await find(
-            context,
-            requireChromiumPreparedExtension(
-                extension,
-                'Locating the prepared blocker management surface',
-            ).manifestVersion,
-        );
-        return `chrome-extension://${runtime.extensionId}/pages/options.html`;
-    } catch (error) {
-        createLogger({ verbose: host.verbose }).warn(
-            {
-                error: error instanceof Error ? error.message : String(error),
-                launchFamily: extension.launchFamily ?? ExtensionLaunchFamily.Chromium,
-            },
-            'the prepared blocker management surface could not be located',
-        );
-        return undefined;
-    }
-}
-
-/**
- * Build the settings payload over a page dedicated to this one host-to-extension exchange.
- *
- * No model turn has run when this is called, so the application session's own page can be anywhere
- * — a fresh phase session opens with no navigation of its own. This opens and navigates a throwaway
- * page instead, exactly like every other host read-back of the blocker state
- * (`readAdGuardExtensionState`'s own `openOptionsPage`), and closes it whether the load succeeds or
- * throws.
- *
- * @param host - The runtime seam this flow acts through.
- * @param context - The lease session's persistent context the throwaway page belongs to.
- * @param blockerSurfaceUrl - The prepared blocker's own management surface URL.
- * @param expectation - The prepared expectation the payload must express.
- * @returns The complete settings-import JSON document, ready for `applySettingsJson`.
- */
-async function buildExtensionSettingsPayloadOverDedicatedPage(
-    host: PhaseApplicationFlowHost,
-    context: BrowserContext,
-    blockerSurfaceUrl: string,
-    expectation: ExtensionSettingsPayloadExpectation,
-): Promise<string> {
-    const page = await context.newPage();
-    try {
-        await page.goto(blockerSurfaceUrl, { waitUntil: 'load' });
-        return await buildExtensionSettingsPayload(page, expectation);
-    } finally {
-        await page.close().catch((error: unknown) => {
-            createLogger({ verbose: host.verbose }).warn(
-                { err: error, blockerSurfaceUrl },
-                'the settings-payload pre-read page did not close cleanly',
-            );
-        });
-    }
-}
-
-/**
  * Render the session-notes fill one application session performs toward.
  *
  * The notes state the boundary truthfully: the launch applies nothing, so this application session
- * is what brings the blocker to the prepared state.
+ * is what brings the blocker to the prepared state. Only a model-driven session reads them; the
+ * host-performed runner follows the protocol in code.
  *
  * @param request - The phase-configuration request naming the phase and the prepared set.
  * @returns Bounded caller notes naming the prepared filter set and the application boundary.
@@ -227,55 +166,17 @@ function phaseApplicationNotes(request: EnvironmentPhaseConfigurationRequest): s
 }
 
 /**
- * Read the prepared extension's complete observable state back over one session context.
+ * Settle one application call before any step runs, with the bounded reason.
  *
- * @param host - The runtime seam this flow acts through.
- * @param state - Prepared session naming the verified extension build and the readiness budget.
- * @param context - The session's persistent context.
- * @returns The complete state read plus the enriched read the phase credit compares against.
+ * @param detail - Why nothing could be applied.
+ * @returns The unverified configuration outcome.
  */
-async function readExtensionBlockerState(
-    host: PhaseApplicationFlowHost,
-    state: AgentRuntimeSessionState,
-    context: BrowserContext,
-): Promise<EnvironmentBlockerStateCapture> {
-    const extension = state.extension!;
-    const readState = host.readAdGuardExtensionState ?? readAdGuardExtensionStateDefault;
-    const stateRead = await readState(
-        context,
-        requireChromiumPreparedExtension(extension, 'Reading the live AdGuard extension state')
-            .manifestVersion,
-        host.phaseReadinessBudgetMs === undefined
-            ? undefined
-            : { budgetMs: host.phaseReadinessBudgetMs },
-    );
-    return {
-        stateRead,
-        enriched: {
-            rulesContent: stateRead.userRules.content,
-            rulesContentSha256: stateRead.userRules.contentSha256,
-            // The options metadata is the enabled-set source of truth the read-back credits
-            // against; the MV3 counters name the DNR rulesets that actually compiled. Both native
-            // numeric sets convert to list keys here, at the reader boundary.
-            enabledFilterIds: stateRead.optionsEnabledFilterIds.map(adguardListKey),
-            ...(stateRead.rulesLimits
-                ? {
-                      activeRulesetFilterIds:
-                          stateRead.rulesLimits.actuallyEnabledFilters.map(adguardListKey),
-                  }
-                : {}),
-            // The requested/options credit alone proves a filter is switched on, never that its
-            // MV3 ruleset actually compiled and activated within the browser's limits — the phase
-            // credit in phase-application-procedure.ts requires both before it applies.
-            limitsExceeded: filterLimitsExceededFor(stateRead),
-            stealthEnabled:
-                stateRead.optionsData.settings.values[DISABLE_STEALTH_SETTING] === false,
-        },
-    };
+function unverifiedBeforeApplication(detail: string): RuntimeApplicationOutcome {
+    return { result: { kind: EnvironmentPhaseConfigurationOutcome.Unverified, detail } };
 }
 
 /**
- * Run one application pass: bounded instruction over a session, then the host read-back.
+ * Run one application pass: the route's runner over a session, then the host read-back.
  *
  * @param host - The runtime seam this flow acts through.
  * @param state - Prepared active session supplying the run's settings context.
@@ -308,10 +209,10 @@ export async function runApplication(
             },
         };
     }
-    // The declared file-backed target resolves once, before any model turn: a relative target that
+    // The declared file-backed target resolves once, before any step runs: a relative target that
     // escapes the run's host-state root is a typed refusal here — the target is never read and no
-    // application session runs — while an absolute target is honored as-is, as part of the
-    // instruction's trusted content (D20).
+    // application runs — while an absolute target is honored as-is, as part of the instruction's
+    // trusted content (D20).
     const declaredFileTarget = contract.verification.target;
     const fileTargetResolution =
         declaredFileTarget === undefined
@@ -344,31 +245,44 @@ export async function runApplication(
             admittedFileTargetPath,
         );
     }
+    const logger = createLogger({ verbose: host.verbose });
     const readContext = host.applicationReadContexts.get(session);
+    if (readContext === undefined) {
+        return unverifiedBeforeApplication(
+            'The lease session carries no persistent extension context to read the blocker state over.',
+        );
+    }
+    // The route decides the performer, never the blocker's name. On the built-in AdGuard route the
+    // steps are a fixed message protocol the host sends itself, so no model runner is constructed at
+    // all; an instruction that writes its own steps keeps the bounded session.
+    const hostPerformed = hostPerformsApplication(host.instruction);
+    if (hostPerformed && (request.signal?.aborted ?? false)) {
+        logger.warn(
+            { phase: request.phase, goal: goal.kind },
+            'the phase deadline aborted before the host could apply the prepared extension state',
+        );
+        return unverifiedBeforeApplication(
+            'The phase deadline aborted before the host could apply the prepared extension state.',
+        );
+    }
+    const modelRunner = hostPerformed
+        ? undefined
+        : phaseApplicationModelRunner(host, session, request);
+    if (!hostPerformed && modelRunner === undefined) {
+        // llm/piRuntime are required run options, so a missing model runner here means the
+        // request's deadline already aborted before any turn could start.
+        return unverifiedBeforeApplication(
+            'The application session was aborted before any model turn could start.',
+        );
+    }
     const expectedStealthEnabled =
         expectedStealthEnabledOverride ??
         expectedStealthEnabledFor(state.settingsProfile, state.extensionBaselineReadBack);
-    const modelRunner = phaseApplicationModelRunner(host, session, request);
-    if (!modelRunner || !readContext) {
-        // llm/piRuntime are required run options, so a missing model runner here means the
-        // request's deadline already aborted before any turn could start; a session without its
-        // context cannot read the blocker state back either way. The detail keeps the phase from
-        // guessing which one happened.
-        const detail = !modelRunner
-            ? 'The application session was aborted before any model turn could start.'
-            : 'The lease session carries no persistent extension context to read the blocker state over.';
-        return {
-            result: {
-                kind: EnvironmentPhaseConfigurationOutcome.Unverified,
-                detail,
-            },
-        };
-    }
     const blockerSurfaceUrl = await preparedBlockerSurfaceUrl(host, state, readContext);
     let stateRead: AdGuardExtensionStateRead | undefined;
     // The read-back registry is Decision 1's supply: every method this executor knows how to read
     // is listed here, and the application procedure refuses any declared method with no reader
-    // before any model turn. The live extension state is the AdGuard route; the file-backed methods
+    // before any step runs. The live extension state is the AdGuard route; the file-backed methods
     // read the exact state the instruction's preparation and application steps maintain, with a
     // relative target resolved inside the run's own host-state directory.
     const declaredFileStateReader = fileBlockerStateReader();
@@ -377,9 +291,9 @@ export async function runApplication(
      *
      * A declared file-backed method always carries a target — the parser refuses a declaration
      * without one — and that target was already resolved to `admittedFileTargetPath` before any
-     * model turn, with a containment gap refusing the application long before this reader could
-     * run. Both are certainties by the time this reader is ever called; a null path here would mean
-     * one of those guarantees broke, so it fails loudly instead of guessing a fallback.
+     * step ran, with a containment gap refusing the application long before this reader could run.
+     * Both are certainties by the time this reader is ever called; a null path here would mean one
+     * of those guarantees broke, so it fails loudly instead of guessing a fallback.
      *
      * @param declaration - The parsed verification declaration carrying the method exactly as the
      *   instruction wrote it.
@@ -412,23 +326,13 @@ export async function runApplication(
         }
         return registryId;
     });
-    // The very first Baseline application runs before state.extensionBaselineReadBack exists — it
-    // IS what populates it, after this call returns — so the launch's own pre-read supplies the
-    // filter catalog then; every later phase (every experiment's B/C) falls back to the baseline
-    // read-back buildBrowserExtensionEnvironmentOptions already required to exist.
-    const filtersMetadata =
-        filtersMetadataOverride ?? state.extensionBaselineReadBack?.optionsData.filtersMetadata;
-    if (filtersMetadata === undefined) {
-        throw new Error(
-            "No filter catalog is available to compute the settings payload's required " +
-                'groups: neither a launch pre-read nor a baseline read-back has run yet.',
-        );
-    }
-    const requiredGroupIds = requiredExtensionGroupIds(preparedRegistryIds, filtersMetadata);
-    // No model turn has run yet, so the session's own page can be anywhere — this pre-read cannot
-    // depend on it. It loads and mutates the export over a dedicated page instead, exactly like
-    // every other host read-back of the blocker state (readAdGuardExtensionState/openOptionsPage),
-    // never the model's own page.
+    const requiredGroupIds = requiredExtensionGroupIds(
+        preparedRegistryIds,
+        applicationFiltersMetadata(state, filtersMetadataOverride),
+    );
+    // Nothing has driven the session's own page yet, so this pre-read cannot depend on where it is.
+    // It loads and mutates the export over a dedicated page instead, exactly like every other host
+    // read-back of the blocker state (readAdGuardExtensionState/openOptionsPage).
     const settingsPayload =
         blockerSurfaceUrl === undefined
             ? undefined
@@ -444,6 +348,17 @@ export async function runApplication(
                           : { stealthEnabled: expectedStealthEnabled }),
                   },
               );
+    const runner: PhaseApplicationRunner =
+        modelRunner ??
+        createHostExtensionApplicationRunner({
+            goal,
+            expectedFilterIds: preparedRegistryIds,
+            context: readContext,
+            ...(host.phaseReadinessBudgetMs === undefined
+                ? {}
+                : { readinessBudgetMs: host.phaseReadinessBudgetMs }),
+            logger,
+        });
     const result = await runPhaseApplication({
         application: request.application,
         goal,
@@ -457,7 +372,7 @@ export async function runApplication(
             settingsPayload,
             notes: phaseApplicationNotes(request),
         },
-        modelRunner,
+        runner,
         readBack: {
             [BlockerVerificationMethod.ExtensionState]: async () => {
                 assertApplicationNotAborted(request);

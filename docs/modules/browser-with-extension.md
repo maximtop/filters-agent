@@ -112,11 +112,13 @@ the error text; the DOM proof travels with them.
 
 ## Evidence design: what the host verifies itself
 
-Between an A/B/C phase opening and its observation, the model applies (or plugs) the
-candidate by following an application instruction's steps. Trust ends at the model's last step:
-two resolved decisions govern what the recorded proof may claim.
+Between an A/B/C phase opening and its observation, the candidate is applied (or the baseline
+plugged back in) by following an application contract's steps. On the built-in AdGuard route those
+steps are a fixed message protocol and the host performs them itself in code; an instruction that
+writes its own `## Rule application` is performed by a bounded model session instead. Either way
+trust ends at the last step: two resolved decisions govern what the recorded proof may claim.
 
-**Decision 1 — the host reads the blocker state back itself.** After the model's steps the host
+**Decision 1 — the host reads the blocker state back itself.** After those steps the host
 opens the state at the instruction's declared read and credits the phase only on exact match:
 
 - **candidate (phase C)**: the user-rule content, newline-joined, hashes to exactly the
@@ -132,7 +134,10 @@ opens the state at the instruction's declared read and credits the phase only on
   browser applied at startup (see below).
 
 **Which verification methods run today.** `extension-state` runs on the Chromium route: the host
-queries the running AdGuard extension over its own message transport. Of the file-backed methods
+queries the running AdGuard extension over its own message transport, and on the built-in route it
+performs the application over that same transport — readiness, `applySettingsJson`, the bounded
+three-round `disableFilter` reconciliation of the enabled set, and `saveUserRules` for a candidate.
+Of the file-backed methods
 exactly one pairing runs — `managed-storage-file` beside a `launch: firefox` declaration in the
 instruction's `## Preparation` section — and the host performs that application itself, because no
 model session can: preparation writes only inside its own workdir and never learns where the run's

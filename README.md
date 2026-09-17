@@ -69,6 +69,27 @@ An instruction file switches the run to another blocker. Three examples ship und
 See [`docs/modules/browser-with-extension.md`](docs/modules/browser-with-extension.md) for the
 detail behind each route.
 
+### How a rule gets applied between phases
+
+To measure a candidate the action has to put your repository's filters and the candidate rule into
+the blocker before each phase. Your instruction decides how, and there are three shapes:
+
+- **No instruction, or one declaring `application: adguard-extension`.** The built-in AdGuard route.
+  Its steps are a fixed message protocol, so the action performs them itself in code: wait for the
+  extension to finish installing, import the prepared settings, turn off any filter the import left
+  on that your settings do not name, and save the candidate as the only user rule. No model is
+  involved, so an application takes seconds instead of the several minutes a model spent sending the
+  same messages one turn at a time.
+- **An instruction declaring a file-backed read** (`read: managed-storage-file` or
+  `read: user-rules-file`). The action writes the file itself, relaunches the browser so it picks the
+  file up, and reads it back. The uBlock Origin in Firefox example is this shape.
+- **An instruction writing its own `## Rule application` steps.** The model performs exactly those
+  steps — nothing else — which is how a blocker with its own way of adding a rule gets driven.
+
+Whichever shape applies, the action then reads the blocker's own state back and credits the phase
+only when that state holds exactly what it expected: the candidate rule and nothing else for a
+candidate phase, no user rule at all for a baseline. Nothing is taken on the model's word.
+
 ### An instruction that only adds guidance
 
 An instruction does not have to switch the blocker. Every part of it is optional on its own: leave
@@ -82,8 +103,8 @@ application: adguard-extension
 ```
 
 `adguard-extension` is the only route today: the built-in AdGuard Browser Extension in Chromium,
-which the action prepares, launches and reads back itself. Without that line an instruction is
-expected to carry its own `## Rule application` and `## State verification` sections, and a run
+which the action prepares, launches, applies and reads back itself. Without that line an instruction
+is expected to carry its own `## Rule application` and `## State verification` sections, and a run
 whose instruction carries neither spends its whole budget before refusing to apply anything.
 Declaring the route *and* writing those sections is a contradiction: the run fails at start, naming
 the instruction and both facts.
@@ -94,7 +115,7 @@ A complete guidance-only instruction, for a repository whose users run the built
 # Run instruction: AdguardFilters
 
 The run's blocker is the built-in AdGuard Browser Extension in Chromium — the host prepares,
-launches and reads it back itself. This file adds nothing to that route but the guidance
+launches, applies and reads it back itself. This file adds nothing to that route but the guidance
 documents this repository writes its rules against.
 
 application: adguard-extension

@@ -22,17 +22,21 @@ import {
 } from './phase-application-contract';
 
 /**
- * The model-driven application the host runs between two environment phases.
+ * The application the host runs between two environment phases.
  *
- * Decision 1 of 11-HITL: the model performs the instruction's application steps in one bounded
- * session over the phase lease, while the host reads the blocker state back itself and credits the
- * phase only when that state contains exactly what the goal expects. A missing application or
- * verification section is a recorded refusal before any model turn — the model never invents a way
- * to apply a rule — and the action log is assembled by the host from the session's recorded tool
- * calls, never from the model's self-report.
+ * Decision 1 of 11-HITL: the application's steps are performed once over the phase lease, while the
+ * host reads the blocker state back itself and credits the phase only when that state contains
+ * exactly what the goal expects. A missing application or verification section is a recorded
+ * refusal before any step runs — nothing here invents a way to apply a rule — and the action log is
+ * assembled by the host from what it recorded, never from a model's self-report.
+ *
+ * Who performs the steps is the runner's business, not this procedure's: an instruction that writes
+ * its own `## Rule application` gets a bounded model session, while the built-in AdGuard route is
+ * performed by the host in code. This procedure is identical either way, which is what keeps the
+ * two paths crediting by one rule.
  *
  * The credit itself lives in `blocker-state-credit.ts`, shared with the host-performed file-backed
- * application (31-AFK Decision 3), so both application paths judge a read-back by one rule.
+ * application (31-AFK Decision 3), so every application path judges a read-back by one rule.
  */
 
 /**
@@ -102,7 +106,7 @@ function refusedOutcome(refusal: ApplicationInstructionRefusal): PhaseApplicatio
 }
 
 /**
- * Run one between-phases application: contract refusal, bounded model steps, host read-back.
+ * Run one between-phases application: contract refusal, the runner's steps, host read-back.
  *
  * @param input - The instruction, the goal, the lease session, the runner, and the reader registry.
  * @returns Applied when the host read-back contains exactly the goal's content; refused with the
@@ -127,12 +131,12 @@ export async function runPhaseApplication(
         });
     }
 
-    // The model session runs once, bounded, over the phase lease; the trace below is the host's
-    // record of it, never the model's report of itself.
+    // The runner performs the steps once over the phase lease; the trace below is the host's
+    // record of what ran, never a model's report of itself.
     const budget = resolveBudget(input.budget);
     let runnerResult: PhaseApplicationRunnerResult | undefined;
     try {
-        runnerResult = await input.modelRunner.run({
+        runnerResult = await input.runner.run({
             prompt: renderApplicationPrompt(parsed.application.content, input.goal, input.session),
             session: input.session,
             budget,
@@ -145,7 +149,7 @@ export async function runPhaseApplication(
                 method: parsed.verification.method,
                 goal: input.goal.kind,
             },
-            'phase application session threw before its seal',
+            'the phase application runner threw before it could report an ending',
         );
         return {
             kind: PhaseApplicationOutcomeKind.Unverified,
@@ -159,7 +163,7 @@ export async function runPhaseApplication(
                 detail: runnerResult.detail,
                 actionCount: runnerResult.actionLog.length,
             },
-            'phase application session ended without an accepted terminal payload',
+            'the phase application did not complete every step it was asked to',
         );
     }
 

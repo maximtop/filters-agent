@@ -14,7 +14,7 @@ import type { LlmConfig } from '../config/config';
 import type { PiRuntime } from '../pi/runtime';
 import type { RunUsageCollector } from '../pi/usage-collector';
 import type { Logger } from '../logger/logger';
-import type { PhaseApplicationModelRunner } from '../validator/phase-application-contract';
+import type { PhaseApplicationRunner } from '../validator/phase-application-contract';
 import type { TraceRecorder } from '../tracer/trace-recorder';
 import type { PolicySessionRelaunch } from '../browser/prepared-extension-launch';
 
@@ -67,11 +67,15 @@ export interface PhaseApplicationModelRunnerDependencies {
 }
 
 /**
- * Factory for the bounded application-session runner behind every between-phases application.
+ * Factory for the bounded application-session runner behind a model-driven application.
+ *
+ * Only the model-driven path builds one: an instruction that writes its own `## Rule application`
+ * steps. The built-in AdGuard route performs its application on the host in code and never reaches
+ * this factory at all.
  *
  * Defaults to the shared pi mode-session runner, which requires the run's pi runtime and LLM
  * configuration; an injected factory (tests) may close over its own inputs and receives whatever
- * the run carries, so the application procedure is observable without a model.
+ * the run carries, so the model-driven application procedure is observable without a model.
  *
  * @param depends - The run's pi runtime, LLM configuration, recorder, lease session, origin, and
  *   usage collector.
@@ -79,7 +83,7 @@ export interface PhaseApplicationModelRunnerDependencies {
  */
 export type PhaseApplicationModelRunnerFactory = (
     depends: PhaseApplicationModelRunnerDependencies,
-) => PhaseApplicationModelRunner;
+) => PhaseApplicationRunner;
 
 /**
  * The runtime seam the between-phases application flow acts through: the run's leaf options and
@@ -149,7 +153,8 @@ export interface PhaseApplicationFlowHost {
 
     /**
      * Injected application-session runner factory (tests); defaults to the shared pi mode-session
-     * runner when absent.
+     * runner when absent. Consulted only on the model-driven path — a run on the built-in AdGuard
+     * route performs its application on the host and never builds a session runner.
      */
     createPhaseApplicationModelRunner?: PhaseApplicationModelRunnerFactory;
 
@@ -175,23 +180,76 @@ const APPLICATION_ROUTE_DOCUMENTS: Record<ApplicationRoute, PromptDocumentName> 
 };
 
 /**
- * The application instruction whose contract every between-phases application performs.
+ * The application contract in force for one run: either a built-in route, or the instruction's own
+ * hand-written sections.
+ */
+type ApplicationContractInForce =
+    | {
+          /**
+           * The built-in route whose shipped document the run applies through.
+           */
+          route: ApplicationRoute;
+      }
+    | {
+          /**
+           * The instruction text whose own `## Rule application` and `## State verification`
+           * sections the run applies through.
+           */
+          ownContent: string;
+      };
+
+/**
+ * Resolve which application contract one run applies through.
  *
  * A run carrying an instruction that writes its own application contract applies exactly that
  * instruction. An instruction that instead declares a built-in route with `application:` — the
  * shape a repository takes when it only wants to link its own guidance documents — applies that
- * route's shipped document, and so does a run with no instruction at all: the built-in AdGuard
- * route, the converted options-page driver.
+ * route, and so does a run with no instruction at all: the built-in AdGuard route.
+ *
+ * This is the single resolution behind both {@link applicationInstructionContent} and
+ * {@link hostPerformsApplication}, so the document a run applies through and who performs it can
+ * never disagree.
+ *
+ * @param instruction - The run instruction loaded at run start, when this run carries one.
+ * @returns The built-in route in force, or the instruction's own contract text.
+ */
+function resolveApplicationContract(
+    instruction: LoadedInstruction | undefined,
+): ApplicationContractInForce {
+    if (instruction !== undefined && instruction.applicationRoute === undefined) {
+        return { ownContent: instruction.content };
+    }
+    return { route: instruction?.applicationRoute ?? ApplicationRoute.AdguardExtension };
+}
+
+/**
+ * The application instruction whose contract every between-phases application performs.
  *
  * @param instruction - The run instruction loaded at run start, when this run carries one.
  * @returns The run's application instruction content.
  */
 export function applicationInstructionContent(instruction: LoadedInstruction | undefined): string {
-    if (instruction !== undefined && instruction.applicationRoute === undefined) {
-        return instruction.content;
-    }
-    const route = instruction?.applicationRoute ?? ApplicationRoute.AdguardExtension;
-    return createPromptDocumentLoader().read(APPLICATION_ROUTE_DOCUMENTS[route]);
+    const contract = resolveApplicationContract(instruction);
+    return 'ownContent' in contract
+        ? contract.ownContent
+        : createPromptDocumentLoader().read(APPLICATION_ROUTE_DOCUMENTS[contract.route]);
+}
+
+/**
+ * Whether the host performs this run's application itself instead of starting a model session.
+ *
+ * The built-in AdGuard route's steps are a fixed message protocol, not a judgement: the host sends
+ * them in code (`host-extension-application.ts`), so an application costs seconds rather than the
+ * five to eight minutes a model paced at 20-50 seconds a turn spent on the same enumerated steps.
+ * An instruction that writes its own `## Rule application` keeps the model-driven path — other
+ * blockers have their own way to add a rule, and the model follows whatever the instruction wrote.
+ *
+ * @param instruction - The run instruction loaded at run start, when this run carries one.
+ * @returns True when the contract in force is the built-in AdGuard route.
+ */
+export function hostPerformsApplication(instruction: LoadedInstruction | undefined): boolean {
+    const contract = resolveApplicationContract(instruction);
+    return 'route' in contract && contract.route === ApplicationRoute.AdguardExtension;
 }
 
 /**

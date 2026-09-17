@@ -25,6 +25,7 @@ import type { FirefoxPolicies } from '../browser/firefox-policies';
 import type { PolicySessionRelaunch } from '../browser/prepared-extension-launch';
 import type { ActionLogEntry, BlockerVerificationMethod } from '../environment/environment-proofs';
 import type { FirefoxExtensionLaunch } from '../environment/extension-launch';
+import { HostApplicationStep } from '../environment/host-application-step';
 import { normalizeRulesContent } from '../environment/rules-content';
 import type { ReproProfile } from '../types/repro-profile';
 import type { Logger } from '../logger/logger';
@@ -36,34 +37,6 @@ import {
     type ApplicationGoal,
     type PhaseApplicationResult,
 } from '../validator/phase-application-contract';
-
-/**
- * Action-log tool names of the host's own four application steps.
- *
- * The action log is evidence of what was done; for this path the doer is the host, so the steps are
- * named after the operations themselves rather than after a model tool.
- */
-const HostApplicationStep = {
-    /**
-     * The host wrote the declared user-filters file.
-     */
-    WriteUserFilters: 'host_write_user_filters_file',
-
-    /**
-     * The host rebuilt the Firefox enterprise policies from the declaration plus the file content.
-     */
-    RebuildPolicies: 'host_rebuild_firefox_policies',
-
-    /**
-     * The host closed the running session and launched a new one with the rebuilt policies.
-     */
-    RelaunchSession: 'host_relaunch_browser_session',
-
-    /**
-     * The host read the declared file back.
-     */
-    ReadUserFilters: 'host_read_user_filters_file',
-} as const;
 
 /**
  * Everything one host-performed file-backed application acts on.
