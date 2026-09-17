@@ -12,7 +12,7 @@ import type { CallLimiter } from '../pi/call-limiter';
 import * as v from 'valibot';
 import { SingleShotResultKind } from '../pi/single-shot-types';
 import { SingleShotMessageRole, type SingleShotMessage } from '../pi/single-shot-input';
-import { SymptomKind, inventoryResidueRubric } from './symptom-rubric';
+import { PRE_EXISTING_DAMAGE_PREFIX, SymptomKind, inventoryResidueRubric } from './symptom-rubric';
 import { TraceEventType } from '../types/trace';
 import {
     CandidateVisualInstanceSchema,
@@ -203,6 +203,32 @@ async function inventoryImages(
 }
 
 /**
+ * Prompt lines telling one inventory pass what to do with page damage it sees in its state.
+ *
+ * An AFTER pass sees a flaw without knowing whether the candidate caused it, and the BEFORE passes
+ * used to list no flaws at all, so the synthesis had nothing to compare against: on
+ * nottinghampost.com a card whose "AD FEATURE" label has always overlapped its headline came back
+ * from the AFTER tiles as text collision, and the review reported pageIntegrity regressed for a
+ * candidate that touched nothing near it. The BEFORE passes therefore list the page's own flaws
+ * under a fixed prefix, and the synthesis discounts AFTER damage that matches one.
+ *
+ * @param state - Whether the pass looks at the control or the candidate-applied document.
+ * @returns Prompt lines for that state's damage reporting.
+ */
+function stateDamageRubric(state: CaptureState): string[] {
+    if (state === CaptureState.After) {
+        return ['Also report visible non-target page damage after the candidate.'];
+    }
+    return [
+        'This is the page before the candidate, so nothing in it is candidate damage. Still list',
+        'in observedDamage every rendering flaw the page already has apart from the',
+        'reporter-defined defect itself — overlapping or clipped text, broken images, collapsed',
+        `layout — each prefixed "${PRE_EXISTING_DAMAGE_PREFIX}" and naming its landmark, so the`,
+        "later comparison can tell the page's own flaws from damage a candidate causes.",
+    ];
+}
+
+/**
  * Ask vision to inventory the reporter-defined symptom in every tile of one page state.
  *
  * @param options - Trusted candidate context and multimodal provider dependencies.
@@ -240,9 +266,7 @@ export async function inventoryTileState(
                         'scroll locks as comparison obstructions. Inventory their visible effect;',
                         'an unresolved obstruction or one that changes between aligned states makes',
                         'the underlying page integrity unclear rather than intact.',
-                        state === CaptureState.After
-                            ? 'Also report visible non-target page damage after the candidate.'
-                            : 'Do not treat pre-existing page appearance as candidate damage.',
+                        ...stateDamageRubric(state),
                     ].join(' '),
                     userContext: [
                         `Page state: ${state.toUpperCase()}.`,
@@ -311,9 +335,7 @@ export async function inventoryOverviewImage(
             'Treat cookie or consent dialogs, modal backdrops, blank overlays, and body scroll',
             'locks as comparison obstructions. An unresolved obstruction or one that changes',
             'between aligned states prevents a reliable intact-page conclusion.',
-            state === CaptureState.After
-                ? 'Also report visible non-target page damage after the candidate.'
-                : 'Do not treat pre-existing page appearance as candidate damage.',
+            ...stateDamageRubric(state),
             'Set coverageObserved=false only when this image is technically unreadable for',
             'its stated overview purpose.',
         ].join(' '),

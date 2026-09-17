@@ -81,6 +81,13 @@ export function inventoryResidueRubric(kind: SymptomKind): string[] {
 }
 
 /**
+ * Prefix a BEFORE inventory puts on a rendering flaw the page has without any candidate.
+ *
+ * The inventory prompt writes it and the synthesis prompt reads it, so both take it from here.
+ */
+export const PRE_EXISTING_DAMAGE_PREFIX = 'PRE-EXISTING:';
+
+/**
  * Residue rubric lines for the final text-only synthesis prompt.
  *
  * For breakage reviews the `adLayoutResidue` field is repurposed as the filtering-regression guard:
