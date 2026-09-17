@@ -136,12 +136,25 @@ queries the running AdGuard extension over its own message transport. Of the fil
 exactly one pairing runs — `managed-storage-file` beside a `launch: firefox` declaration in the
 instruction's `## Preparation` section — and the host performs that application itself, because no
 model session can: preparation writes only inside its own workdir and never learns where the run's
-checkout is, and the application session carries page tools only. For that pairing the host writes
-the declared file (empty for the baseline goal, exactly the candidate line for the candidate goal),
-rebuilds the enterprise policies with the file's exact content at the declared key path, relaunches
-the browser — Firefox reads `policies.json` only at startup, so a running browser can never pick up
-new managed storage — and reads the file back through the file reader. The phase proof's detail
-names the file and the relaunch beside what the credit could not observe.
+host-state directory is, and the application session carries page tools only. For that pairing the
+host writes the declared file (empty for the baseline goal, exactly the candidate line for the
+candidate goal), rebuilds the enterprise policies with the file's exact content at the declared key
+path, relaunches the browser — Firefox reads `policies.json` only at startup, so a running browser
+can never pick up new managed storage — and reads the file back through the file reader. The phase
+proof's detail names the file and the relaunch beside what the credit could not observe.
+
+**That file is host state, not repository content.** A declared relative target resolves against the
+run's host-state root — a fresh per-run directory the runtime creates under the OS temp root
+(`src/orchestrator/host-state-root.ts`), removed on the run's terminal path — and both places that
+need the path, the between-phases application and every launch, resolve it there through
+`src/orchestrator/blocker-file-target.ts`, so a launch can never serve a different file than the
+read-back credits. A relative target that escapes that root is the typed
+`ApplicationInstructionGap.VerificationTargetOutsideHostState` refusal, taken before the file is
+read; an absolute target is honored as written, as part of the instruction's trusted content. The
+directory lies outside the checkout by construction, which is what keeps the checkout walks honest:
+resolving the target inside the checkout made the safety gate's duplicate scan reject a verified
+candidate as one that "already exists in the checkout", and moved the verdict's recomputed hostname
+baseline away from the hash the apply-time context had recorded.
 
 Everything else file-backed still refuses before any paid work: `user-rules-file` names a file whose
 content only a Chromium blocker's own storage would carry (the uBlock Origin Lite example), and a

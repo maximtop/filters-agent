@@ -2,9 +2,9 @@
  * The host-performed file-backed application between two environment phases.
  *
  * Decision 3 of 31-AFK: for a file-backed verification there is nothing for a model session to do.
- * The state the read-back credits is a file, and the host is the only party that knows where the
- * run's checkout is, so the host maintains it: write the file (empty for the Baseline goal, exactly
- * the candidate line for the Candidate goal), rebuild the Firefox enterprise policies from the
+ * The state the read-back credits is a file in the run's own host-state directory, which no session
+ * knows about, so the host maintains it: write the file (empty for the Baseline goal, exactly the
+ * candidate line for the Candidate goal), rebuild the Firefox enterprise policies from the
  * instruction's declaration plus what was just written, relaunch the session — Firefox reads
  * policies only at startup, so a running browser can never pick up new managed storage — and read
  * the file back through the same reader every file-backed verification uses.
@@ -80,7 +80,8 @@ export interface FileBackedApplicationInput {
     method: BlockerVerificationMethod;
 
     /**
-     * Absolute path of the declared user-filters file, already resolved and contained.
+     * Absolute path of the declared user-filters file, already resolved inside the run's host-state
+     * root and contained there.
      */
     targetPath: string;
 
@@ -165,8 +166,8 @@ export async function runFileBackedApplication(
     const content = fileContentFor(goal);
     const ruleLineCount = content.trim().length === 0 ? 0 : content.trim().split('\n').length;
 
-    // The run's checkout is the host's own workspace: preparation never sees it, so the host both
-    // creates the declared file and maintains it from here on.
+    // The run's host-state directory is the host's own workspace: preparation never sees it, so the
+    // host both creates the declared file and maintains it from here on.
     try {
         await mkdir(dirname(targetPath), { recursive: true });
         await writeFile(targetPath, content, 'utf8');

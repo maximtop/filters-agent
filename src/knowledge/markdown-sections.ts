@@ -157,21 +157,23 @@ export function splitMarkdownSections(document: string): MarkdownSection[] {
 }
 
 /**
- * Render the document's heading index: every heading, at its own level, in document order.
+ * Render the document's heading index as its lines: every heading, at its own level, in document
+ * order.
  *
  * The index is what turns a narrowed response into a navigable one — it is the model's evidence
  * that a section it wants exists somewhere else in the document, so it can ask again for that
- * section instead of reporting the guidance as missing.
+ * section instead of reporting the guidance as missing. The lines are returned unjoined because a
+ * bounded response may only be able to afford some of them: how many fit is the caller's budget
+ * decision, and this module knows nothing about budgets.
  *
  * @param sections - Sections of one document, as {@link splitMarkdownSections} returned them.
- * @returns One line per heading, each keeping its `#` markers so the nesting is visible; the empty
- *   string for a document with no headings.
+ * @returns One line per heading, each keeping its `#` markers so the nesting is visible; empty for
+ *   a document with no headings.
  */
-export function renderHeadingIndex(sections: readonly MarkdownSection[]): string {
+export function headingIndexLines(sections: readonly MarkdownSection[]): string[] {
     return sections
         .filter((section) => section.level !== PREAMBLE_LEVEL)
-        .map((section) => `${'#'.repeat(section.level)} ${section.heading}`)
-        .join('\n');
+        .map((section) => `${'#'.repeat(section.level)} ${section.heading}`);
 }
 
 /**

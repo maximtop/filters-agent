@@ -64,8 +64,8 @@ export interface CandidateVisualVerifierResult {
 /**
  * The runner-computed network scope of the candidate under review.
  *
- * Computed from runner-owned inputs only — the candidate rule and the trusted reported URL — so
- * the synthesis prompt and the verdict derived from its answer read the same scope.
+ * Computed from runner-owned inputs only — the candidate rule and the trusted reported URL — so the
+ * synthesis prompt and the verdict derived from its answer read the same scope.
  *
  * @param options - The review's options.
  * @returns The candidate's network scope; not applicable when the reported URL is unknown.

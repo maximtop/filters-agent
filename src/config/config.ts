@@ -154,15 +154,15 @@ const DEFAULT_REASONING_EFFORT = ReasoningEffort.High;
  * none: the intake extraction, the benchmark reviewer and every vision verdict.
  *
  * Two steps below the loop's `high`, at the maintainer's call. A single-shot call answers one
- * bounded structured question — extract the report from an issue, describe one screenshot — and
- * its thinking is paid on the run's critical path with nothing to plan across turns; the loop
- * keeps `high` because it plans an investigation across many turns. `medium` (2026-09-15) came
- * after a run spent 22 minutes inside the intake extraction and its vision calls spent 173k of
- * 177k output tokens on reasoning. `low` (2026-09-17) came after the vision calls kept running
- * away at `medium`: three a run streamed past the ten-minute call ceiling — half of a 60-minute
+ * bounded structured question — extract the report from an issue, describe one screenshot — and its
+ * thinking is paid on the run's critical path with nothing to plan across turns; the loop keeps
+ * `high` because it plans an investigation across many turns. `medium` (2026-09-15) came after a
+ * run spent 22 minutes inside the intake extraction and its vision calls spent 173k of 177k output
+ * tokens on reasoning. `low` (2026-09-17) came after the vision calls kept running away at
+ * `medium`: three a run streamed past the ten-minute call ceiling — half of a 60-minute
  * investigation — and a candidate review that runs away comes back inconclusive, which throws the
- * whole experiment away. The level reaches the wire on every single shot of a model registered
- * as reasoning, which includes the vision role whenever it shares the reasoning model's slug.
+ * whole experiment away. The level reaches the wire on every single shot of a model registered as
+ * reasoning, which includes the vision role whenever it shares the reasoning model's slug.
  */
 const DEFAULT_SINGLE_SHOT_REASONING_EFFORT = ReasoningEffort.Low;
 

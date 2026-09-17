@@ -135,6 +135,12 @@ export interface AddReviewCandidateOperation extends ReviewCandidateOperationBas
      * Exact rule to insert.
      */
     addedRule: string;
+
+    /**
+     * Comment line written immediately before the added rule, when the run instruction's declared
+     * placement asked for one; absent everywhere else.
+     */
+    precedingComment?: string;
 }
 
 /**
@@ -1825,6 +1831,7 @@ function buildAddOperation(
         afterLine,
         insertionBoundarySha256,
         addedRule: rule,
+        ...(edit.precedingComment === undefined ? {} : { precedingComment: edit.precedingComment }),
     });
 }
 

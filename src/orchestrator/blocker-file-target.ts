@@ -30,39 +30,40 @@ export type BlockerFileTargetResolution =
     | ApplicationInstructionRefusal;
 
 /**
- * Resolve one declared file-backed verification target against the run's checkout root.
+ * Resolve one declared file-backed verification target against the run's host-state root.
  *
- * The file-backed declarations name the state the run's preparation and application steps maintain,
- * as the instruction writes it: a relative target is that file's checkout-root-relative path — the
- * same base the instruction loader resolves the instruction and its links against (the pinned
- * filters checkout) — and an absolute target is honored as-is, as part of the instruction's trusted
- * content (D20). A relative target whose resolution escapes the checkout root is a typed refusal:
- * the host contains file-backed read-backs to the checkout, and the refused target is never read.
+ * The file-backed declarations name state the host maintains for itself, as the instruction writes
+ * it: a relative target is that file's path inside the run's host-state directory — a fresh per-run
+ * directory outside the repository checkout, so no checkout walk can ever read the run's own
+ * candidate back as repository content — and an absolute target is honored as-is, as part of the
+ * instruction's trusted content (D20). A relative target whose resolution escapes the host-state
+ * root is a typed refusal: the host contains file-backed read-backs to that directory, and the
+ * refused target is never read.
  *
- * @param filtersPath - The run's checkout root the relative reference resolves against.
+ * @param hostStateRoot - The run's host-state root the relative reference resolves against.
  * @param target - Declared target exactly as the instruction wrote it.
  * @returns The absolute path the file-backed read-back is admitted to read, or the typed refusal
  *   recording why the declaration cannot be honored.
  */
 export function resolveBlockerFileTarget(
-    filtersPath: string,
+    hostStateRoot: string,
     target: string,
 ): BlockerFileTargetResolution {
     if (isAbsolute(target)) {
         return { path: target };
     }
-    const resolved = resolve(filtersPath, target);
-    // Containment by the target's position relative to the checkout root: a first `..` segment
+    const resolved = resolve(hostStateRoot, target);
+    // Containment by the target's position relative to the host-state root: a first `..` segment
     // (or a cross-root resolution that no longer names a position under the root) is the escape.
-    const relativeToRoot = relative(filtersPath, resolved);
+    const relativeToRoot = relative(hostStateRoot, resolved);
     const leadingSegment = relativeToRoot.split(sep, 1)[0];
     if (leadingSegment === '..' || isAbsolute(relativeToRoot)) {
         return {
-            gap: ApplicationInstructionGap.VerificationTargetOutsideCheckout,
+            gap: ApplicationInstructionGap.VerificationTargetOutsideHostState,
             detail:
-                'The state verification declares a checkout-relative target that resolves ' +
-                `outside the run's checkout root ("${target}"); the host contains file-backed ` +
-                'read-backs to the checkout and refuses this target before reading it.',
+                'The state verification declares a relative target that resolves outside the ' +
+                `run's host-state root ("${target}"); the host contains file-backed read-backs ` +
+                'to that directory and refuses this target before reading it.',
         };
     }
     return { path: resolved };
@@ -78,13 +79,13 @@ export function resolveBlockerFileTarget(
  * one place that turns a refused target into a recorded refusal.
  *
  * @param application - The run's application instruction content.
- * @param filtersPath - The run's checkout root a relative target resolves against.
+ * @param hostStateRoot - The run's host-state root a relative target resolves against.
  * @returns The absolute declared path, or undefined when the instruction declares none the host
  *   will read.
  */
 export function resolveDeclaredBlockerFile(
     application: string,
-    filtersPath: string,
+    hostStateRoot: string,
 ): string | undefined {
     const contract = parseRuleApplication(application);
     if ('gap' in contract) {
@@ -94,28 +95,6 @@ export function resolveDeclaredBlockerFile(
     if (target === undefined) {
         return undefined;
     }
-    const resolution = resolveBlockerFileTarget(filtersPath, target);
+    const resolution = resolveBlockerFileTarget(hostStateRoot, target);
     return 'path' in resolution ? resolution.path : undefined;
-}
-
-/**
- * The files the run's host itself maintains inside the checkout: today exactly the declared
- * file-backed blocker-state file, when the instruction declares one the host will read.
- *
- * A relative declared target lives inside the checkout by contract, and the between-phases
- * application writes the candidate rule into it. Every later walk of the checkout that reads
- * repository content — the safety gate's duplicate scan, the verdict's recomputed rule baseline —
- * must skip these files, or it reads the run's own candidate back as repository content. The
- * sarkisozleri.bbs.tr run lost its verified candidate exactly that way: the gate rejected it as
- * already present in the checkout, and the recomputed baseline hash no longer matched the one the
- * apply-time context recorded before the write.
- *
- * @param application - The run's application instruction content.
- * @param filtersPath - The run's checkout root a relative target resolves against.
- * @returns Absolute paths of the host-maintained files; empty when the instruction declares none
- *   the host will read.
- */
-export function hostOwnedCheckoutFiles(application: string, filtersPath: string): string[] {
-    const declared = resolveDeclaredBlockerFile(application, filtersPath);
-    return declared === undefined ? [] : [declared];
 }

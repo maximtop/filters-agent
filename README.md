@@ -36,7 +36,9 @@ When it runs against an issue, `filters-agent`:
    module drives a browser extension, and the example instructions in
    [`src/prompts/documents/instructions/`](src/prompts/documents/instructions/) — specifically
    `ublock-origin-firefox.md`, `ublock-origin-lite.md` and `edge-mv2.md` — for the shape a custom
-   instruction takes.
+   instruction takes. The same file is also how a repository that stays on the built-in extension
+   points the run at its own filter guidance: see
+   [An instruction that only adds guidance](#an-instruction-that-only-adds-guidance).
 4. Label an issue `filters-agent` (or run the workflow manually with an issue number) to start a
    run.
 5. The report appears as a comment on the issue. The full run — report, traces, screenshots — is
@@ -66,6 +68,52 @@ An instruction file switches the run to another blocker. Three examples ship und
 
 See [`docs/modules/browser-with-extension.md`](docs/modules/browser-with-extension.md) for the
 detail behind each route.
+
+### An instruction that only adds guidance
+
+An instruction does not have to switch the blocker. Every part of it is optional on its own: leave
+out the preparation, the launch, the placement, the issue selection or the report template, and the
+run keeps its built-in behaviour for that part. The application steps are the one part no run can
+invent, so an instruction that adds nothing but guidance documents names the built-in route that
+applies its rules, on one line:
+
+```
+application: adguard-extension
+```
+
+`adguard-extension` is the only route today: the built-in AdGuard Browser Extension in Chromium,
+which the action prepares, launches and reads back itself. Without that line an instruction is
+expected to carry its own `## Rule application` and `## State verification` sections, and a run
+whose instruction carries neither spends its whole budget before refusing to apply anything.
+Declaring the route *and* writing those sections is a contradiction: the run fails at start, naming
+the instruction and both facts.
+
+A complete guidance-only instruction, for a repository whose users run the built-in extension:
+
+```markdown
+# Run instruction: AdguardFilters
+
+The run's blocker is the built-in AdGuard Browser Extension in Chromium — the host prepares,
+launches and reads it back itself. This file adds nothing to that route but the guidance
+documents this repository writes its rules against.
+
+application: adguard-extension
+
+The run loads its filter guidance at start from these role documents:
+
+- [AdGuard filter syntax](https://github.com/AdguardTeam/KnowledgeBase/blob/master/docs/general/ad-filtering/create-own-filters.md)
+- [AdGuard filter policy](https://github.com/AdguardTeam/KnowledgeBase/blob/master/docs/general/ad-filtering/filter-policy.md)
+- [AdguardFilters contributing guide](https://github.com/AdguardTeam/AdguardFilters/blob/master/CONTRIBUTING.md)
+
+Rule placement is deliberately not declared: the deterministic routing already mirrors this
+repository's `<Filter>/sections/*.txt` layout, and one declaration would force every rule into
+a single file.
+```
+
+The link labels are what bind the documents: a label containing `syntax`, `policy` or
+`contributing` binds that role, and `lookup_rule_guidance` then answers every topic from your
+documents instead of the pinned AdGuard KnowledgeBase. A topic whose role you did not link is
+answered by a notice saying so, which the run's report carries as missing information.
 
 ### Where an accepted rule goes
 

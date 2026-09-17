@@ -16,9 +16,7 @@ import {
     type SelectionFilterBaseline,
 } from '../environment/declared-filter-baseline';
 import { ExtensionLaunchFamily } from '../environment/extension-launch';
-import type {
-    FirefoxExtensionEnvironmentOptions,
-} from '../environment/firefox-extension-environment';
+import type { FirefoxExtensionEnvironmentOptions } from '../environment/firefox-extension-environment';
 import type { LoadedInstruction } from '../knowledge/instruction-loader';
 import type { FirefoxPreparedExtension, PreparedExtension } from '../local/prepared-extension';
 import type { AgentRuntimeSessionState } from './agent-runtime-session-evidence';

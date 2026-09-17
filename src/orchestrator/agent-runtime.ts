@@ -117,12 +117,8 @@ import type { LlmConfig } from '../config/config';
 import type { PiRuntime } from '../pi/runtime';
 import type { RunUsageCollector } from '../pi/usage-collector';
 import { ApplicationGoalKind } from '../validator/phase-application-contract';
-import {
-    readAdGuardExtensionState as readAdGuardExtensionStateDefault,
-} from '../browser/adguard-extension-state-read';
-import {
-    findExtensionRuntime as findExtensionRuntimeDefault,
-} from '../browser/extension-runtime-location';
+import { readAdGuardExtensionState as readAdGuardExtensionStateDefault } from '../browser/adguard-extension-state-read';
+import { findExtensionRuntime as findExtensionRuntimeDefault } from '../browser/extension-runtime-location';
 import {
     candidateArtifactIdentitiesEqual,
     parseCandidateValidationArtifactId,
@@ -206,15 +202,13 @@ import {
     type PhaseApplicationFlowHost,
     type PhaseApplicationModelRunnerFactory,
 } from './phase-application-flow-host';
-import { hostOwnedCheckoutFiles } from './blocker-file-target';
+import { createRunHostStateRoot, type RunHostStateRoot } from './host-state-root';
 import {
     buildFirefoxExtensionEnvironmentOptions,
     firefoxPreparedLaunch,
     runDeclaredFilterBaseline,
 } from './firefox-environment-wiring';
-import type {
-    FirefoxExtensionEnvironmentOptions,
-} from '../environment/firefox-extension-environment';
+import type { FirefoxExtensionEnvironmentOptions } from '../environment/firefox-extension-environment';
 import {
     LaunchBaselineOutcomeKind,
     buildBrowserExtensionEnvironmentOptions,
@@ -1305,6 +1299,16 @@ export class AgentRuntime {
     private readonly sessionToolDescriptionOverrides: Readonly<Record<string, string>>;
 
     /**
+     * The run's own host-state directory: where a relative file-backed verification target
+     * resolves, for the between-phases application and for every launch alike.
+     *
+     * It is created here rather than derived from the checkout so the file the host maintains lies
+     * outside the repository by construction — no walk of the checkout can read the run's own
+     * candidate back as repository content.
+     */
+    private readonly hostStateRoot: RunHostStateRoot;
+
+    /**
      * Construct a runtime after its base tools have been registered.
      *
      * @param options - Immutable issue, browser, and repository boundaries.
@@ -1327,6 +1331,12 @@ export class AgentRuntime {
         this.listCatalog = listCatalog;
         this.environmentHost = executorWiring.environmentHost;
         this.executors = executorWiring.executors;
+        this.hostStateRoot = createRunHostStateRoot();
+        createLogger({ verbose: options.verbose ?? false }).info(
+            { hostStateRoot: this.hostStateRoot.path, checkoutPath: options.filtersPath },
+            'the run host-state root: every relative file-backed verification target resolves ' +
+                'here, outside the repository checkout',
+        );
         // The run's one extension build was prepared host-side before this runtime existed.
         this.preparedExtension = options.preparedExtension;
         registerLifecycleTools(this.registry, this.runtimeLifecycleToolsHost());
@@ -2230,6 +2240,26 @@ export class AgentRuntime {
      */
     async stopEvidenceRoute(): Promise<void> {
         await this.cliEvidenceRoute?.stop?.().catch(() => undefined);
+    }
+
+    /**
+     * The run's host-state root: where a relative file-backed verification target resolves.
+     *
+     * @returns Absolute path of the run-owned directory, outside the repository checkout.
+     */
+    getHostStateRoot(): string {
+        return this.hostStateRoot.path;
+    }
+
+    /**
+     * Remove the run's host-state directory, on every terminal path.
+     *
+     * Separate from `dispose()`, which only closes the active browser session and runs again
+     * whenever the model closes or relaunches one: removing the directory there would delete the
+     * blocker state the very next phase reads back.
+     */
+    releaseHostState(): void {
+        this.hostStateRoot.dispose();
     }
 
     /**
@@ -3338,7 +3368,7 @@ export class AgentRuntime {
      */
     private phaseApplicationFlowHost(): PhaseApplicationFlowHost {
         return {
-            filtersPath: this.options.filtersPath,
+            hostStateRoot: this.hostStateRoot.path,
             applicationReadContexts: this.applicationReadContexts,
             llm: this.options.llm,
             piRuntime: this.options.piRuntime,
@@ -3366,7 +3396,7 @@ export class AgentRuntime {
     private preparedSessionLaunchHost(): PreparedSessionLaunchHost {
         return {
             instruction: this.options.instruction,
-            filtersPath: this.options.filtersPath,
+            hostStateRoot: this.hostStateRoot.path,
             artifactsDir: this.options.artifactsDir,
             headless: this.options.headless,
             noSandbox: this.options.noSandbox,
@@ -3844,15 +3874,12 @@ export class AgentRuntime {
             };
         }
         const candidateRule = candidate.normalized.canonical;
-        // The baseline is recomputed at the verdict after the host has written the candidate into
-        // the declared blocker-state file; both computations leave that file out.
+        // The baseline is recomputed at the verdict, after the host has written the candidate into
+        // the declared blocker-state file; that file lives in the run's host-state root, so both
+        // computations see the same unchanged checkout.
         const trustedValidationContext = createTrustedValidationContext(
             state.targetUrl,
             this.options.filtersPath,
-            hostOwnedCheckoutFiles(
-                applicationInstructionContent(this.options.instruction),
-                this.options.filtersPath,
-            ),
         );
         const observerOptions: BrowserExtensionAdsObserverOptions = {
             candidateRule,

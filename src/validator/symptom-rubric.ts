@@ -79,20 +79,17 @@ export function inventoryResidueRubric(kind: SymptomKind): string[] {
  * it must be `present` exactly when an advertising element that the baseline filters had removed
  * became visible again after the candidate — a too-broad exception then fails closed.
  *
- * For an ads review of a third-party host block the wording separates the two judgments the
- * runner combines: the symptom is the advertising itself, the residue is what the page still
- * reserves for it. A network rule cannot collapse that space, so the runner does not hold the
- * residue against it (`deriveCandidateVisualVerdict`), and the model must therefore not fold the
- * residue into the symptom either.
+ * For an ads review of a third-party host block the wording separates the two judgments the runner
+ * combines: the symptom is the advertising itself, the residue is what the page still reserves for
+ * it. A network rule cannot collapse that space, so the runner does not hold the residue against it
+ * (`deriveCandidateVisualVerdict`), and the model must therefore not fold the residue into the
+ * symptom either.
  *
  * @param kind - Problem class driving the review.
  * @param scope - Runner-computed scope of the candidate; absent means no scope-specific wording.
  * @returns Prompt lines defining residue and the adLayoutResidue contract.
  */
-export function synthesisResidueRubric(
-    kind: SymptomKind,
-    scope?: CandidateNetworkScope,
-): string[] {
+export function synthesisResidueRubric(kind: SymptomKind, scope?: CandidateNetworkScope): string[] {
     if (isBreakageSymptom(kind)) {
         return [
             'The reporter-defined defect is broken or missing page functionality caused by',

@@ -77,9 +77,11 @@ session's own report. The host's declaration:
 
 read: managed-storage-file filters-agent/ublock/user-filters.txt
 
-The target is relative to the run's checkout root; the host resolves it there. The file is the one
-the host maintains and the one whose contents the enterprise policies carry into uBO's managed
-storage — one rule per line, the candidate rule alone for a candidate phase.
+The target is relative to the run's own host-state directory, which the host creates per run outside
+the repository checkout; it resolves the target there, so nothing the run writes can ever be read
+back as repository content. The file is the one the host maintains and the one whose contents the
+enterprise policies carry into uBO's managed storage — one rule per line, the candidate rule alone
+for a candidate phase.
 
 The empty file credits the baseline phase and the exact candidate line credits the candidate phase.
 The run's three phases are the ones every validation uses: Firefox with no extension, Firefox with

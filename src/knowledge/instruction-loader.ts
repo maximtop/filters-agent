@@ -10,6 +10,10 @@ import {
     type InstructionGuidanceSource,
     type InstructionLinkedDocument,
 } from './guidance-source';
+import {
+    parseInstructionApplicationRoute,
+    type ApplicationRoute,
+} from './instruction-application-route';
 import { parseInstructionPlacement, type InstructionPlacement } from './instruction-placement';
 import {
     downloadLinkedDocument,
@@ -62,6 +66,13 @@ export const InstructionLoadFailureCode = {
      * repository has stated where its rules go must not proceed on a guess about it.
      */
     InstructionPlacementInvalid: 'instruction_placement_invalid',
+
+    /**
+     * The instruction's `application:` declaration cannot be honored: a second declaration, a route
+     * the host does not have, or a declaration beside the instruction's own application contract. A
+     * run must never guess which of two application methods its repository meant.
+     */
+    InstructionApplicationRouteInvalid: 'instruction_application_route_invalid',
 } as const;
 
 /**
@@ -133,6 +144,13 @@ export interface LoadedInstruction {
      * declares none and the deterministic placement routing stays in charge.
      */
     placement?: InstructionPlacement;
+
+    /**
+     * The built-in application route the instruction declares, parsed once at load; absent when the
+     * instruction declares none, in which case its own application contract is what the run
+     * performs.
+     */
+    applicationRoute?: ApplicationRoute;
 }
 
 /**
@@ -441,6 +459,18 @@ export async function loadInstruction(
         );
     }
 
+    let applicationRoute: ApplicationRoute | undefined;
+    try {
+        applicationRoute = parseInstructionApplicationRoute(content);
+    } catch (error) {
+        throw new InstructionLoadError(
+            InstructionLoadFailureCode.InstructionApplicationRouteInvalid,
+            `Run instruction at ${describeInstructionPath(checkoutRoot, absolutePath)} cannot be ` +
+                `applied as declared: ${describeCause(error)}`,
+            error,
+        );
+    }
+
     const documents: InstructionLinkedDocument[] = [];
     const boundRoles = new Set<GuidanceDocumentRole>();
     const takenTargets = new Set<string>();
@@ -474,6 +504,7 @@ export async function loadInstruction(
         sha256: sha256Hex(bytes),
         documents,
         ...(placement === undefined ? {} : { placement }),
+        ...(applicationRoute === undefined ? {} : { applicationRoute }),
     };
 }
 

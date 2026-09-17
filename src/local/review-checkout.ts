@@ -593,6 +593,9 @@ function applyBoundOperation(bytes: Buffer, operation: ReviewCandidateOperation)
                 kind: RepositoryEditKind.Insert,
                 insertionPoint: operation.line - 1,
                 ...(operation.afterLine === 'EOF' ? {} : { anchorRule: operation.afterLine }),
+                ...(operation.precedingComment === undefined
+                    ? {}
+                    : { precedingComment: operation.precedingComment }),
             }),
             'utf8',
         );

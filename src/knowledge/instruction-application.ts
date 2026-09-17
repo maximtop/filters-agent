@@ -61,11 +61,11 @@ export const ApplicationInstructionGap = {
     VerificationMethodUnsupported: 'verification-method-unsupported',
 
     /**
-     * The declared file-backed target is checkout-relative and its resolution escapes the run's
-     * pinned checkout container: the host reads file-backed blocker state only inside the checkout
-     * and refuses this target before reading it.
+     * The declared file-backed target is relative and its resolution escapes the run's host-state
+     * root: the host maintains file-backed blocker state only inside that run-owned directory —
+     * deliberately outside the repository checkout — and refuses this target before reading it.
      */
-    VerificationTargetOutsideCheckout: 'verification-target-outside-checkout',
+    VerificationTargetOutsideHostState: 'verification-target-outside-host-state',
 } as const;
 
 /**

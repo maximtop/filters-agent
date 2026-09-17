@@ -1,17 +1,14 @@
 import type { BrowserContext } from 'playwright-core';
 import type { AdGuardExtensionStateRead } from '../browser/adguard-extension-state-shapes';
-import type {
-    readAdGuardExtensionState as readAdGuardExtensionStateDefault,
-} from '../browser/adguard-extension-state-read';
-import type {
-    findExtensionRuntime as findExtensionRuntimeDefault,
-} from '../browser/extension-runtime-location';
+import type { readAdGuardExtensionState as readAdGuardExtensionStateDefault } from '../browser/adguard-extension-state-read';
+import type { findExtensionRuntime as findExtensionRuntimeDefault } from '../browser/extension-runtime-location';
 import type { IBrowserSession } from '../browser/browser-interfaces';
 import type {
     EnvironmentPhaseConfigurationResult,
     EnvironmentPhaseStateRead,
 } from '../environment/browser-extension-environment';
 import { PromptDocumentName, createPromptDocumentLoader } from '../prompts/prompt-documents';
+import { ApplicationRoute } from '../knowledge/instruction-application-route';
 import type { LoadedInstruction } from '../knowledge/instruction-loader';
 import type { LlmConfig } from '../config/config';
 import type { PiRuntime } from '../pi/runtime';
@@ -90,9 +87,11 @@ export type PhaseApplicationModelRunnerFactory = (
  */
 export interface PhaseApplicationFlowHost {
     /**
-     * The run's checkout root a declared file-backed verification target resolves against.
+     * The run's host-state root a declared file-backed verification target resolves against: a
+     * run-owned directory outside the repository checkout, so the file the host maintains there is
+     * invisible to every walk of the checkout.
      */
-    filtersPath: string;
+    hostStateRoot: string;
 
     /**
      * Persistent browser contexts registered per lease session for the extension-state read-back.
@@ -166,19 +165,33 @@ export interface PhaseApplicationFlowHost {
 }
 
 /**
+ * The shipped document each declarable application route applies through.
+ *
+ * Total over {@link ApplicationRoute}, so adding a route without shipping its document is a compile
+ * error rather than a run that silently applies the wrong one.
+ */
+const APPLICATION_ROUTE_DOCUMENTS: Record<ApplicationRoute, PromptDocumentName> = {
+    [ApplicationRoute.AdguardExtension]: PromptDocumentName.InstructionsAdguardExtension,
+};
+
+/**
  * The application instruction whose contract every between-phases application performs.
  *
- * A run carrying an instruction applies exactly that instruction; a run without one applies the
- * shipped built-in AdGuard document — the converted options-page driver.
+ * A run carrying an instruction that writes its own application contract applies exactly that
+ * instruction. An instruction that instead declares a built-in route with `application:` — the
+ * shape a repository takes when it only wants to link its own guidance documents — applies that
+ * route's shipped document, and so does a run with no instruction at all: the built-in AdGuard
+ * route, the converted options-page driver.
  *
  * @param instruction - The run instruction loaded at run start, when this run carries one.
  * @returns The run's application instruction content.
  */
 export function applicationInstructionContent(instruction: LoadedInstruction | undefined): string {
-    if (instruction) {
+    if (instruction !== undefined && instruction.applicationRoute === undefined) {
         return instruction.content;
     }
-    return createPromptDocumentLoader().read(PromptDocumentName.InstructionsAdguardExtension);
+    const route = instruction?.applicationRoute ?? ApplicationRoute.AdguardExtension;
+    return createPromptDocumentLoader().read(APPLICATION_ROUTE_DOCUMENTS[route]);
 }
 
 /**

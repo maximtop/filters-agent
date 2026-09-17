@@ -189,6 +189,19 @@ function observeTurnEnd(
             },
             'provider turn failed',
         );
+    } else {
+        // A clean turn left no line at all, so a run's timeline had to be inferred from the tool
+        // calls around it: nothing said when the model was thinking, for how long, or what it
+        // asked for next.
+        logger.info(
+            {
+                turnIndex: observation.index,
+                stopReason: observation.stopReason,
+                toolCallNames: observation.toolCallNames,
+                usage,
+            },
+            'agent turn ended',
+        );
     }
     if (observe !== undefined) {
         try {

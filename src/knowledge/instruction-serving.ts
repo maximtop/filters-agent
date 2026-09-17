@@ -6,8 +6,8 @@ import {
     type InstructionLinkedDocument,
 } from './guidance-source';
 import {
+    headingIndexLines,
     isContainedSection,
-    renderHeadingIndex,
     splitMarkdownSections,
     type MarkdownSection,
 } from './markdown-sections';
@@ -138,6 +138,19 @@ const MAX_COUNTED_BODY_HITS = 3;
 const HEADING_INDEX_LABEL = 'All headings in this document:';
 
 /**
+ * Largest share of one document's response budget its heading index may take.
+ *
+ * The index names what the response left out, so it earns room — but it is navigation, not the
+ * answer, and it must never take the room the answer needs. Reserving the whole index first did
+ * exactly that: the AdGuard `create-own-filters.md` syntax reference has 187 headings whose index
+ * is about 8.8k characters, larger than the entire {@link MAX_GUIDANCE_CHARACTERS} response, so
+ * every syntax topic served zero characters of section text — an index and a truncation marker —
+ * and blew past the response bound doing it. A third leaves two thirds of the budget for the
+ * sections the topic actually asked for while still listing dozens of headings.
+ */
+const MAX_HEADING_INDEX_BUDGET_FRACTION = 1 / 3;
+
+/**
  * Marker appended to a section the response had to cut, so a model reading it knows the text ends
  * early rather than that the section says nothing more.
  */
@@ -147,6 +160,11 @@ const TRUNCATION_MARKER = '\n…';
  * Separator between served blocks — the blank line Markdown puts between them.
  */
 const SECTION_SEPARATOR = '\n\n';
+
+/**
+ * Separator between the heading index's own lines: one newline, so the index reads as a list.
+ */
+const INDEX_LINE_SEPARATOR = '\n';
 
 /**
  * Longest accepted `query` on one guidance lookup.
@@ -248,7 +266,64 @@ export interface ServedInstructionGuidance {
 }
 
 /**
+ * Marker closing a heading index the response could not list in full, naming how many headings it
+ * left out — so a model reading a cut index knows the document has more of them and can ask for a
+ * subject the listed part does not name.
+ *
+ * @param omitted - Headings the index left out.
+ * @returns The marker line appended to the cut index.
+ */
+function indexTruncationMarker(omitted: number): string {
+    return `\n… and ${omitted} more headings not listed here`;
+}
+
+/**
+ * Render one document's heading index, bounded to the share of the budget an index may take.
+ *
+ * @param sections - Sections of the document, as {@link splitMarkdownSections} returned them.
+ * @param budget - Characters this document may contribute to the response.
+ * @returns The labelled index — whole when it fits its share, otherwise cut at a heading boundary
+ *   and closed by the count it omitted; the empty string for a document with no headings, and for a
+ *   budget too small to list even one.
+ */
+function boundedHeadingIndex(sections: readonly MarkdownSection[], budget: number): string {
+    const lines = headingIndexLines(sections);
+    if (lines.length === 0) {
+        return '';
+    }
+    const label = `${HEADING_INDEX_LABEL}${INDEX_LINE_SEPARATOR}`;
+    const whole = `${label}${lines.join(INDEX_LINE_SEPARATOR)}`;
+    const reserve = Math.floor(budget * MAX_HEADING_INDEX_BUDGET_FRACTION);
+    if (whole.length <= reserve) {
+        return whole;
+    }
+    // The marker names how many headings were omitted, so its own length depends on how many lines
+    // fit; reserving room for the widest count it could carry keeps that from circling.
+    const markerRoom = indexTruncationMarker(lines.length).length;
+    const kept: string[] = [];
+    let used = label.length;
+    for (const line of lines) {
+        const cost = line.length + (kept.length === 0 ? 0 : INDEX_LINE_SEPARATOR.length);
+        if (used + cost + markerRoom > reserve) {
+            break;
+        }
+        kept.push(line);
+        used += cost;
+    }
+    if (kept.length === 0) {
+        return '';
+    }
+    return (
+        `${label}${kept.join(INDEX_LINE_SEPARATOR)}` +
+        indexTruncationMarker(lines.length - kept.length)
+    );
+}
+
+/**
  * Narrow one document to the sections matching a set of keywords, always naming the rest.
+ *
+ * The heading index is bounded before the sections are chosen, so what remains is always enough to
+ * carry section text: a narrowed answer that is only an index answers nothing.
  *
  * @param document - Normalized document text.
  * @param keywords - Lowercased topic and query keywords.
@@ -261,8 +336,7 @@ function narrowDocument(
     budget: number,
 ): NarrowedDocument {
     const sections = splitMarkdownSections(document);
-    const index = renderHeadingIndex(sections);
-    const tail = index === '' ? '' : `${HEADING_INDEX_LABEL}\n${index}`;
+    const tail = boundedHeadingIndex(sections, budget);
     const room = Math.max(0, budget - (tail === '' ? 0 : tail.length + SECTION_SEPARATOR.length));
     const ranked = sections
         .filter((section) => section.heading !== '')
@@ -319,8 +393,10 @@ function narrowDocument(
  * Documents that fit the response bound together are served whole and unchanged — the bound is what
  * narrowing exists for, and a policy document that fits has nothing to narrow. Past the bound each
  * document is served as its sections matching the topic's keywords plus the model's own query, in
- * document order, followed by an index of every heading the document has: the model can then see
- * what it did not get and ask again for it, instead of concluding the guidance is absent.
+ * document order, followed by an index of the document's headings: the model can then see what it
+ * did not get and ask again for it, instead of concluding the guidance is absent. The index is
+ * bounded to its own share of the response, and says how many headings it left out when it cannot
+ * list them all, so a document with hundreds of headings still gets section text served.
  *
  * @param documents - The topic's bound role documents, in serving order.
  * @param topic - Validated lookup subject, whose keywords drive the scoring.

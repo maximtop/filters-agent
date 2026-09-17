@@ -221,6 +221,15 @@ class MainWorldEvaluator implements TrustedPageEvaluator {
 }
 
 /**
+ * The capability probes already answered, one per browser context.
+ *
+ * A context's browser family cannot change, and every trusted evaluation builds its evaluator anew:
+ * probing each time only repeated the same refusal — 16 to 39 identical warn lines a Firefox run.
+ * The promise is cached, so concurrent first evaluations share one probe too.
+ */
+const cdpSupportByContext = new WeakMap<object, Promise<boolean>>();
+
+/**
  * Detect whether this page belongs to a CDP-capable (Chromium) family.
  *
  * The probe opens one CDP session and detaches it; non-Chromium families reject the operation. A
@@ -232,6 +241,31 @@ class MainWorldEvaluator implements TrustedPageEvaluator {
  * @returns Whether isolated-world evaluation is available for this page.
  */
 async function cdpSessionSupported(page: Page, logger: Logger): Promise<boolean> {
+    let context: object;
+    try {
+        context = page.context();
+    } catch {
+        // A page that exposes no context at all has no CDP either; the probe says so, with its
+        // own diagnostic, exactly as it did before the answer was cached.
+        return probeCdpSession(page, logger);
+    }
+    const known = cdpSupportByContext.get(context);
+    if (known !== undefined) {
+        return known;
+    }
+    const probed = probeCdpSession(page, logger);
+    cdpSupportByContext.set(context, probed);
+    return probed;
+}
+
+/**
+ * Open and detach one CDP session to learn whether the context's browser speaks CDP.
+ *
+ * @param page - Active Playwright page.
+ * @param logger - Logger for the degradation diagnostic.
+ * @returns Whether a CDP session could be opened for this page.
+ */
+async function probeCdpSession(page: Page, logger: Logger): Promise<boolean> {
     try {
         const session = (await page.context().newCDPSession(page)) as unknown as CdpSessionLike;
         await session.detach();

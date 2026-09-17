@@ -4,12 +4,8 @@ import type {
     AdGuardExtensionStateRead,
 } from '../browser/adguard-extension-state-shapes';
 import { DISABLE_STEALTH_SETTING } from '../browser/adguard-extension-settings';
-import {
-    readAdGuardExtensionState as readAdGuardExtensionStateDefault,
-} from '../browser/adguard-extension-state-read';
-import {
-    findExtensionRuntime as findExtensionRuntimeDefault,
-} from '../browser/extension-runtime-location';
+import { readAdGuardExtensionState as readAdGuardExtensionStateDefault } from '../browser/adguard-extension-state-read';
+import { findExtensionRuntime as findExtensionRuntimeDefault } from '../browser/extension-runtime-location';
 import type { IBrowserSession } from '../browser/browser-interfaces';
 import {
     EnvironmentPhaseConfigurationOutcome,
@@ -20,9 +16,7 @@ import { ExtensionLaunchFamily } from '../environment/extension-launch';
 import { adguardListKey, parseAdguardListKey } from '../environment/filter-list-ref';
 import { createLogger } from '../logger/logger';
 import { parseRuleApplication } from '../knowledge/instruction-application';
-import {
-    createPhaseApplicationModelRunner as buildPhaseApplicationModelRunner,
-} from './application-session';
+import { createPhaseApplicationModelRunner as buildPhaseApplicationModelRunner } from './application-session';
 import {
     buildExtensionSettingsPayload,
     type ExtensionSettingsPayloadExpectation,
@@ -314,15 +308,15 @@ export async function runApplication(
             },
         };
     }
-    // The declared file-backed target resolves once, before any model turn: a checkout-relative
-    // target that escapes the run's checkout root is a typed refusal here — the target is never
-    // read and no application session runs — while an absolute target is honored as-is, as part of
-    // the instruction's trusted content (D20).
+    // The declared file-backed target resolves once, before any model turn: a relative target that
+    // escapes the run's host-state root is a typed refusal here — the target is never read and no
+    // application session runs — while an absolute target is honored as-is, as part of the
+    // instruction's trusted content (D20).
     const declaredFileTarget = contract.verification.target;
     const fileTargetResolution =
         declaredFileTarget === undefined
             ? undefined
-            : resolveBlockerFileTarget(host.filtersPath, declaredFileTarget);
+            : resolveBlockerFileTarget(host.hostStateRoot, declaredFileTarget);
     if (fileTargetResolution !== undefined && 'gap' in fileTargetResolution) {
         return {
             result: {
@@ -375,8 +369,8 @@ export async function runApplication(
     // The read-back registry is Decision 1's supply: every method this executor knows how to read
     // is listed here, and the application procedure refuses any declared method with no reader
     // before any model turn. The live extension state is the AdGuard route; the file-backed methods
-    // read the exact state the instruction's preparation and application steps maintain, with the
-    // checkout-root-relative target resolved where the instruction loader's base already sits.
+    // read the exact state the instruction's preparation and application steps maintain, with a
+    // relative target resolved inside the run's own host-state directory.
     const declaredFileStateReader = fileBlockerStateReader();
     /**
      * Read one declared file-backed blocker state back over the resolved target.

@@ -31,7 +31,8 @@ The run loads its filter guidance at start from these role documents:
    the same named detail.
 3. Unpack the archive into the prepared extension directory inside the run workspace so that the
    directory's root holds the build's `manifest.json` directly.
-4. In the run's filters checkout create the custom-filters file
+4. In the run's host-state directory — where the host resolves the declared target below, outside
+   the repository checkout — create the custom-filters file
    `filters-agent/ubol/custom-filters.txt` empty. uBOL ships no custom filters, so an empty file
    is uBOL's own ground state; the rule-application step appends the candidate rule to it.
 5. Before finishing, assert both artifacts exist in the run workspace: the unpacked extension
@@ -61,9 +62,11 @@ session's own report. The host's declaration:
 
 read: user-rules-file filters-agent/ubol/custom-filters.txt
 
-The target is relative to the run's checkout root; the host resolves it there. The file must be
-the very one preparation created empty and the application steps appended to — one rule per line,
-the candidate appended last — and the host credits that file's exact content.
+The target is relative to the run's own host-state directory, which the host creates per run outside
+the repository checkout; it resolves the target there, so nothing the run writes can ever be read
+back as repository content. The file must be the very one preparation created empty and the
+application steps appended to — one rule per line, the candidate appended last — and the host
+credits that file's exact content.
 
 This declaration does not run today. The only file-backed application the host can perform is
 `managed-storage-file` beside a `launch: firefox` declaration — the uBO example, where the host

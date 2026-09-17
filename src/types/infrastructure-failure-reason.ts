@@ -45,8 +45,9 @@ export const InfrastructureFailureReason = {
     /**
      * The run instruction declares a file-backed state-verification method (`user-rules-file` or
      * `managed-storage-file`); no session in this run writes the file the host would read back, and
-     * nothing tells one where the checkout is, so the run can never verify a phase this way.
-     * Deterministic and terminal: retrying meets the identical instruction and is never paid for.
+     * nothing tells one where the run's host-state directory is, so the run can never verify a
+     * phase this way. Deterministic and terminal: retrying meets the identical instruction and is
+     * never paid for.
      */
     FileBackedApplicationUnsupported: 'file_backed_application_unsupported',
 } as const;

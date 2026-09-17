@@ -48,9 +48,11 @@ export interface PreparedSessionLaunchHost {
     instruction?: LoadedInstruction;
 
     /**
-     * The run's checkout root a declared checkout-relative target resolves against.
+     * The run's host-state root a declared relative target resolves against; the same directory the
+     * between-phases application maintains that file in, so a launch can never serve a different
+     * file than the read-back credits.
      */
-    filtersPath: string;
+    hostStateRoot: string;
 
     /**
      * The run artifacts directory a relaunched session writes into.
@@ -126,7 +128,7 @@ function declaredUserFiltersContent(host: PreparedSessionLaunchHost): string {
     const logger = createLogger({ verbose: host.verbose });
     const targetPath = resolveDeclaredBlockerFile(
         applicationInstructionContent(host.instruction),
-        host.filtersPath,
+        host.hostStateRoot,
     );
     if (targetPath === undefined) {
         logger.info(

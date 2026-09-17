@@ -436,6 +436,9 @@ const AddLocalPublicationOperationSchema = v.pipe(
             v.maxLength(16 * 1024),
             v.regex(/^[^\r\n]+$/u),
         ),
+        precedingComment: v.optional(
+            v.pipe(v.string(), v.minLength(1), v.maxLength(16 * 1024), v.regex(/^[^\r\n]+$/u)),
+        ),
     }),
     v.check(
         (operation) => operation.line <= operation.targetLines + 1,

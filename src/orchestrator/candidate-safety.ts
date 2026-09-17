@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync, realpathSync } from 'node:fs';
+import { readFileSync, readdirSync, realpathSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { FixOutcomeKind, type FixOutcome } from '../pr/fix-outcome';
 import { isIncorrectBlockingReport, type ProblemType } from '../types/issue-facts';
@@ -48,15 +48,6 @@ export interface CandidateSafetyOptions {
      * declaration has already settled.
      */
     declaredPlacement?: DeclaredPlacement;
-
-    /**
-     * Absolute paths of the files the run's host maintains inside the checkout: the declared
-     * blocker-state file the between-phases application writes the candidate into.
-     *
-     * They are run state, not repository content, so the duplicate scan skips them; read like a
-     * filter list, the file hands the gate the run's own candidate as an existing rule.
-     */
-    hostOwnedFiles?: readonly string[];
 }
 
 /**
@@ -130,20 +121,10 @@ function generalRuleTypeForKind(kind: RuleKind): RuleType | null {
  *
  * @param checkoutPath - Verified local AdguardFilters checkout.
  * @param candidateCanonical - Canonical candidate rule to locate.
- * @param hostOwnedFiles - Absolute paths of the files the run's host maintains inside the checkout;
- *   skipped, since they hold the run's own applied candidate rather than repository content.
  * @returns Whether any regular `.txt` filter file already contains the exact candidate.
  */
-function hasExactDuplicate(
-    checkoutPath: string,
-    candidateCanonical: string,
-    hostOwnedFiles: readonly string[],
-): boolean {
+function hasExactDuplicate(checkoutPath: string, candidateCanonical: string): boolean {
     const checkoutRoot = realpathSync(checkoutPath);
-    // Entries below are real paths, so a host-owned file is matched by its real path too.
-    const skippedFiles = new Set(
-        hostOwnedFiles.map((file) => (existsSync(file) ? realpathSync(file) : resolve(file))),
-    );
     const directories = [checkoutRoot];
 
     while (directories.length > 0) {
@@ -165,7 +146,6 @@ function hasExactDuplicate(
             if (
                 entry.isFile() &&
                 entry.name.endsWith('.txt') &&
-                !skippedFiles.has(entryPath) &&
                 readFileSync(entryPath, 'utf8')
                     .split(/\r?\n/)
                     .some((line) => normalizeRule(line).canonical === candidateCanonical)
@@ -328,13 +308,7 @@ export function enforceCandidateSafety(
             }
         }
         const candidateCanonical = normalized.canonical;
-        if (
-            hasExactDuplicate(
-                options.checkoutPath!,
-                candidateCanonical,
-                options.hostOwnedFiles ?? [],
-            )
-        ) {
+        if (hasExactDuplicate(options.checkoutPath!, candidateCanonical)) {
             throw new CandidateSafetyError('Candidate rule already exists in the checkout.');
         }
 

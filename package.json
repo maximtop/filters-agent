@@ -34,7 +34,6 @@
         "eslint-flat-config-utils": "^3.2.0",
         "eslint-import-resolver-typescript": "^4.4.4",
         "eslint-plugin-import": "^2.32.0",
-        "eslint-plugin-import-newlines": "^2.0.0",
         "eslint-plugin-jsdoc": "^63.0.0",
         "oxfmt": "^0.52.0",
         "oxlint": "^1.67.0",

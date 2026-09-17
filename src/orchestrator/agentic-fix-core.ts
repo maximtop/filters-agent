@@ -38,8 +38,6 @@ import { AgentTerminationReason } from '../types/agent-termination-reason';
 import { InfrastructureFailureReason } from '../types/infrastructure-failure-reason';
 import { RunMode, TraceEventType } from '../types/trace';
 import { enforceCandidateSafety } from './candidate-safety';
-import { hostOwnedCheckoutFiles } from './blocker-file-target';
-import { applicationInstructionContent } from './phase-application-flow-host';
 import { branchNameDomain, deriveBranchName } from './fix-branch-name';
 import {
     candidatePatchFromOutcome,
@@ -391,20 +389,15 @@ export async function runAgenticFixCore(
             terminalValidationEnvironment = runtime.getValidationEnvironment(validationArtifactId);
         }
         // The between-phases application wrote the candidate into the instruction's declared
-        // blocker-state file, which lives inside the checkout: the checkout walks from here on —
-        // the gate's duplicate scan, the verdict's recomputed baseline — must not read that file
-        // back as repository content.
-        const hostOwnedFiles = hostOwnedCheckoutFiles(
-            applicationInstructionContent(options.instruction),
-            config.repositoryPath,
-        );
+        // blocker-state file, which lives in the run's own host-state directory outside the
+        // checkout: the checkout walks from here on — the gate's duplicate scan, the verdict's
+        // recomputed baseline — cannot reach it, so they see repository content only.
         const candidateSafety = enforceCandidateSafety(terminal, {
             reportedDomain: terminalValidationEnvironment
                 ? new URL(terminalValidationEnvironment.targetUrl).hostname
                 : domain,
             checkoutPath: config.repositoryPath,
             problemType: facts.problemType,
-            hostOwnedFiles,
             ...(declaredPlacement === undefined ? {} : { declaredPlacement }),
         });
         const outcome = candidateSafety.outcome;
@@ -454,7 +447,6 @@ export async function runAgenticFixCore(
         const trustedValidationContext = createTrustedValidationContext(
             validationEnvironment?.targetUrl ?? reportedUrl,
             config.repositoryPath,
-            hostOwnedFiles,
         );
         browserState.usable = runtime.hasBrowserEvidence();
         browserState.effectiveMode = browserState.usable
@@ -884,5 +876,8 @@ export async function runAgenticFixCore(
         // An executor's evidence route that owns its own proxy process has no lifecycle to end it,
         // so the run stops it here on every path. Routes that register no stop are unaffected.
         await runtime?.stopEvidenceRoute();
+        // The run's host-state directory outlives every browser session — the blocker state the
+        // phases read back lives in it — so only this terminal path may remove it.
+        runtime?.releaseHostState();
     }
 }

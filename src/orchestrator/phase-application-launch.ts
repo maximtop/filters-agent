@@ -1,9 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { AdGuardExtensionSettingsProfile } from '../browser/adguard-extension-settings';
 import type { AdGuardExtensionStateRead } from '../browser/adguard-extension-state-shapes';
-import {
-    readAdGuardExtensionState as readAdGuardExtensionStateDefault,
-} from '../browser/adguard-extension-state-read';
+import { readAdGuardExtensionState as readAdGuardExtensionStateDefault } from '../browser/adguard-extension-state-read';
 import { readBundledFilterCatalogIds } from '../browser/extension-filter-catalog';
 import type { BrowserSession } from '../browser/browser-session';
 import {

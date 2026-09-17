@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { domainScopeCovers } from '../repo/domain-scope';
 import { generatePlacementMap } from '../repo/placement-map';
 import { RuleKind, normalizeRule } from '../repo/rule-normalizer';
@@ -122,24 +122,13 @@ function compareCanonicalRules(left: string, right: string): number {
  *
  * @param hostname - Lowercase hostname parsed from the reported URL.
  * @param checkoutPath - Root of the pinned AdguardFilters checkout.
- * @param hostOwnedFiles - Absolute paths of the files the run's host maintains inside the checkout
- *   (the declared blocker-state file the candidate is applied through); they are run state, not
- *   repository content, so they never enter the baseline.
  * @returns Deduplicated canonical rules in deterministic order.
  */
-function collectCanonicalDomainRules(
-    hostname: string,
-    checkoutPath: string,
-    hostOwnedFiles: readonly string[],
-): string[] {
+function collectCanonicalDomainRules(hostname: string, checkoutPath: string): string[] {
     const map = generatePlacementMap(checkoutPath);
-    const skippedFiles = new Set(hostOwnedFiles.map((file) => resolve(file)));
     const canonicalRules = new Set<string>();
 
     for (const file of map.files) {
-        if (skippedFiles.has(resolve(checkoutPath, file.relativePath))) {
-            continue;
-        }
         const lines = readFileSync(join(checkoutPath, file.relativePath), 'utf8').split(/\r?\n/);
         for (const line of lines) {
             const normalized = normalizeRule(line);
@@ -229,25 +218,23 @@ export function calculateTrustedBaselineHash(
  * The URL is validated but intentionally not reserialized, so the validator navigates to the exact
  * path, query, and fragment that the reporter supplied.
  *
- * The baseline is recomputed at the verdict, after the between-phases application has written the
- * candidate into the instruction's declared blocker-state file inside the checkout, so that file is
- * left out on both sides: read back as repository content it would move the hash and unbind the
- * very candidate it carries.
+ * The baseline is recomputed at the verdict, after the between-phases application has applied the
+ * candidate, and both computations see the same checkout: the state the host maintains for a
+ * file-backed verification lives in the run's own host-state directory, outside the checkout, so
+ * nothing the run wrote can move the hash and unbind the very candidate it carries.
  *
  * @param reportedUrl - Exact URL parsed from the current issue.
  * @param checkoutPath - Root of the pinned AdguardFilters checkout.
- * @param hostOwnedFiles - Absolute paths of the files the run's host maintains inside the checkout.
  * @returns Frozen validation context with canonical rules and a deterministic baseline hash.
  */
 export function createTrustedValidationContext(
     reportedUrl: string,
     checkoutPath: string,
-    hostOwnedFiles: readonly string[] = [],
 ): TrustedValidationContext {
     const parsedUrl = parseReportedHttpUrl(reportedUrl);
 
     const hostname = parsedUrl.hostname.toLowerCase();
-    const existingRules = collectCanonicalDomainRules(hostname, checkoutPath, hostOwnedFiles);
+    const existingRules = collectCanonicalDomainRules(hostname, checkoutPath);
     const frozenRules = Object.freeze([...existingRules]);
     return Object.freeze({
         reportedUrl,
