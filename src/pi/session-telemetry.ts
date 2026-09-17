@@ -7,7 +7,7 @@ import type {
     Usage,
 } from '@earendil-works/pi-ai';
 import type { Logger } from '../logger/logger';
-import { messageText } from './run-sealing';
+import { messageText, parseProviderFailureStatus } from './run-sealing';
 import { toTurnStopReason, TurnStopReason } from './stop-reason';
 import type {
     CompactionObserver,
@@ -180,12 +180,21 @@ function observeTurnEnd(
     const observation = toTurnObservation(message, index, usage);
     if (observation.stopReason === TurnStopReason.Error) {
         // A provider failure pi retries away leaves no other evidence: the seal only ever sees
-        // the transcript pi already pruned the failed message from.
+        // the transcript pi already pruned the failed message from. The parsed status is logged
+        // alongside the full message — never in place of it — so a status this turn's message
+        // named is diagnosable without re-parsing this line by hand.
         logger.warn(
             {
                 turnIndex: observation.index,
                 stopReason: observation.stopReason,
                 errorMessage: observation.errorMessage,
+                ...(observation.errorMessage === undefined
+                    ? {}
+                    : {
+                          providerFailureStatus: parseProviderFailureStatus(
+                              observation.errorMessage,
+                          ),
+                      }),
             },
             'provider turn failed',
         );

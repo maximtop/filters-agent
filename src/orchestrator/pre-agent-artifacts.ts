@@ -54,6 +54,8 @@ export function emptyArtifactPaths(tracePath: string | null = null): FixRunArtif
  * @param infrastructureFailureReason - Explicit unavailable runtime dependency, when proven.
  * @param agentTerminationReason - Typed Host termination without an accepted model decision.
  * @param missingInformation - Capped missing-information records the run recorded, when any.
+ * @param providerFailureStatus - The provider's HTTP status of the final failed request, when the
+ *   run ended in a provider failure whose message named one.
  * @returns A GitHub-independent fix result.
  */
 export function makeCoreResult(
@@ -70,6 +72,7 @@ export function makeCoreResult(
     infrastructureFailureReason?: InfrastructureFailureReason,
     agentTerminationReason?: AgentTerminationReason,
     missingInformation?: readonly MissingInformationEntry[],
+    providerFailureStatus?: number,
 ): FixRunResult {
     return {
         issueNumber: context.issueNumber,
@@ -87,6 +90,7 @@ export function makeCoreResult(
         ...(context.reporterSettings ? { reporterSettings: context.reporterSettings } : {}),
         ...(infrastructureFailureReason ? { infrastructureFailureReason } : {}),
         ...(agentTerminationReason ? { agentTerminationReason } : {}),
+        ...(providerFailureStatus !== undefined ? { providerFailureStatus } : {}),
         candidatePatch,
         ...(missingInformation !== undefined && missingInformation.length > 0
             ? { missingInformation: [...missingInformation] }

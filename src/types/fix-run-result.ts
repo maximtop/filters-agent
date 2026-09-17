@@ -868,6 +868,12 @@ const FixRunResultInvariantsSchema = v.pipe(
         fallbackDetail: v.nullable(v.string()),
         infrastructureFailureReason: v.optional(InfrastructureFailureReasonSchema),
         agentTerminationReason: v.optional(AgentTerminationReasonSchema),
+        // Absent when the seal's message named no leading status (an SDK-folded body, or an
+        // ending that never involved the provider); never the provider's response body, which can
+        // carry account identifiers and URLs — see `ProviderFailureSealed.status`.
+        providerFailureStatus: v.optional(
+            v.pipe(v.number(), v.integer(), v.minValue(100), v.maxValue(599)),
+        ),
         environmentSelection: v.optional(EnvironmentSelectionSnapshotSchema),
         environmentExecution: v.optional(FilteringEnvironmentExecutionSchema),
         reporterSettings: v.optional(ReporterSettingsSnapshotSchema),
@@ -906,6 +912,13 @@ const FixRunResultInvariantsSchema = v.pipe(
         (result) =>
             result.agentTerminationReason === undefined || result.runStatus === FixRunStatus.Failed,
         'A Host agent termination must be represented as a failed run.',
+    ),
+    v.check(
+        (result) =>
+            result.providerFailureStatus === undefined ||
+            result.agentTerminationReason === AgentTerminationReason.LlmError ||
+            result.agentTerminationReason === AgentTerminationReason.LlmRejected,
+        'A provider-failure status requires the run to have ended by an LLM failure.',
     ),
     v.check(
         (result) =>

@@ -160,6 +160,14 @@ export interface ProviderFailureSealed {
      * like every non-matching message.
      */
     deterministic?: boolean;
+
+    /**
+     * The provider's HTTP status of the final failed request, parsed from `message`'s leading
+     * status token; absent when the message carried none. Unlike `message`, this carries no part of
+     * the provider's response body — no account identifiers, no URLs — so it is the one piece of a
+     * provider failure safe to carry all the way to the public report.
+     */
+    status?: number;
 }
 
 /**

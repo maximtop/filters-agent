@@ -91,6 +91,12 @@ export interface FixRunResultAssembly {
     agentTerminationReason?: AgentTerminationReason;
 
     /**
+     * The provider's HTTP status of the final failed request, when the run ended in a provider
+     * failure whose message named one.
+     */
+    providerFailureStatus?: number;
+
+    /**
      * Every artifact the recorder registered during the run.
      */
     artifacts: readonly ArtifactRef[];
@@ -266,5 +272,6 @@ export function assembleFixRunResult(assembly: FixRunResultAssembly): FixRunResu
         assembly.infrastructureFailureReason,
         assembly.agentTerminationReason,
         assembly.missingInformation,
+        assembly.providerFailureStatus,
     );
 }

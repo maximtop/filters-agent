@@ -97,6 +97,13 @@ export interface FixSessionRun {
     terminationReason: AgentTerminationReason | undefined;
 
     /**
+     * The provider's HTTP status of the final failed request, carried from a provider-failure seal;
+     * `undefined` for every other ending, and for a provider failure whose message named no
+     * status.
+     */
+    providerFailureStatus: number | undefined;
+
+    /**
      * True only for a rejected-terminal seal (a rejected submission was never a failed run).
      */
     terminalRejected: boolean;
@@ -204,6 +211,7 @@ export function sealFixTrace(
             terminal: outcome.payload,
             terminalSource: FixTerminalSource.ModelFinishFix,
             terminationReason: undefined,
+            providerFailureStatus: undefined,
             terminalRejected: false,
             observations,
             trace: seal(),
@@ -225,6 +233,7 @@ export function sealFixTrace(
             terminal: rejectedTerminalOutcome(hostSummary, context.lastRejectedOutcome),
             terminalSource: FixTerminalSource.HostFallback,
             terminationReason: undefined,
+            providerFailureStatus: undefined,
             terminalRejected: true,
             observations,
             trace: seal(),
@@ -243,6 +252,7 @@ export function sealFixTrace(
             },
             terminalSource: FixTerminalSource.HostFallback,
             terminationReason: AgentTerminationReason.HaltedByCaller,
+            providerFailureStatus: undefined,
             terminalRejected: false,
             observations,
             trace: recorder.end(AgentTerminationReason.HaltedByCaller),
@@ -252,6 +262,8 @@ export function sealFixTrace(
         terminal: analysisOnlyFallback(outcome, AcceptedSubject.FixOutcome),
         terminalSource: FixTerminalSource.HostFallback,
         terminationReason: sealTerminationReason(outcome),
+        providerFailureStatus:
+            outcome.kind === SealKind.ProviderFailure ? outcome.status : undefined,
         terminalRejected: false,
         observations,
         trace: seal(),

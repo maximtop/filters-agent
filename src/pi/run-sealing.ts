@@ -2,12 +2,12 @@
  * How an agent session run seals: the two-phase nudge flow — drive the user task, re-prompt exactly
  * once when it ends in prose, classify every ending, and fold never-dropped prompt rejections
  * through the diagnosis — plus the no-terminal diagnosis of the final transcript and the
- * provider-determinism marker for `ProviderFailureSealed`. The sealed-outcome vocabulary itself
- * lives in `types.ts`. No session construction lives here (that is session-runner.ts, the one
- * module the codebase calls to RUN sessions); the flow takes the runner's own option fields as its
- * input through a TYPE-ONLY import of them, which is erased at compile time, so the runtime import
- * graph stays acyclic without a parallel declaration of the same four fields. pi types stay hidden
- * from everything outside src/pi/.
+ * provider-determinism marker and status for `ProviderFailureSealed`. The sealed-outcome vocabulary
+ * itself lives in `types.ts`. No session construction lives here (that is session-runner.ts, the
+ * one module the codebase calls to RUN sessions); the flow takes the runner's own option fields as
+ * its input through a TYPE-ONLY import of them, which is erased at compile time, so the runtime
+ * import graph stays acyclic without a parallel declaration of the same four fields. pi types stay
+ * hidden from everything outside src/pi/.
  */
 import type { AgentSession } from '@earendil-works/pi-coding-agent';
 import type {
@@ -242,6 +242,23 @@ export function isDeterministicProviderMessage(message: string): boolean {
 }
 
 /**
+ * Parse the leading HTTP status token of pi's composed provider message, when it has one.
+ *
+ * Reuses the exact structural evidence `isDeterministicProviderMessage` reads (the same
+ * `LEADING_STATUS_PATTERN`), so a status this parses and a message this classifies as deterministic
+ * can never disagree about what the leading token was. Every caller that needs the provider's
+ * status without its body — the seal built below, and the turn-level diagnostics log in
+ * `session-telemetry.ts` — calls this instead of matching the pattern again.
+ *
+ * @param message - Pi's provider-failure message.
+ * @returns The leading status, or undefined when the message carries none.
+ */
+export function parseProviderFailureStatus(message: string): number | undefined {
+    const leading = LEADING_STATUS_PATTERN.exec(message);
+    return leading === null ? undefined : Number(leading[1]);
+}
+
+/**
  * Race one prompt against the terminal settlement, mirroring the single-phase runner's race.
  *
  * Refuses to prompt at all once a guard cause exists: pi's `Agent.abort()` only touches an ACTIVE
@@ -362,6 +379,7 @@ function classifyEnd<T>(
             kind: SealKind.ProviderFailure,
             message,
             deterministic: isDeterministicProviderMessage(message),
+            status: parseProviderFailureStatus(message),
         };
     }
     if (last?.stopReason === TurnStopReason.Aborted) {

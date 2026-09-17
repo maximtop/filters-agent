@@ -709,6 +709,9 @@ export async function runAgenticFixCore(
             // An environment-selection status (unsupported/capability-limited) outranks the loop
             // termination reason, and the schema binds the reason to failed runs only.
             agentTerminationReason: runStatus === 'failed' ? agentTerminationReason : undefined,
+            // The schema binds a provider-failure status to the same failed runs as the
+            // termination reason it was parsed alongside, so it is gated identically.
+            providerFailureStatus: runStatus === 'failed' ? run.providerFailureStatus : undefined,
             artifacts,
             candidatePatch,
             candidateVerified,

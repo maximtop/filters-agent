@@ -124,6 +124,33 @@ const AGENT_TERMINATION_LABELS: Record<AgentTerminationReason, string> = {
 };
 
 /**
+ * Maintainer-actionable hints for the provider HTTP failure statuses that name something a
+ * maintainer can address directly: an authentication problem, a billing problem, or a rate limit.
+ * Deliberately partial, never total over HTTP statuses: the report can show only the status itself,
+ * never the provider's response body, so a status this map does not name renders with the bare
+ * number instead of a guessed cause.
+ */
+const PROVIDER_FAILURE_STATUS_HINTS: Readonly<Partial<Record<number, string>>> = {
+    401: 'the API key was refused — check the key',
+    402: "the provider account is out of credits or the key's spending limit is reached",
+    403: 'the key lacks access to the model or endpoint',
+    429: 'the provider is rate limiting this key',
+};
+
+/**
+ * Render the host-authored clause naming the provider's HTTP failure status.
+ *
+ * @param status - The provider's HTTP failure status.
+ * @returns The clause to append to the outcome reason.
+ */
+function providerFailureStatusClause(status: number): string {
+    const hint = PROVIDER_FAILURE_STATUS_HINTS[status];
+    return hint === undefined
+        ? `The provider responded with HTTP ${status}`
+        : `The provider responded with HTTP ${status} — ${hint}`;
+}
+
+/**
  * Human labels for every symptom observation, total per type.
  */
 const SYMPTOM_OBSERVATION_LABELS: Record<SymptomObservation, string> = {
@@ -212,6 +239,14 @@ export interface ReportRunResultInput {
      * Why the agent loop ended without an accepted model decision, when it did.
      */
     agentTerminationReason?: AgentTerminationReason;
+
+    /**
+     * The provider's HTTP status of the final failed request, when the run ended in a provider
+     * failure whose message named one. Never the provider's response body — the report can show
+     * only this number and the host's own fixed wording for it, since the body can carry account
+     * identifiers and URLs.
+     */
+    providerFailureStatus?: number;
 
     /**
      * Browser observation of the exact defect, when one was attempted.
@@ -371,6 +406,33 @@ export interface ReportOutcomeSummary {
 }
 
 /**
+ * The infrastructure-failure label to render, adjusted for a provider failure whose status is
+ * known.
+ *
+ * `INFRASTRUCTURE_FAILURE_LABELS[LlmUnavailable]` says "unreachable", which is only true when the
+ * request got no response at all. A known status proves the opposite — the provider answered and
+ * refused — so that one label is swapped for wording that holds for an answered request; every
+ * other reason's fixed label already avoids "unreachable" and is used unchanged.
+ *
+ * @param reason - The infrastructure failure reason the run carries.
+ * @param providerFailureStatus - The provider's HTTP failure status, when the seal's message named
+ *   one.
+ * @returns The label text for the "Infrastructure failure: " clause.
+ */
+function infrastructureFailureLabel(
+    reason: InfrastructureFailureReason,
+    providerFailureStatus: number | undefined,
+): string {
+    if (
+        providerFailureStatus !== undefined &&
+        reason === InfrastructureFailureReason.LlmUnavailable
+    ) {
+        return 'The reasoning provider answered but refused the request';
+    }
+    return INFRASTRUCTURE_FAILURE_LABELS[reason];
+}
+
+/**
  * Compose the outcome reason from the verified failure fields, in a fixed order.
  *
  * @param result - Verified run-result fields under projection.
@@ -380,9 +442,11 @@ export interface ReportOutcomeSummary {
 function composeOutcomeReason(result: ReportRunResultInput): string {
     const pieces: string[] = [];
     if (result.infrastructureFailureReason !== undefined) {
-        pieces.push(
-            `Infrastructure failure: ${INFRASTRUCTURE_FAILURE_LABELS[result.infrastructureFailureReason]}`,
+        const label = infrastructureFailureLabel(
+            result.infrastructureFailureReason,
+            result.providerFailureStatus,
         );
+        pieces.push(`Infrastructure failure: ${label}`);
     }
     if (result.agentTerminationReason !== undefined) {
         pieces.push(
@@ -394,6 +458,9 @@ function composeOutcomeReason(result: ReportRunResultInput): string {
         pieces.push(
             `Fallback — ${FALLBACK_REASON_LABELS[result.fallbackReason]}${detail.length > 0 ? `: ${detail}` : ''}`,
         );
+    }
+    if (result.providerFailureStatus !== undefined) {
+        pieces.push(providerFailureStatusClause(result.providerFailureStatus));
     }
     return pieces.join('; ');
 }
