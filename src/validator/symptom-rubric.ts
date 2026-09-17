@@ -69,6 +69,14 @@ export function inventoryResidueRubric(kind: SymptomKind): string[] {
         'blank space or height as part of the reporter-defined advertising symptom',
         'footprint. In the AFTER state, record any such residual as a matching',
         'instance even when the ad creative itself disappeared.',
+        // Without this line the model read an ordinary ~60 px gap between two sections of an AFTER
+        // tile as "a blank band consistent with an empty reserved ad-slot placeholder left by the
+        // candidate rule", which rejected a correct candidate. The wording above names reserved
+        // blank space as residue and gave the model no notion of normal spacing, so any gap
+        // qualified; the synthesis rubric draws the same line ("not normal spacing").
+        'Ordinary spacing between sections — no larger than the gaps between other sections of',
+        'the same page — is not a residual; a residual is a visibly larger reserved gap, or a',
+        'visible frame, label or placeholder block.',
     ];
 }
 

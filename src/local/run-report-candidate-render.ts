@@ -203,6 +203,38 @@ const CANDIDATE_VISUAL_INTEGRITY_BASIS_TEXT: Record<CandidateVisualIntegrityBasi
 };
 
 /**
+ * Longest omission reason appended to the coverage line, so one page cannot flood the report.
+ */
+const MAX_OVERVIEW_OMISSION_REASON_CHARS = 400;
+
+/**
+ * Say what the vision review actually looked at across the page.
+ *
+ * A review whose full-page overview was withheld as unreadable saw only the tile window, however
+ * complete that window's own coverage proof is. Reporting `complete` there would tell a maintainer
+ * the whole page was inspected, so the line says what was inspected instead and carries the plan's
+ * reason — which names the inspected document range — beside it.
+ *
+ * @param review - Runner-bound visual review being rendered.
+ * @returns The coverage value rendered after the label.
+ */
+function renderFullPageCoverage(
+    review: NonNullable<FixRunResult['candidateVisualReview']>,
+): string {
+    const evidence = review.fullPageOverviewEvidence;
+    const illegible = [evidence?.before, evidence?.after].filter(
+        (side) => side?.mode === 'omitted_illegible',
+    );
+    if (illegible.length === 0) {
+        return `\`${review.coverageComplete ? 'complete' : 'incomplete'}\``;
+    }
+    const reasons = [...new Set(illegible.map((side) => side?.reason ?? ''))]
+        .join(' ')
+        .slice(0, MAX_OVERVIEW_OMISSION_REASON_CHARS);
+    return `\`tile window only\` — ${reasons}`;
+}
+
+/**
  * Render the typed semantic verdict produced by the dedicated vision model.
  *
  * @param result - Locked core run result.
@@ -220,7 +252,7 @@ export function renderCandidateVisualReview(result: FixRunResult): string[] {
         `- Verdict: \`${review.verdict}\``,
         `- Symptom: \`${review.symptom}\``,
         `- Symptom scope: ${review.symptomScope}`,
-        `- Full-page coverage: \`${review.coverageComplete ? 'complete' : 'incomplete'}\``,
+        `- Full-page coverage: ${renderFullPageCoverage(review)}`,
         `- Ad layout residue: \`${review.adLayoutResidue}\``,
         `- Page integrity: \`${review.pageIntegrity}\``,
         `- Candidate network scope: \`${review.candidateNetworkScope ?? 'n/a'}\``,

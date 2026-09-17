@@ -110,9 +110,13 @@ function buildReviewMessages(
             'Treat the reporter screenshot as an example of a possibly repeated symptom,',
             'not as a single coordinate. The same model already inspected every original-resolution',
             'tile and each viewport in separate byte-bounded requests. A full-page overview was',
-            'also inspected when bounded; an oversized original overview may be omitted only when',
-            'the runner proved that the non-empty ordered tile inventory covers the complete',
-            'document. This',
+            'also inspected when one request could carry and show it. An oversized original',
+            'overview is omitted only when the runner proved that the non-empty ordered tile',
+            'inventory covers the complete document; an overview too tall to be read as one image',
+            'is omitted whatever the tiles cover, and its recorded reason states the exact document',
+            'range that was inspected. So never read page-wide coverage into an omission: what was',
+            'inspected is the range its provenance states, and this review answers for that range.',
+            'An omission alone does not make coverage incomplete. This',
             'final synthesis is text-only: reconcile the complete runner-bound observations and',
             'do not claim to inspect new pixels. coverageComplete may be true only when the runner',
             'and every visual-observation call report complete coverage and every repeated instance',
@@ -250,12 +254,14 @@ export async function reviewCandidateVisually(
                 options.evidence.beforeDocumentCoverageComplete ??
                     options.evidence.beforeCoverageComplete,
                 options.evidence.beforeTiles,
+                options.evidence.beforeDocument,
             ),
             after: planFullPageOverview(
                 options.evidence.afterFullPage,
                 options.evidence.afterDocumentCoverageComplete ??
                     options.evidence.afterCoverageComplete,
                 options.evidence.afterTiles,
+                options.evidence.afterDocument,
             ),
         };
         // Every inventory below is its own vision completion over its own images, and none reads

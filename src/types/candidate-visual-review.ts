@@ -261,6 +261,10 @@ export const CandidateVisualFullPageOverviewEvidenceSchema = v.pipe(
         mode: v.picklist([
             'original',
             'omitted_complete_tiles',
+            // Withheld because the document is far taller than it is wide. Unlike the oversized
+            // modes it needs no tile-coverage proof and never blocks the review: an image the
+            // model cannot read protects nothing. See `planFullPageOverview`.
+            'omitted_illegible',
             'blocked_oversized_incomplete_tiles',
         ]),
         originalArtifactId: ArtifactIdSchema,

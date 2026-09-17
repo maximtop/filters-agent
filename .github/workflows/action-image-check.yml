@@ -5,7 +5,9 @@
 # real run unless something builds it ahead of time. This check does exactly that build, the same
 # way the runner would: `docker build -f action.Dockerfile .`, with the Dockerfile's own directory
 # as the build context. The recipe carries its own build-time proofs (browser launches, a boot of
-# the action face with no inputs) — this job only has to build it; no `docker run` here.
+# the action face with no inputs) — this job only has to build it; no `docker run` here, and no
+# push either: the image carries the CloakBrowser binary, whose license forbids redistributing it,
+# so it must never land in a public registry.
 
 name: Action image build check
 

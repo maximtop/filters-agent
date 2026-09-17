@@ -10,7 +10,7 @@ import {
     FULL_PAGE_CAPTURE_INCOMPLETE_KIND,
     inspectFullPageVisualCapture,
 } from '../analyzer/full-page-capture-inspection';
-import { MAX_VISION_IMAGE_BYTES } from '../pi/single-shot-input';
+import { visionOverviewRefusal } from '../pi/single-shot-input';
 import type { SiteAnalyzer } from '../analyzer/site-analyzer';
 import {
     parseImportExpectations,
@@ -4673,9 +4673,9 @@ export class AgentRuntime {
                 tileCoverage?.complete === true &&
                 tileArtifactIds.length > 0 &&
                 tileArtifactIds.length === tiles.length;
-            // The vision inventory excludes an oversized overview (its bytes would exceed the
-            // provider request ceiling), so the runtime must not demand its inspection either;
-            // the original-resolution tiles still carry the complete coverage proof.
+            // The vision inventory excludes an overview no single request can carry or read, so
+            // the runtime must not demand its inspection either; the original-resolution tiles
+            // still carry the complete coverage proof. Both sides read the one shared rule.
             const overviewBytes = fullPageArtifactId
                 ? this.options.recorder
                       .getArtifacts()
@@ -4683,7 +4683,11 @@ export class AgentRuntime {
                 : undefined;
             const overviewVisionEligible =
                 fullPageArtifactId !== undefined &&
-                (overviewBytes === undefined || overviewBytes <= MAX_VISION_IMAGE_BYTES);
+                visionOverviewRefusal({
+                    bytes: overviewBytes,
+                    documentWidth: tileCoverage?.documentWidth as number | undefined,
+                    documentHeight: tileCoverage?.documentHeight as number | undefined,
+                }) === null;
             const requiredArtifactIds =
                 coverageComplete && fullPageArtifactId
                     ? [...(overviewVisionEligible ? [fullPageArtifactId] : []), ...tileArtifactIds]

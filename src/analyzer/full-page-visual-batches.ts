@@ -167,8 +167,12 @@ export interface PreCandidateVisualInventory {
     rationales: string[];
 
     /**
-     * Captured images excluded from vision because their bytes exceed the provider request ceiling;
-     * original-resolution tiles still carry the coverage proof for them.
+     * Captured images no single vision request could carry or read: bytes above the provider
+     * request ceiling, or a document so much taller than it is wide that the provider's downscaling
+     * leaves it unreadable. The original-resolution tiles still carry the coverage proof for them.
+     *
+     * The field name predates the second reason and is persisted in inventories already written, so
+     * it keeps its spelling.
      */
     excludedOversizedArtifactIds?: string[];
 }

@@ -336,13 +336,19 @@ export async function inventoryOverviewImage(
 }
 
 /**
- * Inspect a full-page overview when bounded, or safely rely on complete detailed tiles.
+ * Inspect a full-page overview when it is readable, or record exactly why it was withheld.
+ *
+ * An omission states the plan's own reason and nothing more. A withheld oversized overview is
+ * backed by complete original-resolution tiles, while an unreadably tall one is backed only by the
+ * tile window that reason names, so claiming complete document coverage for both would be false for
+ * one of them. The review's coverage contract remains the runner's tile-window proof either way —
+ * the overview was never part of it — which is why the omission still counts as observed.
  *
  * @param options - Trusted candidate context and multimodal provider dependencies.
  * @param state - Whether the supplied image shows the control or candidate-applied document.
  * @param image - Immutable original full-page screenshot.
  * @param provenance - Runner-derived relationship between original and vision evidence.
- * @returns Model inventory, or an explicit runner-owned omission backed by complete tiles.
+ * @returns Model inventory, or an explicit runner-owned omission carrying the plan's reason.
  */
 export async function inventoryPlannedFullPageOverview(
     options: CandidateVisualVerifierOptions,
@@ -370,6 +376,8 @@ export async function inventoryPlannedFullPageOverview(
         visionArtifactId: provenance.visionArtifactId,
         reason: provenance.reason,
     });
+    const omission =
+        provenance.reason ?? 'The full-page overview was omitted from the vision inventory.';
     return {
         coverageObserved: true,
         symptomScopes: [],
@@ -381,12 +389,10 @@ export async function inventoryPlannedFullPageOverview(
                 source: CandidateVisualEvidenceSource.FullPageOverviewOmitted,
                 artifactIds: [provenance.originalArtifactId],
                 coverageObserved: true,
-                symptomScope:
-                    'The oversized overview was omitted; complete original-resolution tiles ' +
-                    'cover this document state.',
+                symptomScope: omission,
                 instanceCount: 0,
                 observedDamage: [],
-                rationale: provenance.reason ?? 'Complete original-resolution tiles were used.',
+                rationale: omission,
             },
         ],
     };

@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import * as v from 'valibot';
-import { MAX_VISION_IMAGE_BYTES } from '../pi/single-shot-input';
+import { visionOverviewRefusal } from '../pi/single-shot-input';
 import { TraceEventType } from '../types/trace';
 import {
     aggregateReporterSymptomPresence,
@@ -154,7 +154,15 @@ export async function inspectFullPageVisualCapture(
         'screenshot-full-page',
         'Complete page overview.',
     );
-    const overviewVisionEligible = overview.bytes <= MAX_VISION_IMAGE_BYTES;
+    // A single image the provider cannot show the model is worse than no image: it invites an
+    // answer read off the prompt. The shared rule refuses it here and at the runtime requirement
+    // that asks which artifacts this inventory must have inspected, so the two cannot disagree.
+    const overviewVisionEligible =
+        visionOverviewRefusal({
+            bytes: overview.bytes,
+            documentWidth: capture.tileCoverage.documentWidth,
+            documentHeight: capture.tileCoverage.documentHeight,
+        }) === null;
     const tiles = resolveTileImages(capture.tileCoverage, options.recorder, options.artifactsDir);
     const tileBatches = imageBatches(tiles);
     const batches: ResolvedInventoryImage[][] = [

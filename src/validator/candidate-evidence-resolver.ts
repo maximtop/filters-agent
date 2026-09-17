@@ -15,6 +15,7 @@ import {
     type FullPageTileCoverage,
     type PhaseResult,
 } from '../types/validation';
+import type { CandidateVisualDocumentSize } from './candidate-visual-evidence';
 
 /**
  * Inputs used to resolve browser evidence for one candidate review.
@@ -110,6 +111,11 @@ interface ResolvedTileCoverage {
      * full-page overview.
      */
     documentComplete: boolean;
+
+    /**
+     * Document extent the capture measured, absent when the phase recorded no tile coverage.
+     */
+    document?: CandidateVisualDocumentSize;
 }
 
 /**
@@ -170,6 +176,18 @@ export interface CandidateVisualEvidence {
      * Whether runner metadata and resolved tiles cover the complete after document.
      */
     afterDocumentCoverageComplete: boolean;
+
+    /**
+     * Document extent of the before capture, absent when that phase recorded no tile coverage.
+     *
+     * The review needs it to decide whether the full-page overview can be read as one image at all.
+     */
+    beforeDocument?: CandidateVisualDocumentSize;
+
+    /**
+     * Document extent of the after capture, absent when that phase recorded no tile coverage.
+     */
+    afterDocument?: CandidateVisualDocumentSize;
 }
 
 /**
@@ -350,6 +368,7 @@ function resolveTileCoverage(
         tiles,
         complete: coverage.complete && tilesCoverDocument(coverage),
         documentComplete: coverage.complete && !coverage.window && tilesCoverDocument(coverage),
+        document: { width: coverage.documentWidth, height: coverage.documentHeight },
     };
 }
 
@@ -536,5 +555,7 @@ export function resolveCandidateVisualEvidence(
         afterCoverageComplete: afterTileCoverage.complete,
         beforeDocumentCoverageComplete: beforeTileCoverage.documentComplete,
         afterDocumentCoverageComplete: afterTileCoverage.documentComplete,
+        beforeDocument: beforeTileCoverage.document,
+        afterDocument: afterTileCoverage.document,
     };
 }

@@ -9,6 +9,10 @@ import type { ImageContent, Message } from '@earendil-works/pi-ai';
  * leaves the module). The cap and MIME classification carried over from the legacy screenshot
  * handling; owned by the input side of the single-shot mechanism so the call-path module stays
  * inside the repo's ~500-line module rule.
+ *
+ * The same limits decide, before a request is even planned, whether a stored full-page overview may
+ * be offered to vision at all ({@link visionOverviewRefusal}); every caller that makes that
+ * decision reads it from here so none of them can answer it differently.
  */
 
 /**
@@ -45,6 +49,93 @@ export const VISION_IMAGE_MIME_VALUES = Object.values(VisionImageMime);
  * keeps one image plus prompt text safely below the ceiling.
  */
 export const MAX_VISION_IMAGE_BYTES = 6 * 1024 * 1024;
+
+/**
+ * Tallest full-page overview, as a multiple of its width, that a vision model can still read.
+ *
+ * A provider fits a multimodal image inside a bounded square of about 2048 px on its long side, so
+ * a page eight times taller than wide arrives about 256 px wide — the narrowest width at which
+ * blocks of a page still read as blocks rather than as a stripe. Past that the model cannot see the
+ * page and answers from the prompt instead of the pixels: in the nottinghampost.com review the
+ * 375x10334 px mobile overview (aspect 27.5:1, 1.3 MB, well inside the byte cap) arrived ~74 px
+ * wide and the model reported ten "remaining blank reserved ad-slot bands, approximately 998x286"
+ * quoted straight out of the symptom text, while the viewport screenshot and the
+ * original-resolution tiles of that same state showed every band gone. That fabricated inventory
+ * rejected a correct candidate, so an overview past this ratio is not sent at all.
+ */
+export const MAX_LEGIBLE_OVERVIEW_ASPECT_RATIO = 8;
+
+/**
+ * Why one full-page overview may not be sent to the vision model as a single image.
+ */
+export const VisionOverviewRefusal = {
+    /**
+     * Its encoded bytes exceed what one multimodal request may carry.
+     */
+    Oversized: 'oversized',
+
+    /**
+     * It is so much taller than it is wide that the provider's downscaling leaves it unreadable.
+     */
+    Illegible: 'illegible',
+} as const;
+
+/**
+ * VisionOverviewRefusal value.
+ */
+export type VisionOverviewRefusal =
+    (typeof VisionOverviewRefusal)[keyof typeof VisionOverviewRefusal];
+
+/**
+ * What a producer recorded about one stored full-page overview.
+ */
+export interface VisionOverviewGeometry {
+    /**
+     * Encoded size of the stored overview in bytes; absent when no producer recorded it.
+     */
+    bytes?: number;
+
+    /**
+     * Document width in CSS pixels the overview spans; absent when the capture recorded none.
+     */
+    documentWidth?: number;
+
+    /**
+     * Document height in CSS pixels the overview spans; absent when the capture recorded none.
+     */
+    documentHeight?: number;
+}
+
+/**
+ * Decide whether one full-page overview may be sent to the vision model as a single image.
+ *
+ * The single answer every deciding call site reads — the candidate review's overview plan, the
+ * pre-candidate capture inventory, and the runtime's terminal vision requirement — so the run can
+ * never demand inspection of an artifact the inventory withheld, or send one the plan refused.
+ *
+ * Geometry a producer did not record refuses nothing: an overview of unknown size or extent is
+ * offered exactly as it was before the aspect rule existed.
+ *
+ * @param overview - What the runner knows about the stored overview.
+ * @returns The refusal keeping this overview out of vision, or null when it may be sent.
+ */
+export function visionOverviewRefusal(
+    overview: VisionOverviewGeometry,
+): VisionOverviewRefusal | null {
+    if (overview.bytes !== undefined && overview.bytes > MAX_VISION_IMAGE_BYTES) {
+        return VisionOverviewRefusal.Oversized;
+    }
+    const { documentWidth, documentHeight } = overview;
+    if (
+        documentWidth !== undefined &&
+        documentHeight !== undefined &&
+        documentWidth > 0 &&
+        documentHeight > MAX_LEGIBLE_OVERVIEW_ASPECT_RATIO * documentWidth
+    ) {
+        return VisionOverviewRefusal.Illegible;
+    }
+    return null;
+}
 
 /**
  * One image input for a single-shot message.

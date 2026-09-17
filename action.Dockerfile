@@ -67,6 +67,10 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
 RUN pnpm exec playwright-core install-deps chromium \
     && rm -rf /var/lib/apt/lists/*
 
+# The binary comes straight from CloakHQ's release channel, on the runner that builds this image,
+# and it is not MIT: the CloakBrowser Binary License allows using it and forbids redistributing
+# it. An image built from this recipe therefore stays where it was built — do not push it to a
+# public registry, and do not move this layer into a published base image.
 RUN pnpm exec cloakbrowser install
 
 RUN node --input-type=module -e "import { launch } from 'cloakbrowser'; const browser = await launch({ headless: true, args: ['--no-sandbox', '--disable-dev-shm-usage'] }); console.log('cloakbrowser chromium ready:', browser.version()); await browser.close();"

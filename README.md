@@ -192,4 +192,11 @@ in gets the current year's filters file and a preceding comment holding the issu
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE) covers the sources in this repository.
+
+The action image is built on your runner at the start of every run, and the build downloads two
+browsers from their publishers: Firefox through Playwright, and the CloakBrowser Chromium build
+from CloakHQ. The CloakBrowser binary comes under its own
+[binary license](https://github.com/CloakHQ/CloakBrowser/blob/main/BINARY-LICENSE.md), not under
+MIT: using it is free, redistributing it is not. Read it before you run the action in your
+organization, and do not push an image that contains the binary to a public registry.

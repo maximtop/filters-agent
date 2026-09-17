@@ -61,6 +61,21 @@ export interface CandidateVisualEvidenceTile extends CandidateVisualEvidenceImag
 }
 
 /**
+ * Pixel extent of the document one page state's full-page overview spans.
+ */
+export interface CandidateVisualDocumentSize {
+    /**
+     * Document width in CSS pixels before device-scale rendering.
+     */
+    width: number;
+
+    /**
+     * Document height in CSS pixels before device-scale rendering.
+     */
+    height: number;
+}
+
+/**
  * Four aligned screenshots supplied to the semantic candidate review.
  */
 export interface CandidateVisualEvidence {
@@ -118,6 +133,19 @@ export interface CandidateVisualEvidence {
      * Whether the runner proved that after tiles cover the complete document.
      */
     afterDocumentCoverageComplete?: boolean;
+
+    /**
+     * Document extent the before full-page overview spans, when the capture measured it.
+     *
+     * A page far taller than it is wide cannot be read as one image, so the extent decides whether
+     * the overview reaches vision at all. Absent leaves the byte ceiling as the only gate.
+     */
+    beforeDocument?: CandidateVisualDocumentSize;
+
+    /**
+     * Document extent the after full-page overview spans, when the capture measured it.
+     */
+    afterDocument?: CandidateVisualDocumentSize;
 }
 
 /**
