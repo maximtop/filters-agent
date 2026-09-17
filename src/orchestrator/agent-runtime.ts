@@ -117,8 +117,12 @@ import type { LlmConfig } from '../config/config';
 import type { PiRuntime } from '../pi/runtime';
 import type { RunUsageCollector } from '../pi/usage-collector';
 import { ApplicationGoalKind } from '../validator/phase-application-contract';
-import { readAdGuardExtensionState as readAdGuardExtensionStateDefault } from '../browser/adguard-extension-state-read';
-import { findExtensionRuntime as findExtensionRuntimeDefault } from '../browser/extension-runtime-location';
+import {
+    readAdGuardExtensionState as readAdGuardExtensionStateDefault,
+} from '../browser/adguard-extension-state-read';
+import {
+    findExtensionRuntime as findExtensionRuntimeDefault,
+} from '../browser/extension-runtime-location';
 import {
     candidateArtifactIdentitiesEqual,
     parseCandidateValidationArtifactId,
@@ -208,7 +212,9 @@ import {
     firefoxPreparedLaunch,
     runDeclaredFilterBaseline,
 } from './firefox-environment-wiring';
-import type { FirefoxExtensionEnvironmentOptions } from '../environment/firefox-extension-environment';
+import type {
+    FirefoxExtensionEnvironmentOptions,
+} from '../environment/firefox-extension-environment';
 import {
     LaunchBaselineOutcomeKind,
     buildBrowserExtensionEnvironmentOptions,

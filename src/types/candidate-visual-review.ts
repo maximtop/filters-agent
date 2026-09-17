@@ -418,6 +418,29 @@ function unclearIntegrityIsComplete(
 }
 
 /**
+ * Whether the advertising footprint the model saw left behind stands against the candidate.
+ *
+ * Residue is a cosmetic rule's job: a block of a third-party host stops the advertising from
+ * loading and cannot collapse space the page itself reserves for it. The maintainers of the
+ * uAssets bench case landed exactly such a rule and left the reserved band alone, while the
+ * review rejected the same rule for that band in one run out of five. So residue present counts
+ * against every candidate except a third-party host block, where it stays a reported fact.
+ *
+ * @param output - Parsed semantic output returned by the visual model.
+ * @param scope - Runner-computed scope of the candidate.
+ * @returns Whether present residue rejects this candidate.
+ */
+function residueStandsAgainstCandidate(
+    output: CandidateVisualReviewModelOutput,
+    scope: CandidateNetworkScope | undefined,
+): boolean {
+    return (
+        output.adLayoutResidue === CandidateVisualAdLayoutResidue.Present &&
+        scope !== CandidateNetworkScope.ThirdPartyHostBlock
+    );
+}
+
+/**
  * Derives the final verdict from the model's independent symptom and integrity judgments.
  *
  * @param output - Parsed semantic output returned by the visual model.
@@ -430,7 +453,7 @@ export function deriveCandidateVisualVerdict(
 ): CandidateVisualVerdict {
     if (
         output.symptom === CandidateVisualSymptom.NotResolved ||
-        output.adLayoutResidue === CandidateVisualAdLayoutResidue.Present ||
+        residueStandsAgainstCandidate(output, scope) ||
         output.remainingInstances.length > 0 ||
         output.pageIntegrity === CandidateVisualPageIntegrity.Regressed
     ) {
@@ -439,7 +462,9 @@ export function deriveCandidateVisualVerdict(
 
     if (
         output.symptom === CandidateVisualSymptom.Resolved &&
-        output.adLayoutResidue === CandidateVisualAdLayoutResidue.Absent &&
+        (output.adLayoutResidue === CandidateVisualAdLayoutResidue.Absent ||
+            (output.adLayoutResidue === CandidateVisualAdLayoutResidue.Present &&
+                scope === CandidateNetworkScope.ThirdPartyHostBlock)) &&
         output.coverageComplete &&
         output.beforeInstances.length > 0 &&
         (output.pageIntegrity === CandidateVisualPageIntegrity.Intact ||

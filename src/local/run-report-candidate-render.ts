@@ -221,6 +221,7 @@ export function renderCandidateVisualReview(result: FixRunResult): string[] {
         `- Symptom: \`${review.symptom}\``,
         `- Symptom scope: ${review.symptomScope}`,
         `- Full-page coverage: \`${review.coverageComplete ? 'complete' : 'incomplete'}\``,
+        `- Ad layout residue: \`${review.adLayoutResidue}\``,
         `- Page integrity: \`${review.pageIntegrity}\``,
         `- Candidate network scope: \`${review.candidateNetworkScope ?? 'n/a'}\``,
         `- Integrity basis: ${

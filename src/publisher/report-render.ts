@@ -229,6 +229,17 @@ export interface ReportRunResultInput {
     candidateForReview?: ReportCandidateForReview;
 
     /**
+     * The part of the runner-bound vision review the report speaks to: whether the verified
+     * candidate left advertising layout behind.
+     */
+    candidateVisualReview?: {
+        /**
+         * The review's leftover-layout judgment (`present`, `absent` or `unclear`).
+         */
+        adLayoutResidue?: string;
+    };
+
+    /**
      * Provenance of the one extension build the run loaded, when it ran the prepared extension.
      */
     extensionProvenance?: PreparedExtensionProvenance;
@@ -278,6 +289,17 @@ export interface ReportDecisionInput {
 }
 
 /**
+ * What the report says beside a verified rule that left advertising layout behind.
+ *
+ * Only a block of a third-party host is verified with residue present: it stops the advertising
+ * from loading and cannot collapse space the page reserves for it. The maintainer reading the
+ * report decides whether that space is worth a cosmetic rule; the report only says it is there.
+ */
+const LEFTOVER_LAYOUT_NOTE =
+    'Leftover layout: the page still reserves space where the advertising was. A network rule ' +
+    'cannot collapse it; add a cosmetic rule if the gap matters.';
+
+/**
  * The outcome-level fields one report render is built from, before escaping.
  */
 export interface ReportOutcomeSummary {
@@ -305,6 +327,11 @@ export interface ReportOutcomeSummary {
      * The candidate rule as proposed, or the empty string when none was proposed.
      */
     rule: string;
+
+    /**
+     * Host-authored note rendered under the rule, when the verified review left one to make.
+     */
+    ruleNote?: string;
 
     /**
      * The unverified candidate an analysis-only run asks a reviewer to look at, absent when the run
@@ -489,6 +516,9 @@ export function summarizeReportOutcome(
         }),
         symptom: composeSymptom(result, decision),
         rule: result.candidatePatch?.rule ?? '',
+        ...(result.candidatePatch && result.candidateVisualReview?.adLayoutResidue === 'present'
+            ? { ruleNote: LEFTOVER_LAYOUT_NOTE }
+            : {}),
         ...(result.candidateForReview === undefined
             ? {}
             : { candidateForReview: result.candidateForReview }),
@@ -519,7 +549,10 @@ export function buildReportTemplateValues(summary: ReportOutcomeSummary): Report
         outcomeReason: renderUntrustedText(summary.outcomeReason),
         versionUpdateHint: renderUntrustedText(summary.versionUpdateHint),
         symptom: renderUntrustedText(summary.symptom),
-        rule: renderUntrustedRuleCodeSpan(summary.rule),
+        rule:
+            summary.ruleNote === undefined
+                ? renderUntrustedRuleCodeSpan(summary.rule)
+                : `${renderUntrustedRuleCodeSpan(summary.rule)}\n\n${summary.ruleNote}`,
         candidateForReview: composeCandidateForReview(summary.candidateForReview),
         executor: summary.executor,
         executorVersion: summary.executorVersion,

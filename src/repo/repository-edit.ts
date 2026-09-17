@@ -966,9 +966,9 @@ function planDeclaredAppend(checkoutPath: string, declared: DeclaredPlacement): 
 }
 
 /**
- * Whether the run's declared placement settles the edit for this target: the declaration names
- * the candidate's own file, so the plan is an append at the end of that list and never a routed
- * domain extension of a shared-rule owner.
+ * Whether the run's declared placement settles the edit for this target: the declaration names the
+ * candidate's own file, so the plan is an append at the end of that list and never a routed domain
+ * extension of a shared-rule owner.
  *
  * @param filePath - Repository-relative target filter file of the candidate.
  * @param declared - The run instruction's declared placement, when its instruction declares one.

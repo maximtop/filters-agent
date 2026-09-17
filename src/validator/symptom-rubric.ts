@@ -1,4 +1,5 @@
 import { isIncorrectBlockingReport, type ProblemType } from '../types/issue-facts';
+import { CandidateNetworkScope } from './candidate-network-scope';
 
 /**
  * Named symptom kinds, so review code never spells one inline.
@@ -78,10 +79,20 @@ export function inventoryResidueRubric(kind: SymptomKind): string[] {
  * it must be `present` exactly when an advertising element that the baseline filters had removed
  * became visible again after the candidate — a too-broad exception then fails closed.
  *
+ * For an ads review of a third-party host block the wording separates the two judgments the
+ * runner combines: the symptom is the advertising itself, the residue is what the page still
+ * reserves for it. A network rule cannot collapse that space, so the runner does not hold the
+ * residue against it (`deriveCandidateVisualVerdict`), and the model must therefore not fold the
+ * residue into the symptom either.
+ *
  * @param kind - Problem class driving the review.
+ * @param scope - Runner-computed scope of the candidate; absent means no scope-specific wording.
  * @returns Prompt lines defining residue and the adLayoutResidue contract.
  */
-export function synthesisResidueRubric(kind: SymptomKind): string[] {
+export function synthesisResidueRubric(
+    kind: SymptomKind,
+    scope?: CandidateNetworkScope,
+): string[] {
     if (isBreakageSymptom(kind)) {
         return [
             'The reporter-defined defect is broken or missing page functionality caused by',
@@ -96,6 +107,27 @@ export function synthesisResidueRubric(kind: SymptomKind): string[] {
             'inventories carry no usable ad-presence observations. Page integrity',
             'is independent: a readable intact page whose reported functionality is still',
             'broken is still not fixed.',
+        ];
+    }
+    if (scope === CandidateNetworkScope.ThirdPartyHostBlock) {
+        // A block of a third-party host can stop the advertising from loading but cannot collapse
+        // space the page itself reserves for it — that takes a cosmetic rule, and the maintainers
+        // of the uAssets bench case landed the network rule alone. The model still reports the
+        // residue; whether it blocks the verdict is the runner's call, exactly like an unclear
+        // page integrity under this scope.
+        return [
+            'An outer ad wrapper, REKLAMA',
+            'label, divider or frame, or reserved blank space or height at a removed advertising',
+            'region is residue of the advertising footprint, not normal spacing. Set',
+            'adLayoutResidue=present when any such residue remains, absent only when the full',
+            'advertising footprint is gone, and unclear when the visual evidence cannot',
+            'distinguish the two. This candidate is a network block of a third-party host: it can',
+            'stop the advertising from loading but cannot collapse space the page itself reserves,',
+            'so judge symptom by the advertising alone. An AFTER observation that is only empty',
+            'residue, with no advertising creative in it, is not_same_symptom and does not keep',
+            'the symptom open; it is exactly what adLayoutResidue=present reports. Whether residue',
+            "still passes is the runner's decision, so never hide residue to get a rule through",
+            'and never hold the symptom open for it. Page integrity is independent of both.',
         ];
     }
     return [

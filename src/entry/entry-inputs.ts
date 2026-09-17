@@ -3,7 +3,8 @@
  * container action) hands the resolver, the Valibot shapes `entry-run.ts` re-asserts before any
  * seam runs, and the plain `AgentRunInputs` type the resolved run carries from then on.
  * `entry-inputs-resolution.ts` owns turning flags and environment into these — this module only
- * declares what they look like, so the contract and its resolution can each stay a manageable size.
+ * declares what they look like, so the contract and its resolution can each stay a manageable
+ * size.
  */
 
 import * as v from 'valibot';

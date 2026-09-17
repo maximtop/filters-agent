@@ -189,18 +189,18 @@ function setAcceptableAds(
  * itself (`git show 1ea6e065^:src/browser/adguard-settings-import-protocol.ts`).
  *
  * The page has only just loaded when this runs, and the extension's background message handlers
- * register asynchronously after it: the very first message a live run sent from here met "Could
- * not establish connection. Receiving end does not exist." from a listener that was not up yet
- * (run 35139965168), and the whole prepared launch was thrown away for it. The export read
- * therefore waits for the extension's readiness first and probes the export the way every
- * host read-back of the blocker state does.
+ * register asynchronously after it: the very first message a live run sent from here met "Could not
+ * establish connection. Receiving end does not exist." from a listener that was not up yet (run
+ * 35139965168), and the whole prepared launch was thrown away for it. The export read therefore
+ * waits for the extension's readiness first and probes the export the way every host read-back of
+ * the blocker state does.
  *
  * @param page - Prepared blocker management surface page the export is read from.
  * @param expectation - The prepared expectation the payload must express.
  * @param readiness - Optional readiness budget; the shared default otherwise.
  * @returns The complete settings-import JSON document, ready for `applySettingsJson`.
- * @throws When the extension does not become ready within the budget, or the export does not
- *   parse as a JSON object, or carries no `filters` or `general-settings` section, or carries no
+ * @throws When the extension does not become ready within the budget, or the export does not parse
+ *   as a JSON object, or carries no `filters` or `general-settings` section, or carries no
  *   `stealth` section to enable Tracking protection in when one is expected enabled.
  */
 export async function buildExtensionSettingsPayload(

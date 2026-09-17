@@ -5,10 +5,10 @@ import type {
     FilteringEnvironmentDescriptor,
 } from '../environment/environment-selection';
 import type {
-BrowserExtensionEnvironmentOptions,
+    BrowserExtensionEnvironmentOptions,
 } from '../environment/browser-extension-environment';
 import type {
-FirefoxExtensionEnvironmentOptions,
+    FirefoxExtensionEnvironmentOptions,
 } from '../environment/firefox-extension-environment';
 import type { FilteringEnvironmentAdapter } from '../environment/filtering-environment';
 import type { FilterListRef } from '../environment/filter-list-ref';

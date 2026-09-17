@@ -86,6 +86,18 @@ export function attachRunGuards(session: AgentSession, options: RunGuardOptions)
         }
         cause = next;
         clearRequestTimer();
+        // The moment a bound trips was invisible in a run log: an 87-minute run had to be
+        // reconstructed from the timestamps around it to tell when its wall clock had expired.
+        logger.warn(
+            {
+                guard: next,
+                turns,
+                wallClockMs: budgets.wallClockMs,
+                maxTurns: budgets.maxTurns,
+                requestTimeoutMs: budgets.requestTimeoutMs,
+            },
+            'run guard tripped; aborting the session',
+        );
         options.onFired();
         // Fire-and-forget: abort() flips the agent signal synchronously and then waits for the
         // run to settle, which can only happen after this listener returns — awaiting abort()

@@ -45,12 +45,12 @@ const TRANSIENT_RETRY_DELAY_MS = 1_000;
  * Hard bound on one single-shot call's total duration, streamed progress or not.
  *
  * The inactivity bound measures silence, deliberately: a reasoning model that streams its thinking
- * for minutes is alive. It therefore cannot end a generation that never stops. Live run
- * 35066780225 (2026-09-16) spent 21 and then 24 minutes inside two vision calls that kept
- * streaming the whole time — cut only by the 30-minute apply_rule deadline and by the provider
- * itself — and those 46 minutes were most of its 60-minute investigation. Verified reviews of the
- * same page finish in one to five minutes; a call still going at ten is a runaway, not a slow
- * answer, and the run is better off with a named failure and its remaining budget.
+ * for minutes is alive. It therefore cannot end a generation that never stops. Live run 35066780225
+ * (2026-09-16) spent 21 and then 24 minutes inside two vision calls that kept streaming the whole
+ * time — cut only by the 30-minute apply_rule deadline and by the provider itself — and those 46
+ * minutes were most of its 60-minute investigation. Verified reviews of the same page finish in one
+ * to five minutes; a call still going at ten is a runaway, not a slow answer, and the run is better
+ * off with a named failure and its remaining budget.
  */
 export const SINGLE_SHOT_CALL_CEILING_MS = 10 * 60_000;
 

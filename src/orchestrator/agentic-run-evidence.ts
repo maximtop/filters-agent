@@ -115,10 +115,10 @@ export function serializeAgentSettingsEvidence(
 /**
  * Publish the settings a declared-baseline session ran with.
  *
- * A blocker that declares its own list selection is credited from that declaration (32-AFK
- * Decision 3): there is no live state to read back, so the declared keys are the enabled set. The
- * MV3 fields do not apply to such a blocker — it has no rulesets, no Stealth mode and no rule
- * limits — and the record says so plainly rather than inventing an observation.
+ * A blocker that declares its own list selection is credited from that declaration (32-AFK Decision
+ * 3): there is no live state to read back, so the declared keys are the enabled set. The MV3 fields
+ * do not apply to such a blocker — it has no rulesets, no Stealth mode and no rule limits — and the
+ * record says so plainly rather than inventing an observation.
  *
  * @param profileKind - The settings profile the model selected for the session.
  * @param listKeys - The declared list selection the session was credited with.
@@ -142,10 +142,10 @@ export function serializeDeclaredBaselineSettings(
  * live state read, the declared selection when the blocker declared its own baseline, and nothing
  * when the session was credited by neither.
  *
- * The browser-session records, the final result and the candidate binding all publish through
- * this one function, so the binding can never disagree with the session it names. Before it
- * existed the binding demanded a read-back record, and a uBlock Origin session in Firefox — credited
- * by its declared lists — lost its verified candidate at the very last step.
+ * The browser-session records, the final result and the candidate binding all publish through this
+ * one function, so the binding can never disagree with the session it names. Before it existed the
+ * binding demanded a read-back record, and a uBlock Origin session in Firefox — credited by its
+ * declared lists — lost its verified candidate at the very last step.
  *
  * @param environment - Detached evidence of one runtime session.
  * @returns The published settings evidence, or undefined for an uncredited session.

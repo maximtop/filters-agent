@@ -73,8 +73,8 @@ export const APPLICATION_TERMINAL_STATUS_VALUES = Object.values(ApplicationTermi
  * A detail names one step and what happened to it; the bound keeps that diagnostic-sized without
  * letting a page dump ride a terminal payload into the run record. It is generous on purpose: pi
  * validates the advertised schema before the terminal tool runs, so an over-long detail is a
- * rejected call rather than a trimmed one, and a live application session (run 35138396461)
- * spent its last turn on exactly that rejection and ended without any terminal payload.
+ * rejected call rather than a trimmed one, and a live application session (run 35138396461) spent
+ * its last turn on exactly that rejection and ended without any terminal payload.
  */
 export const APPLICATION_FAILURE_DETAIL_MAX = 2000;
 

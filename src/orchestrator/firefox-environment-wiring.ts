@@ -17,7 +17,7 @@ import {
 } from '../environment/declared-filter-baseline';
 import { ExtensionLaunchFamily } from '../environment/extension-launch';
 import type {
-FirefoxExtensionEnvironmentOptions,
+    FirefoxExtensionEnvironmentOptions,
 } from '../environment/firefox-extension-environment';
 import type { LoadedInstruction } from '../knowledge/instruction-loader';
 import type { FirefoxPreparedExtension, PreparedExtension } from '../local/prepared-extension';

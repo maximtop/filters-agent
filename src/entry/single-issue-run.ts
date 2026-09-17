@@ -325,9 +325,7 @@ async function runInsideWorkspace(
             logger,
             extractReport: dependencies.extractReport,
             usageCollector,
-            ...(request.trustedRoles !== undefined
-                ? { trustedRoles: request.trustedRoles }
-                : {}),
+            ...(request.trustedRoles !== undefined ? { trustedRoles: request.trustedRoles } : {}),
         });
     } catch (error) {
         logCaughtError(logger, 'intake extraction', error, { issueNumber: request.issueNumber });

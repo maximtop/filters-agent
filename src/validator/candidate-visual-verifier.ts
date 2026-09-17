@@ -62,6 +62,21 @@ export interface CandidateVisualVerifierResult {
 }
 
 /**
+ * The runner-computed network scope of the candidate under review.
+ *
+ * Computed from runner-owned inputs only — the candidate rule and the trusted reported URL — so
+ * the synthesis prompt and the verdict derived from its answer read the same scope.
+ *
+ * @param options - The review's options.
+ * @returns The candidate's network scope; not applicable when the reported URL is unknown.
+ */
+function reviewNetworkScope(options: CandidateVisualVerifierOptions): CandidateNetworkScope {
+    return options.reportedPageUrl === undefined
+        ? CandidateNetworkScope.NotApplicable
+        : deriveCandidateNetworkScope(options.candidateRule, options.reportedPageUrl);
+}
+
+/**
  * Build the final text-only request after every evidence image was inspected in bounded calls.
  *
  * @param options - Trusted review options containing candidate and runner context.
@@ -107,7 +122,10 @@ function buildReviewMessages(
             'for every numbered AFTER observation: remaining retains it as the same unresolved',
             'defect, while not_same_symptom dismisses normal gutters, intentional spacing, or',
             'another visually distinct feature with a rationale.',
-            ...synthesisResidueRubric(options.symptomKind ?? SymptomKind.Ads),
+            ...synthesisResidueRubric(
+                options.symptomKind ?? SymptomKind.Ads,
+                reviewNetworkScope(options),
+            ),
             'An AFTER observation that',
             'visually repeats the reporter-defined symptom anywhere on the page must be remaining,',
             'even when it is smaller, less severe, at a different landmark, or less prominent than',
@@ -320,10 +338,7 @@ export async function reviewCandidateVisually(
 
     // Computed here, from runner-owned inputs only, so the whole review — verdict, basis, and the
     // stored scope the schema re-derives both from — is decided in one place.
-    const candidateNetworkScope =
-        options.reportedPageUrl === undefined
-            ? CandidateNetworkScope.NotApplicable
-            : deriveCandidateNetworkScope(options.candidateRule, options.reportedPageUrl);
+    const candidateNetworkScope = reviewNetworkScope(options);
     const integrityBasis = deriveCandidateVisualIntegrityBasis(
         semanticOutput,
         candidateNetworkScope,

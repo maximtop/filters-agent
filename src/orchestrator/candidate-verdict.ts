@@ -261,13 +261,13 @@ export function deriveFixRunStatus(
 }
 
 /**
- * Name why a runner-bound experiment does not carry a verified visual-agent review, or nothing
- * when it does.
+ * Name why a runner-bound experiment does not carry a verified visual-agent review, or nothing when
+ * it does.
  *
  * Browser measurements remain evidence only. This function checks mechanical provenance and
- * evidence binding; it never interprets whether page content is semantically correct. Every
- * refusal is named: a live run that lost a verified candidate here could not say which of a dozen
- * bindings had slipped, and the answer cost a day of reruns.
+ * evidence binding; it never interprets whether page content is semantically correct. Every refusal
+ * is named: a live run that lost a verified candidate here could not say which of a dozen bindings
+ * had slipped, and the answer cost a day of reruns.
  *
  * @param factual - Parsed collect-only candidate experiment artifact.
  * @param candidatePatch - Candidate patch expected in Phase C.

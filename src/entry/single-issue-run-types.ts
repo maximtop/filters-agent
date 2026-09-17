@@ -87,9 +87,9 @@ export const DefaultSingleIssueFailure = {
     PublicationFailed: 'publication_failed',
 
     /**
-     * The run instruction declares a file-backed verification method: no session in this run
-     * writes the file the host would read back, so the phase could never verify. Refused before
-     * the issue is fetched or intake extraction runs.
+     * The run instruction declares a file-backed verification method: no session in this run writes
+     * the file the host would read back, so the phase could never verify. Refused before the issue
+     * is fetched or intake extraction runs.
      */
     FileBackedApplicationUnsupported: 'file_backed_application_unsupported',
 } as const;

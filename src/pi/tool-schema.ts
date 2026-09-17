@@ -28,7 +28,47 @@ import { toJsonSchema } from '@valibot/to-json-schema';
  */
 
 /**
+ * The JSON Schema `type` every function-parameters schema must declare at its root.
+ *
+ * The OpenAI function-calling contract, and the strict OpenAI-compatible upstreams TokenGuard
+ * routes to, refuse a `parameters` object whose root lacks `type: "object"`: live run 34446626531
+ * lost two fix runs mid-session to `Invalid schema for function 'finish_fix': schema must be a JSON
+ * Schema of 'type: "object"', got 'type: null'` once the gateway's load balancer moved them onto
+ * such an upstream. `@valibot/to-json-schema` renders a `v.union` of objects as a bare `anyOf` with
+ * no root type, which is what those upstreams reject.
+ */
+const OBJECT_ROOT_TYPE = 'object';
+
+/**
+ * The composition keywords under which a union of object branches hides its root type.
+ */
+const UNION_KEYWORDS = ['anyOf', 'oneOf'] as const;
+
+/**
+ * Whether every branch of a rendered union declares the object type itself.
+ *
+ * @param branches - The rendered union branches.
+ * @returns True when the union can only ever match an object.
+ */
+function everyBranchIsObject(branches: unknown): boolean {
+    return (
+        Array.isArray(branches) &&
+        branches.length > 0 &&
+        branches.every(
+            (branch) =>
+                typeof branch === 'object' &&
+                branch !== null &&
+                (branch as Record<string, unknown>)['type'] === OBJECT_ROOT_TYPE,
+        )
+    );
+}
+
+/**
  * Convert a Valibot tool-parameters schema into the JSON Schema object pi advertises to the model.
+ *
+ * A union of object shapes gets its root `type: "object"` stated explicitly. That adds no
+ * constraint — every branch already requires an object, so pi's pre-execute check accepts and
+ * rejects exactly what it did before — but it is the root declaration strict upstreams insist on.
  *
  * @param schema - The Valibot schema declared on a tool spec.
  * @returns The JSON Schema registered as the tool's parameters.
@@ -39,5 +79,11 @@ export function toAdvertisedSchema(schema: v.GenericSchema): Record<string, unkn
     // Master's hand-built `finishFixParameters()` stripped the same key before advertising; this
     // keeps the wire schema to keywords that describe the arguments.
     const { $schema: _dialect, ...advertised } = toJsonSchema(schema) as Record<string, unknown>;
+    if (
+        advertised['type'] === undefined &&
+        UNION_KEYWORDS.some((keyword) => everyBranchIsObject(advertised[keyword]))
+    ) {
+        return { type: OBJECT_ROOT_TYPE, ...advertised };
+    }
     return advertised;
 }

@@ -483,23 +483,23 @@ export async function runAgenticFixCore(
         }
         const { candidatePatch, candidateVerified, verifiedScreenshots, semanticRefusal } =
             resolveCandidateVerdict({
-            proposedCandidate,
-            selectedValidation,
-            trace: run.trace,
-            artifacts,
-            trustedValidationContext,
-            browserUsable: browserState.usable,
-            // An agentic candidate is only verified when it is bound to the exact browser session
-            // that proved it, and only when that whole binding — not the screenshots alone —
-            // serializes into the published evidence.
-            boundToVerifiedEnvironment: verifiedCandidateEnvironment !== undefined,
-            completeCandidateEvidence: (screenshots) =>
-                serializeVerifiedCandidateBinding(
-                    runtimeCandidateBinding,
-                    selectedValidation,
-                    screenshots,
-                ) !== undefined,
-        });
+                proposedCandidate,
+                selectedValidation,
+                trace: run.trace,
+                artifacts,
+                trustedValidationContext,
+                browserUsable: browserState.usable,
+                // An agentic candidate is only verified when it is bound to the exact browser session
+                // that proved it, and only when that whole binding — not the screenshots alone —
+                // serializes into the published evidence.
+                boundToVerifiedEnvironment: verifiedCandidateEnvironment !== undefined,
+                completeCandidateEvidence: (screenshots) =>
+                    serializeVerifiedCandidateBinding(
+                        runtimeCandidateBinding,
+                        selectedValidation,
+                        screenshots,
+                    ) !== undefined,
+            });
         const candidateValidationEvidence = serializeVerifiedCandidateBinding(
             runtimeCandidateBinding,
             selectedValidation,

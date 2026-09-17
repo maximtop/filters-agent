@@ -97,24 +97,29 @@ export type PhaseApplicationOutcomeKind =
 /**
  * Turn cap of one application session.
  *
- * Why this value: application is a bounded procedure of enumerated steps, not an investigation —
- * ten turns fit the built-in AdGuard instruction's flow (open the options page, import, save,
- * report) with retry headroom, while two model-driven phases must fit the 15-minute apply_rule
- * deadline beside the A, B and C observation sessions; adjust through AC3's tracked-case parity,
- * not by growing the number silently.
+ * Why this value: application is a bounded procedure of enumerated steps, not an investigation.
+ * The built-in AdGuard instruction's flow is six steps (open the options page, wait for the
+ * bootstrap, import, confirm, save, report), several of them repeat a message, and a call pi
+ * rejects spends a turn too. Ten turns left a live model no headroom for that: every application
+ * session of two bench runs ended at the cap without its terminal payload (35139965168,
+ * 35146720762). This is one shared bound for every application instruction, never a per-blocker
+ * knob, raised at the maintainer's call (2026-09-17) with those runs as the recorded finding.
  */
-export const APPLICATION_SESSION_MAX_TURNS = 10;
+export const APPLICATION_SESSION_MAX_TURNS = 16;
 
 /**
  * Wall-clock budget of one application session in milliseconds.
  *
- * Why this value: the same 15-minute apply_rule deadline hosts two model-driven application passes
- * plus the observation phase they bracket; three minutes per pass leaves the observations their
- * share while absorbing a fresh-install bootstrap (6-10s on fast hardware) many times over. A real
- * tracked case that cannot converge in three minutes is an AC3 parity finding to record, not a
- * number to raise silently.
+ * Why this value: the 30-minute apply_rule deadline hosts two model-driven application passes
+ * plus the observation phases they bracket. A pass is paced by the model, not by the browser: the
+ * bench model takes 20-50 seconds a turn, so the enumerated steps alone outlast the earlier
+ * three-minute budget, and every application session of two live runs ended without its terminal
+ * payload (35139965168, 35146720762 — the recorded finding this raise answers, at the
+ * maintainer's call, 2026-09-17). Six minutes fits the steps at that pace and leaves the
+ * observations more than half of the deadline. One shared bound for every application
+ * instruction, never a per-blocker knob.
  */
-export const APPLICATION_SESSION_BUDGET_MS = 3 * 60_000;
+export const APPLICATION_SESSION_BUDGET_MS = 6 * 60_000;
 
 /**
  * Resolved bounds of one application session.
