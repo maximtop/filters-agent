@@ -11,6 +11,10 @@ import {
     type FilterListRef,
 } from './filter-list-ref';
 import { SUBSCRIPTION_URL_PATTERN } from './official-filter-catalog';
+import {
+    classifyMissingCatalogFilterId,
+    type MissingCatalogFilterClassification,
+} from './third-party-filter-catalog';
 
 /**
  * Key prefix of every list file checked into the run's repository; the suffix is the
@@ -103,22 +107,23 @@ export interface ListCatalog {
 }
 
 /**
- * The executor projection of a list catalog: the references the preparation request carries, or the
- * explicit marker of the official id that could not resolve.
+ * The executor projection of a list catalog: the convergent subset of official refs the preparation
+ * request carries, and the classified conflict for every requested id that fell outside it.
  */
 export interface ListCatalogProjection {
     /**
-     * The requested lists: exactly one official ref per requested id, or empty when an id did not
-     * resolve.
+     * The convergent subset: exactly one official ref per requested id the pinned catalog
+     * publishes, in evidence order. Empty when no requested id resolved at all — including the
+     * empty request an instruction-declared launch makes.
      */
-    requestedLists: readonly FilterListRef[];
+    convergentLists: readonly FilterListRef[];
 
     /**
-     * The first requested official filter id absent from the pinned catalog, or null when every id
-     * resolved. This is the marker the runtime feeds its fail-closed `BaselineManifestInvalid`
-     * naming — never an error.
+     * Every requested id the pinned official catalog does not publish, classified against the
+     * third-party registry snapshot so a known list is named with its subscription URL and anything
+     * else is recorded as an unknown id. Empty when the whole requested set converged.
      */
-    unresolvedFilterId: number | null;
+    conflicts: readonly MissingCatalogFilterClassification[];
 }
 
 /**
@@ -317,14 +322,22 @@ export function buildListCatalog(input: {
 }
 
 /**
- * Project the run's requested official filter ids onto the lists the executor request carries.
+ * Split the run's requested official filter ids into the lists the executor request carries and the
+ * conflicts the run records instead.
  *
- * Reproduces today's request byte for byte: exactly one `officialAdguardListRef` per requested id,
- * in evidence order. An id outside the pinned catalog resolves to the explicit unresolved marker
- * carrying that id — the fail-closed construction's input, never an error and never a silent
- * narrowing. No executor loads the repository's own list files yet, so a run's catalog entries
- * never reach the executor request this way; `namesOwnedPath` in `placement-tool.ts` is the
- * ownership guard over those entries.
+ * The split is the same policy the browser-extension launch already applies against the installed
+ * build catalog: an id the catalog publishes becomes exactly one `officialAdguardListRef` in
+ * evidence order, an id it does not is classified against the third-party registry snapshot and
+ * left out of the request. Refusing the whole set on the first such id is what a live desktop run
+ * of AdguardFilters #241534 did — the reporter had third-party list 207 (Adblock Warning Removal
+ * List) enabled, so the run ended `capability_limited` before `apply_rule` ever executed, and
+ * AdguardFilters reporters enable third-party lists often enough that this takes out a large share
+ * of real desktop reports. Deciding what an empty subset means belongs to the caller, which is the
+ * only layer that knows whether the request was empty to begin with.
+ *
+ * No executor loads the repository's own list files yet, so a run's catalog entries never reach the
+ * executor request this way; `namesOwnedPath` in `placement-tool.ts` is the ownership guard over
+ * those entries.
  *
  * @param officialFilterIds - The requested official AdGuard filter ids, in evidence order.
  * @returns The projection the runtime hands to the executor request.
@@ -332,13 +345,15 @@ export function buildListCatalog(input: {
 export function requestedListsForExecutor(
     officialFilterIds: readonly number[],
 ): ListCatalogProjection {
-    const requestedLists: FilterListRef[] = [];
+    const convergentLists: FilterListRef[] = [];
+    const conflicts: MissingCatalogFilterClassification[] = [];
     for (const filterId of officialFilterIds) {
         const listRef = officialAdguardListRef(filterId);
         if (listRef === null) {
-            return { requestedLists: [], unresolvedFilterId: filterId };
+            conflicts.push(classifyMissingCatalogFilterId(filterId));
+            continue;
         }
-        requestedLists.push(listRef);
+        convergentLists.push(listRef);
     }
-    return { requestedLists, unresolvedFilterId: null };
+    return { convergentLists, conflicts };
 }

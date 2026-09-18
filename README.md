@@ -191,6 +191,32 @@ run at start, naming the instruction.
 The two uBlock Origin examples declare the placement uAssets uses, so a repository that copies one
 in gets the current year's filters file and a preceding comment holding the issue URL.
 
+### What the report can say
+
+A `## Report template` section in your instruction replaces the built-in comment, and it is filled
+from exactly these placeholders — every one of them, every run, empty when the run has nothing to
+put there. A section whose placeholders all come out empty is dropped from the comment, so a
+template can carry a heading for a case that rarely happens.
+
+| Placeholder | What it carries |
+| --- | --- |
+| `{{outcome}}` | One line: a rule was proposed, the run ended analysis-only, the report was answered without a patch, or the run failed. |
+| `{{outcomeReason}}` | Why it ended that way, when the reason is not the outcome itself. |
+| `{{versionUpdateHint}}` | That the reporter's blocker version is behind and the defect does not reproduce on the current one. |
+| `{{symptom}}` | Whether the reported defect reproduced, and what the run saw. |
+| `{{rule}}` | The verified rule, as a code span. |
+| `{{candidateForReview}}` | The rule an analysis-only run found and could not verify, with why. |
+| `{{stillVisible}}` | What the vision review still saw on the page after that rule — the locations the reporter named that it did not fix. Empty for a verified rule, since one leftover instance is what rejects a candidate. |
+| `{{executor}}`, `{{executorVersion}}` | The blocker the run actually drove, and its version. |
+| `{{policyRationale}}` | Why the rule is allowed under the policy documents your instruction links. |
+| `{{listPlace}}` | The file the rule goes into, and where inside it. |
+| `{{missingInformation}}` | What the report would need to be actionable, when something is missing. |
+| `{{artifactsLink}}` | Link to the workflow run holding the full evidence. |
+
+A template that omits a placeholder simply never shows it; nothing fails. That also means a
+template written against an older version of this action silently loses whatever was added since,
+so it is worth re-reading this table after an upgrade.
+
 ## Inputs
 
 | Input | Required | Description |

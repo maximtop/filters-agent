@@ -88,7 +88,7 @@ import {
 } from '../environment/filtering-environment';
 import type { CliAdapterProof } from '../environment/environment-proofs';
 import { INTERACT_PAGE_TOOL_NAME } from '../agent/interact-page-tool';
-import { requestedListsForExecutor } from '../environment/list-catalog';
+import { convergeExecutorRequestedLists } from './executor-list-convergence';
 import {
     buildAgentRuntimeListCatalog,
     type AgentRuntimeListCatalogBundle,
@@ -331,21 +331,6 @@ export interface PhaseBootstrapInfrastructureFailure {
      * Native failure message preserved for diagnostics and classification.
      */
     detail: string;
-}
-
-/**
- * Detail of the preparation limitation raised when a requested filter id does not resolve to a
- * pinned official AdGuard list.
- *
- * The runtime keeps its requested selections numeric (reporter and settings evidence carry ids), so
- * the id — not a list key — is the identity diagnostics must name. The classification mirrors the
- * adapters' own fail-closed contract for an unresolvable requested entry.
- *
- * @param filterId - The offending numeric filter id.
- * @returns Bounded single-line limitation detail naming that id.
- */
-function unresolvableRequestedFilterDetail(filterId: number): string {
-    return `Requested filter id ${filterId} is absent from the AdGuard filter catalog.`;
 }
 
 /**
@@ -3569,9 +3554,9 @@ export class AgentRuntime {
      * Lazily create, prepare, and register the locked executor's common filtering environment.
      *
      * One path for every executor: the adapter comes from the locked registration's
-     * `createAdapter`, and the requested lists come from the run's list catalog projected over the
-     * ids the executing selection carries — the browser-verified extension settings for an
-     * extension-executing run, the activated selection's reported ids otherwise.
+     * `createAdapter`, and the requested lists are the run's executing ids converged onto the
+     * AdGuard catalog — the browser-verified extension settings for an extension-executing run, the
+     * activated selection's reported ids otherwise.
      *
      * An adapter whose constructor refuses the run's session shape answers with the proof-integrity
      * limitation, so no executor receives a request the runtime cannot build.
@@ -3606,26 +3591,25 @@ export class AgentRuntime {
             ? []
             : (state.extensionBaselineReadBack?.optionsEnabledFilterIds ??
               this.activatedReporterFilterIds);
-        // The executor request is a projection of the run's requested official ids, not a bespoke
-        // id loop: exactly one official ref per requested id, today's request verbatim. Mirrors the
-        // adapters' own fail-closed contract for an unresolvable requested id: the projection
-        // surfaces it as its explicit unresolved marker, preparation stops before any adapter
-        // exists, and the offending id is named instead of surfacing later as a bare failure inside
-        // the adapter.
-        const projection = requestedListsForExecutor(executingFilterIds);
-        if (projection.unresolvedFilterId !== null) {
-            const limitation: EnvironmentAdapterLimitation = {
-                code: EnvironmentAdapterLimitationCode.BaselineManifestInvalid,
-                stage: EnvironmentLimitationStage.Preparation,
-                detail: unresolvableRequestedFilterDetail(projection.unresolvedFilterId),
-            };
+        // The executor request converges the run's requested official ids onto the ids the AdGuard
+        // catalog publishes, and records the rest as the run's classified filter-selection
+        // approximation — the same policy the browser-extension launch applies against the
+        // installed build catalog. Refusing on the first absent id instead cost a live desktop run
+        // of AdguardFilters #241534 its whole investigation: the reporter had third-party list 207
+        // enabled, so the run ended `capability_limited` before `apply_rule` ever executed.
+        const convergence = convergeExecutorRequestedLists({
+            requestedFilterIds: executingFilterIds,
+            environmentHost: this.environmentHost,
+            verbose: this.options.verbose ?? false,
+        });
+        if (convergence.limitation) {
             this.filteringEnvironmentDisposition = {
                 status: 'capability_limited',
                 candidateDigest: null,
-                failure: limitation,
+                failure: convergence.limitation,
             };
-            this.recordFilteringEnvironmentLimitation(limitation);
-            return limitation;
+            this.recordFilteringEnvironmentLimitation(convergence.limitation);
+            return convergence.limitation;
         }
         const registration = this.lockedExecutorRegistration();
         if (!registration) {
@@ -3682,7 +3666,7 @@ export class AgentRuntime {
         let adapter: FilteringEnvironmentAdapter;
         try {
             adapter = registration.createAdapter({
-                requestedLists: projection.requestedLists,
+                requestedLists: convergence.lists,
                 extensionOptions,
                 firefoxExtensionOptions,
                 evidenceRoute: this.cliEvidenceRoute,
@@ -3703,7 +3687,7 @@ export class AgentRuntime {
             this.options.recorder.toJSON().runId,
             this.environmentHost,
         );
-        const prepared = await adapter.prepare({ requestedLists: projection.requestedLists });
+        const prepared = await adapter.prepare({ requestedLists: convergence.lists });
         recorder.registerAdapter(adapter.snapshot());
         this.filteringEnvironmentAdapter = adapter;
         this.filteringEnvironmentRecorder = recorder;
