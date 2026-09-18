@@ -31,6 +31,7 @@ import { InfrastructureFailureReason } from '../types/infrastructure-failure-rea
 import type { MissingInformationEntry } from '../types/missing-information';
 import { renderVersionUpdateHint } from './report-version-decision';
 import type { ReportTemplateValues } from './report-template';
+import { composeListPlace, type ReportRepositoryEdit } from './report-list-place';
 import { renderUntrustedRuleCodeSpan, renderUntrustedText } from './untrusted-text';
 
 /**
@@ -195,6 +196,24 @@ export interface ReportCandidateForReview {
 }
 
 /**
+ * One symptom instance the vision review still saw after the candidate, as the report reads it.
+ *
+ * Narrow on purpose: the report names where it is and what it looks like, never the runner artifact
+ * it was cited from — an artifact ID means nothing to a maintainer reading the issue.
+ */
+export interface ReportRemainingInstance {
+    /**
+     * Page landmark locating the instance, as the review recorded it.
+     */
+    landmark: string;
+
+    /**
+     * What the review saw there.
+     */
+    description: string;
+}
+
+/**
  * The verified candidate fields the report shows, narrow so tests pass plain partial shapes.
  */
 export interface ReportCandidatePatch {
@@ -207,6 +226,11 @@ export interface ReportCandidatePatch {
      * The filter file the rule lands in — the agreed "place in the list" reading.
      */
     filePath: string;
+
+    /**
+     * The host-planned edit, when the run planned one: it names the place inside the file.
+     */
+    repositoryEdit?: ReportRepositoryEdit;
 }
 
 /**
@@ -264,14 +288,21 @@ export interface ReportRunResultInput {
     candidateForReview?: ReportCandidateForReview;
 
     /**
-     * The part of the runner-bound vision review the report speaks to: whether the verified
-     * candidate left advertising layout behind.
+     * The parts of the runner-bound vision review the report speaks to: whether the verified
+     * candidate left advertising layout behind, and what the review still saw on the page after a
+     * candidate it did not verify.
      */
     candidateVisualReview?: {
         /**
          * The review's leftover-layout judgment (`present`, `absent` or `unclear`).
          */
         adLayoutResidue?: string;
+
+        /**
+         * Symptom instances the review still found after the candidate, in review order. Empty for
+         * a verified candidate: a remaining instance is one of the things that rejects one.
+         */
+        remainingInstances?: readonly ReportRemainingInstance[];
     };
 
     /**
@@ -373,6 +404,11 @@ export interface ReportOutcomeSummary {
      * carried none.
      */
     candidateForReview?: ReportCandidateForReview;
+
+    /**
+     * What the vision review still saw on the page after the candidate, absent when it saw nothing.
+     */
+    remainingInstances?: readonly ReportRemainingInstance[];
 
     /**
      * The filter file the rule lands in — the agreed "place in the list" reading.
@@ -499,6 +535,47 @@ function composeCandidateForReview(candidate: ReportCandidateForReview | undefin
 }
 
 /**
+ * Remaining instances the report lists before summarizing the rest as a count.
+ *
+ * The review may record up to fifty, and a maintainer deciding whether the candidate is worth
+ * widening needs the shape of what is left, not an inventory: five locations show whether the
+ * leftovers repeat the same unit or sit somewhere the rule never reached, and the count line keeps
+ * the report honest about the ones it did not print.
+ */
+const MAX_REPORTED_REMAINING_INSTANCES = 5;
+
+/**
+ * Render what the vision review still saw after the candidate as the block its section carries.
+ *
+ * This is the runner-bound review record, not model prose about it: two live runs published a
+ * report that read as a complete fix — sitepoint.com kept a header banner the reporter had named,
+ * nottinghampost.com kept the placeholder bands between its sections — because nothing in the
+ * report said what the review had seen after the rule. An empty list renders the empty string,
+ * which is what drops the section out of the body.
+ *
+ * @param instances - Instances the review still found, or undefined when it recorded none.
+ * @returns The block to fill the section with, or the empty string.
+ */
+function composeStillVisible(instances: readonly ReportRemainingInstance[] | undefined): string {
+    const recorded = instances ?? [];
+    if (recorded.length === 0) {
+        return '';
+    }
+    const lines = recorded
+        .slice(0, MAX_REPORTED_REMAINING_INSTANCES)
+        .map(
+            (instance) =>
+                `- ${renderUntrustedText(instance.landmark)} — ` +
+                renderUntrustedText(instance.description),
+        );
+    const omitted = recorded.length - lines.length;
+    if (omitted > 0) {
+        lines.push(`- and ${omitted} more of the same, in the run artifacts`);
+    }
+    return lines.join('\n');
+}
+
+/**
  * Combine the symptom observation with the model-authored summary.
  *
  * @param result - Verified run-result fields under projection.
@@ -589,7 +666,16 @@ export function summarizeReportOutcome(
         ...(result.candidateForReview === undefined
             ? {}
             : { candidateForReview: result.candidateForReview }),
-        listPlace: result.candidatePatch?.filePath ?? '',
+        // No condition on the run status: a verified review cannot carry a remaining instance —
+        // one is enough to reject the candidate — so a non-empty list is exactly the rejected or
+        // analysis-only case the maintainer has to see.
+        ...(result.candidateVisualReview?.remainingInstances === undefined
+            ? {}
+            : { remainingInstances: result.candidateVisualReview.remainingInstances }),
+        listPlace: composeListPlace(
+            result.candidatePatch?.filePath,
+            result.candidatePatch?.repositoryEdit,
+        ),
         executor:
             result.extensionProvenance === undefined
                 ? ''
@@ -621,6 +707,7 @@ export function buildReportTemplateValues(summary: ReportOutcomeSummary): Report
                 ? renderUntrustedRuleCodeSpan(summary.rule)
                 : `${renderUntrustedRuleCodeSpan(summary.rule)}\n\n${summary.ruleNote}`,
         candidateForReview: composeCandidateForReview(summary.candidateForReview),
+        stillVisible: composeStillVisible(summary.remainingInstances),
         executor: summary.executor,
         executorVersion: summary.executorVersion,
         policyRationale: renderUntrustedText(summary.policyRationale),

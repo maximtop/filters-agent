@@ -12,7 +12,7 @@ import { generatePlacementMap } from '../repo/placement-map';
 import { normalizeRule } from '../repo/rule-normalizer';
 import * as v from 'valibot';
 import { TraceArtifactStore, type IArtifactStore } from '../tracer/artifact-store';
-import type { DeclaredPlacement } from '../types/declared-placement';
+import type { DeclaredPlacementSet } from '../types/declared-placement';
 import { ProblemTypeSchema } from '../types/issue-facts';
 import type { PlacementMap } from '../types/repo-context';
 import {
@@ -97,7 +97,7 @@ export interface ToolRegistryOptions {
      * the answer `resolve_placement` gives and the file the candidate's edit appends to; omitted,
      * the deterministic language-and-section routing stays in charge.
      */
-    declaredPlacement?: DeclaredPlacement;
+    declaredPlacement?: DeclaredPlacementSet;
 }
 
 /**

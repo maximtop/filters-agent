@@ -75,6 +75,7 @@ import {
     isBreakageSymptom,
     symptomKindForProblemType,
 } from '../validator/symptom-rubric';
+import { composeReporterSymptomScope } from '../validator/reporter-symptom-scope';
 import {
     CandidateOperation,
     CANDIDATE_OPERATION_VALUES,
@@ -116,7 +117,7 @@ import type { MatchedIssueScreenshot } from '../types/site-analysis';
 import type { IssueFacts } from '../types/issue-facts';
 import { parseRuleApplication } from '../knowledge/instruction-application';
 import type { LoadedInstruction } from '../knowledge/instruction-loader';
-import type { DeclaredPlacement } from '../types/declared-placement';
+import type { DeclaredPlacementSet } from '../types/declared-placement';
 import type { LlmConfig } from '../config/config';
 import type { PiRuntime } from '../pi/runtime';
 import type { RunUsageCollector } from '../pi/usage-collector';
@@ -461,7 +462,7 @@ export interface AgentRuntimeOptions {
      * the answer `resolve_placement` gives and the file the candidate's edit appends to; absent
      * leaves the deterministic language-and-section routing in charge.
      */
-    declaredPlacement?: DeclaredPlacement;
+    declaredPlacement?: DeclaredPlacementSet;
 
     /**
      * Validated LLM provider configuration the bounded application sessions are launched with.
@@ -3890,11 +3891,18 @@ export class AgentRuntime {
             recorder: this.options.recorder,
             artifactsDir: this.options.artifactsDir,
             vision: this.options.vision,
-            // A model-supplied description wins: reporter screenshots often cannot show a
-            // breakage at all, because what defines it is content that is missing.
+            // The reporter's own material leads and the model's per-candidate description follows
+            // as what this one rule targets. It used to be the other way round — the model's
+            // description won outright — and the review then verified a sitepoint.com candidate
+            // against the three ad units it happened to cover while the header banner the reporter
+            // had also named stayed on the page. See `composeReporterSymptomScope`.
             reporterSymptom:
-                modelSymptomDescription ??
-                this.reporterSymptom() ??
+                composeReporterSymptomScope({
+                    reportedProblem: this.options.issueFacts.userComment,
+                    issueText: [this.options.issue.title, this.options.issue.body].join('\n'),
+                    screenshotObservations: this.reporterScreenshotObservations,
+                    candidateTarget: modelSymptomDescription,
+                }) ??
                 (isBreakageSymptom(this.symptomKind())
                     ? 'The exact site breakage described by the reporter.'
                     : 'The exact advertising symptom described by the reporter.'),

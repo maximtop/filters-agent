@@ -93,8 +93,11 @@ export const TOOL_GUIDANCE: Readonly<Record<string, string>> = {
     [ToolName.SearchRules]:
         'Searches AdguardFilters by domain, selector, URL pattern, or scriptlet. A domain-only query is a compact grouped inventory: follow it with a focused selector, URL pattern, or scriptlet query for exact matches. Search the stable base of a compound modifier selector and validate an exact existing base element-hiding rule as a domain-scoped ## candidate before the modifier. A reported domain absent from a matching shared rule is an expected extend_domains candidate, not a reason to ignore it.',
     [ToolName.ResolvePlacement]:
-        'Determines which filter file and section a candidate rule belongs in, and the exact ' +
-        'line it would be inserted at.',
+        'Determines which list file a candidate rule belongs in and the exact line it would be ' +
+        'inserted at, from the repository itself: the run instruction if it declares a placement ' +
+        "for this rule's kind, otherwise where the reported site's rules already are, where " +
+        'similar rules are, or where rules of this shape are kept. A file whose rules are sorted ' +
+        'gets a sorted insert. Answers with no plan when the repository holds nothing to go on.',
     [ToolName.PolicyCheck]:
         'Checks whether filter policy allows rule generation (first-party ads, paywalls, German anti-adblock). Returns propose_close, needs_human_review, or allow_rule_generation with cited reasons.',
     [ToolName.ScoreRisk]:

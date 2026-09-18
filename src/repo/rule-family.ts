@@ -26,6 +26,27 @@ export function isExtensibleFamilyKind(kind: RuleKind): boolean {
 }
 
 /**
+ * Test whether two normalized rules belong to the same broad repository placement family.
+ *
+ * Element hiding, CSS injection, ExtendedCSS, and scriptlets commonly share one domain block in
+ * AdguardFilters. Network rules are kept separate from that cosmetic family.
+ *
+ * @param candidateKind - Kind of the locked candidate rule.
+ * @param existingKind - Kind of one existing repository rule.
+ * @returns Whether the rules can share a reported-domain placement block.
+ */
+export function samePlacementFamily(candidateKind: RuleKind, existingKind: RuleKind): boolean {
+    if (candidateKind === RuleKind.Network) {
+        return existingKind === RuleKind.Network;
+    }
+    const candidateIsCosmetic =
+        candidateKind === RuleKind.Cosmetic || candidateKind === RuleKind.Scriptlet;
+    const existingIsCosmetic =
+        existingKind === RuleKind.Cosmetic || existingKind === RuleKind.Scriptlet;
+    return candidateIsCosmetic && existingIsCosmetic;
+}
+
+/**
  * Identity of a rule family: the complete rule expression with its domain scope removed.
  *
  * Two rules with the same signature differ only in which sites they apply to, so one may be folded

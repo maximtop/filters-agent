@@ -97,6 +97,10 @@ extension itself rather than the lists.
 
 {{candidateForReview}}
 
+### Still visible after the rule
+
+{{stillVisible}}
+
 ### Executor and version
 
 {{executor}} {{executorVersion}}
@@ -109,9 +113,11 @@ extension itself rather than the lists.
 
 {{listPlace}}
 
-Proposed placement: appended at the end of the list file the reported page belongs to, with the
-issue URL in a preceding comment. The user rule the run verified against is the in-browser
-application path only; the list file is where the fix is proposed to ship.
+Proposed placement: the list file and position the host resolved for this rule. This instruction
+declares no placement, so the host picks the list the repository already keeps rules like this one
+in and the position that list's own order implies — its sorted place in a sorted list, the end
+otherwise. The user rule the run verified against is the in-browser application path only; the list
+file is where the fix is proposed to ship.
 
 ### Missing information
 

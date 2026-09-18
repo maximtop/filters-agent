@@ -5,6 +5,16 @@
  */
 export const PlacementBasis = {
     /**
+     * The section the rule belongs to keeps its rules sorted; the rule takes its sorted place.
+     *
+     * This is the position before every other: in a sorted file a domain's rules are scattered
+     * rather than adjacent, so the domain block would find nothing, and an appended line arrives
+     * out of place — EasyList runs `FOP.py` over its lists and asks contributors for "the correct
+     * position following ASCII ascending sorting".
+     */
+    SortedPosition: 'sorted_position',
+
+    /**
      * The target file already holds rules for the candidate's domain; the rule joins them.
      */
     DomainBlock: 'domain_block',

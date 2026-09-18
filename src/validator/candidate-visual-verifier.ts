@@ -19,11 +19,11 @@ import {
 import { CandidateNetworkScope, deriveCandidateNetworkScope } from './candidate-network-scope';
 import {
     MAX_CANDIDATE_RULE_CHARS,
-    MAX_REPORTER_SYMPTOM_CHARS,
     inventoryOverviewImage,
     inventoryPlannedFullPageOverview,
     inventoryTileState,
 } from './candidate-visual-inventory';
+import { MAX_REPORTER_SYMPTOM_CHARS } from './reporter-symptom-scope';
 import {
     CandidateVisualEvidenceSource,
     boundedModel,

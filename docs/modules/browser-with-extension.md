@@ -223,6 +223,16 @@ directory per filter, as AdguardFilters ships it (`BaseFilter/filter.txt`,
 uAssets checkout collapsed into one filter with one section index: one placement target, no
 alternatives, and no cross-list selector classification.
 
+Which of those lists a rule goes into is decided by the map's shape. A map holding a `BaseFilter`
+keeps the AdguardFilters language-and-section routing (`placement-resolver.ts`); any other map is
+read instead of routed (`placement-evidence.ts`, `placement-evidence-routing.ts`): the list already
+holding the reported site's rules of that kind, then the list the run's similar-rule hints all point
+at, then the list holding the most rules of the candidate's shape — and no target at all when the
+checkout holds none, because the routing's old fallback answered a real EasyList clone with
+`cleaned-domains.txt`, 1064 bare dead domains at the repository root. The position inside the chosen
+file is the sorted one when that file's own order proves it sorted (`sorted-insertion.ts`), and
+otherwise the domain block, terminal section, or end of file as before.
+
 **Decision 2 — the AdGuard options-page driver is retired.** Its knowledge became the built-in
 instruction (`src/prompts/documents/instructions/adguard-extension.md`, which a run without its
 own instruction reads through the prompt-document loader) and its code path was deleted in the

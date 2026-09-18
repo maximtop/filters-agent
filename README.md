@@ -127,8 +127,8 @@ The run loads its filter guidance at start from these role documents:
 - [AdguardFilters contributing guide](https://github.com/AdguardTeam/AdguardFilters/blob/master/CONTRIBUTING.md)
 
 Rule placement is deliberately not declared: the deterministic routing already mirrors this
-repository's `<Filter>/sections/*.txt` layout, and one declaration would force every rule into
-a single file.
+repository's `<Filter>/sections/*.txt` layout, which picks a file per language and per rule
+kind — more distinctions than a declaration can name.
 ```
 
 The link labels are what bind the documents: a label containing `syntax`, `policy` or
@@ -138,22 +138,55 @@ answered by a notice saying so, which the run's report carries as missing inform
 
 ### Where an accepted rule goes
 
-With no instruction the action places the rule the way the AdGuard filter repository is laid out:
-the page's language picks the filter, the rule's kind picks the section. A repository that files
-its rules elsewhere says so in its instruction, on one line:
+You do not have to tell the action anything for this to work. It reads your repository and answers
+from what is already in it, in this order:
+
+1. **Where the reported site's rules already are.** When one of your lists already holds at least
+   two rules for that site of the same kind as the new one, that is where the new one goes.
+2. **Where the rules this one resembles are.** When the run found related rules and they all live
+   in one list, that list wins.
+3. **Where rules of this shape are kept.** The list holding the most rules of the candidate's
+   shape — site-scoped hiding, generic hiding, site-scoped blocking, unscoped host blocks,
+   exceptions, scriptlets — is where a rule of that shape belongs. Lines carrying no filter syntax
+   at all, such as a file of bare hostnames, are not rules and never win.
+
+When none of those finds anything the action says so instead of proposing a place: a report naming
+a file nobody files that kind of rule in is worse than a report that names none.
+
+The position inside the file is read the same way. When the list keeps its rules sorted — at least
+98% of adjacent lines in ascending order, in a run of at least 20 rules — the rule takes its sorted
+place, by the whole rule text or, for hiding rules, by the rule with its leading site list removed,
+the way EasyList's `FOP.py` sorts them. Otherwise the rule joins the site's existing rules when it
+has any, and goes at the end when it does not.
+
+An AdGuard filter repository keeps the routing it always had: the page's language picks the filter,
+the rule's kind picks the section.
+
+A repository that wants to say where its rules go declares it in its instruction, and may use one
+line per rule kind:
 
 ```
+placement: cosmetic easylist/easylist_specific_hide.txt
+placement: network easylist/easylist_specific_block.txt
 placement: filters/filters-{{year}}.txt comment: ! {{issueUrl}}
 ```
 
-The path is relative to your checkout and may carry `{{year}}`, the year the run starts on in UTC.
+The optional leading word is the rule kind the line governs — `cosmetic`, `network`, `exception` or
+`scriptlet`. A line naming no kind covers every kind without a line of its own. The path is relative
+to your checkout and may carry `{{year}}`, the year the run starts on in UTC.
+
 The optional `comment:` part is the line written immediately before the rule and may carry
-`{{issueUrl}}`, the URL of the issue being worked; leave it out and no comment is written. The
-declaration wins over the language routing outright: the action proposes that file and appends the
-rule at its end. Keep the file in your repository — a declared file that is not in the checkout is
-still what the report names, but no edit can be proposed for it until it exists. Declare it once:
-a second `placement:` line, an absolute path, or a placeholder other than those two fails the run
-at start, naming the instruction.
+`{{issueUrl}}`, the URL of the issue being worked. It also decides where in the file the rule goes.
+A comment naming the issue makes the file a chronological log, so the rule is appended at the end
+behind that comment — the way uAssets keeps its year files. Leave the comment out and no comment is
+written and the position is read from the file exactly as above, so a sorted list gets a sorted
+insert.
+
+A declaration wins over everything above for the kind it governs. Keep the file in your
+repository — a declared file that is not in the checkout is still what the report names, but no edit
+can be proposed for it until it exists. Each kind is declared once: a kind repeated, a second line
+naming no kind, an unknown kind, an absolute path, or a placeholder other than those two fails the
+run at start, naming the instruction.
 
 The two uBlock Origin examples declare the placement uAssets uses, so a repository that copies one
 in gets the current year's filters file and a preceding comment holding the issue URL.

@@ -6,12 +6,12 @@
  * Both are retryable prerequisites of the terminal judgement (`terminal-outcome-validator`), kept
  * here so that module stays inside the repo's ~500-line rule.
  */
+import { placementRuleTypeForCandidate } from '../repo/candidate-rule-type';
 import { normalizeRule } from '../repo/rule-normalizer';
 import type { FinishFixValidationRejection } from '../types/terminal-rejection';
 import {
     normalizePlacementDomain,
     placementMatches,
-    placementRuleTypeForCandidate,
     reportedDomainFromAllowedTargets,
     type CandidatePlacementResolution,
     type DraftFixOutcome,

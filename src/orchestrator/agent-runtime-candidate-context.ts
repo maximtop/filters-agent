@@ -8,8 +8,8 @@
  */
 import { CandidateOperation } from '../environment/filtering-environment';
 import { FixOutcomeKind, type FixOutcome } from '../pr/fix-outcome';
-import { PlacementRuleType, type PlacementResolution } from '../repo/placement-resolver';
-import { RuleKind, type NormalizedRule } from '../repo/rule-normalizer';
+import type { PlacementResolution } from '../repo/placement-resolver';
+import type { PlacementRuleType } from '../types/placement-rule-type';
 
 /**
  * Maximum browser-bound executions of one semantic candidate after transient vision failures.
@@ -195,30 +195,6 @@ export function normalizePlacementDomain(value: string): string | undefined {
     } catch {
         return undefined;
     }
-}
-
-/**
- * Infer the resolver's concrete placement type from trusted candidate syntax.
- *
- * @param candidate - Deterministically normalized candidate rule.
- * @returns Placement rule type, or undefined for non-actionable syntax.
- */
-export function placementRuleTypeForCandidate(
-    candidate: NormalizedRule,
-): PlacementRuleType | undefined {
-    if (candidate.isException) {
-        return PlacementRuleType.Exception;
-    }
-    if (candidate.kind === RuleKind.Scriptlet) {
-        return PlacementRuleType.Scriptlet;
-    }
-    if (candidate.kind === RuleKind.Network) {
-        return PlacementRuleType.Network;
-    }
-    if (candidate.kind === RuleKind.Cosmetic) {
-        return PlacementRuleType.Cosmetic;
-    }
-    return undefined;
 }
 
 /**

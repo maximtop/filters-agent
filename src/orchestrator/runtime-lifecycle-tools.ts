@@ -27,12 +27,12 @@ import { registerReporterScreenshotTool } from '../agent/reporter-screenshot-too
 import type { FilteringEnvironmentDescriptor } from '../environment/environment-selection';
 import type { RawIssue } from '../github/fetch-issue';
 import { withToolDeadline } from '../pi/session-tools';
+import { placementRuleTypeForCandidate } from '../repo/candidate-rule-type';
 import { PlacementResolutionSchema } from '../repo/placement-resolver';
 import { effectiveRuleScopes, normalizeRule } from '../repo/rule-normalizer';
 import * as v from 'valibot';
 import {
     normalizePlacementDomain,
-    placementRuleTypeForCandidate,
     reportedDomainFromAllowedTargets,
     type CandidatePlacementResolution,
 } from './agent-runtime-candidate-context';

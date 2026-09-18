@@ -1,13 +1,12 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { bindDeclaredPlacement } from '../repo/declared-placement';
-import {
-    PlacementRuleType,
-    PLACEMENT_RULE_TYPE_VALUES,
-    type PlacementInput,
-} from '../repo/placement-resolver';
-import type { DeclaredPlacement } from '../types/declared-placement';
+import { ADGUARD_BASE_FILTER, filterInMap, indexPlacementMap } from '../repo/placement-map-index';
+import { createPlacementEvidenceCollector } from '../repo/placement-evidence';
+import type { PlacementInput } from '../repo/placement-resolver';
+import { declaredPlacementFor, type DeclaredPlacementSet } from '../types/declared-placement';
 import { PlacementBasis } from '../types/placement-basis';
+import { PlacementRuleType, PLACEMENT_RULE_TYPE_VALUES } from '../types/placement-rule-type';
 import type { PlacementMap } from '../types/repo-context';
 import { RepositoryEditKind } from '../types/repository-edit-kind';
 import { registeredParameters } from './registered-parameters';
@@ -245,11 +244,11 @@ export interface ResolvePlacementToolOptions {
     requireGuidance: () => Record<string, unknown> | undefined;
 
     /**
-     * The run instruction's placement declaration, rendered for this run. Supplied, it is the
-     * answer to every placement question this run asks: the repository has said where its rules go
-     * and the map-based routing never runs.
+     * The run instruction's placement declarations, rendered for this run. Supplied, the one
+     * governing the candidate's rule kind is the answer: the repository has said where rules of
+     * that kind go and the map-based routing never runs for them.
      */
-    declaredPlacement?: DeclaredPlacement;
+    declaredPlacement?: DeclaredPlacementSet;
 }
 
 /**
@@ -258,16 +257,23 @@ export interface ResolvePlacementToolOptions {
  * visibility only - candidate build reruns the same pure planner on the same pinned checkout, and
  * the model cannot dictate a position.
  *
- * A run whose instruction declares a placement answers with that declaration instead: the declared
- * file at full confidence with no alternative, and an end-of-file insertion carrying the declared
- * comment line.
+ * A run whose instruction declares a placement for the candidate's rule kind answers with that
+ * declaration instead: the declared file at full confidence with no alternative, and the position
+ * the declaration implies.
+ *
+ * For a repository the AdGuard routing does not describe, the resolver is handed what the checkout
+ * itself holds — where this site's rules are and where rules of this shape are kept. The scan is
+ * this tool's job because the resolver is pure; it runs once per reported domain and not at all for
+ * an AdguardFilters-shaped checkout, which the routing already describes.
  *
  * @param options - Pinned checkout root, its placement map, the guidance gate shared with the other
- *   candidate-evaluation tools, and the run's declared placement when it has one.
+ *   candidate-evaluation tools, and the run's declared placements when it has any.
  * @returns The registrable tool definition and handler.
  */
 export function createResolvePlacementTool(options: ResolvePlacementToolOptions): ToolHandler {
     const { checkoutPath, map, ownedListPaths, requireGuidance, declaredPlacement } = options;
+    const routedByAdguardLayout = filterInMap(indexPlacementMap(map), ADGUARD_BASE_FILTER);
+    const collectEvidence = createPlacementEvidenceCollector(checkoutPath, ownedListPaths);
     return {
         definition: {
             type: 'function',
@@ -291,11 +297,13 @@ export function createResolvePlacementTool(options: ResolvePlacementToolOptions)
             ).includes(ruleTypeRaw)
                 ? (ruleTypeRaw as PlacementRuleType)
                 : PlacementRuleType.Network;
+            const candidateRule = typeof args.candidateRule === 'string' ? args.candidateRule : '';
+            const targetDomain = typeof args.targetDomain === 'string' ? args.targetDomain : '';
             const resolutionInput: PlacementInput = {
                 siteLanguage: typeof args.siteLanguage === 'string' ? args.siteLanguage : 'en',
                 siteRegion: typeof args.siteRegion === 'string' ? args.siteRegion : 'US',
                 ruleType,
-                targetDomain: typeof args.targetDomain === 'string' ? args.targetDomain : '',
+                targetDomain,
                 requestDomain:
                     typeof args.requestDomain === 'string' ? args.requestDomain : undefined,
                 issueLabels: Array.isArray(args.issueLabels)
@@ -311,6 +319,14 @@ export function createResolvePlacementTool(options: ResolvePlacementToolOptions)
                               typeof (e as Record<string, unknown>).filePath === 'string',
                       )
                     : [],
+                ...(candidateRule.length === 0 ? {} : { candidateRule }),
+                // An AdguardFilters-shaped checkout is already described by the routing, so its
+                // corpus is never read: the census would cost a full-tree scan to answer a question
+                // the layout answers, and a same-family domain count could file an ad rule into a
+                // cookie-annoyance list the site already appears in.
+                ...(routedByAdguardLayout || targetDomain.length === 0
+                    ? {}
+                    : { evidence: collectEvidence(targetDomain) }),
             };
             // The model may only steer placement toward the repository's own files: a hint naming
             // a third-party list is refused outright, naming the target, instead of the resolver
@@ -320,10 +336,11 @@ export function createResolvePlacementTool(options: ResolvePlacementToolOptions)
                     return nonOwnedTargetRejection(similar.filePath);
                 }
             }
+            const governingDeclaration = declaredPlacementFor(declaredPlacement, ruleType);
             const declaredTarget =
-                declaredPlacement === undefined
+                governingDeclaration === undefined
                     ? undefined
-                    : bindDeclaredPlacement(checkoutPath, declaredPlacement);
+                    : bindDeclaredPlacement(checkoutPath, governingDeclaration);
             const resolution = resolvePlacement(resolutionInput, map, declaredTarget);
             // Defense in depth over the model trust boundary: the map only names checkout files,
             // so a resolved pick is owned by construction — the check exists to keep that
@@ -331,13 +348,24 @@ export function createResolvePlacementTool(options: ResolvePlacementToolOptions)
             // placement is run configuration rather than a model claim, and its file may not be in
             // the checkout at all yet, so ownership has nothing to say about it.
             if (
-                declaredPlacement === undefined &&
+                governingDeclaration === undefined &&
                 resolution.filePath.length > 0 &&
                 !namesOwnedPath(ownedListPaths, resolution.filePath)
             ) {
                 return nonOwnedTargetRejection(resolution.filePath);
             }
-            const candidateRule = typeof args.candidateRule === 'string' ? args.candidateRule : '';
+            if (resolution.filePath.length === 0) {
+                // The resolver found nothing in the repository to go on and said so. Reporting its
+                // own last reason is the diagnosable answer; handing the empty path to the planner
+                // would replace it with an unsafe-path message that says nothing about placement.
+                return {
+                    ...resolution,
+                    plan: {
+                        available: false,
+                        reason: resolution.reasons.at(-1) ?? 'No placement could be resolved.',
+                    },
+                };
+            }
             const { planRepositoryEdit } = await import('../repo/repository-edit');
             let plan: PlacementPlan;
             try {

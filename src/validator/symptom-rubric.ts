@@ -88,6 +88,22 @@ export function inventoryResidueRubric(kind: SymptomKind): string[] {
 export const PRE_EXISTING_DAMAGE_PREFIX = 'PRE-EXISTING:';
 
 /**
+ * Rubric lines telling an inventory pass how wide the reporter's symptom is.
+ *
+ * An inventory pass sees the candidate rule beside the symptom scope, and on sitepoint.com it
+ * behaved as if the rule bounded the search: the reporter had named a header banner among the ad
+ * units, the candidate's selectors did not reach it, and no pass recorded it even though it is
+ * plainly there in the AFTER capture. The scope handed to the pass is now composed from the
+ * reporter's own report (`reporter-symptom-scope`), and these lines say that the selector is not
+ * the boundary of what to record.
+ */
+export const REPORTER_SCOPE_RUBRIC = [
+    'Record an instance at every location the reporter named, and everywhere on the page that',
+    'visually repeats what they described, whether or not the candidate rule would touch it —',
+    'the candidate is what someone proposed, never the boundary of what to inventory.',
+];
+
+/**
  * Residue rubric lines for the final text-only synthesis prompt.
  *
  * For breakage reviews the `adLayoutResidue` field is repurposed as the filtering-regression guard:

@@ -10,8 +10,9 @@ import {
 } from '../repo/rule-normalizer';
 import { DuplicateClass, RiskLevel, RuleType } from '../types/rule-proposal';
 import { candidateScopeProblem, normalizeScopeDomain } from './candidate-scope';
-import type { DeclaredPlacement } from '../types/declared-placement';
-import { isDeclaredAppendTarget, planRepositoryEdit } from '../repo/repository-edit';
+import type { DeclaredPlacementSet } from '../types/declared-placement';
+import { declaredPlacementForTarget } from '../repo/declared-placement';
+import { planRepositoryEdit } from '../repo/repository-edit';
 import { scoreRisk } from '../risk/risk-scorer';
 import { lintRule } from '../rules/aglint-linter';
 import { parseSafeCssInjectionRule } from '../rules/safe-css-injection';
@@ -39,14 +40,14 @@ export interface CandidateSafetyOptions {
     problemType?: ProblemType;
 
     /**
-     * The run's declared placement, rendered once at run start, when its instruction declares one.
+     * The run's declared placements, rendered once at run start, when its instruction declares any.
      *
      * The gate re-plans the edit to verify the target, so it must plan the same edit the patch
-     * will: against the declared file, appending at its end. Planning the routed way instead would
-     * reject a declared placement for an ambiguity — a shared-rule owner elsewhere — that the
-     * declaration has already settled.
+     * will: against the file the declaration names for this candidate's kind. Planning the routed
+     * way instead would reject a declared placement for an ambiguity — a shared-rule owner
+     * elsewhere — that the declaration has already settled.
      */
-    declaredPlacement?: DeclaredPlacement;
+    declaredPlacement?: DeclaredPlacementSet;
 }
 
 /**
@@ -274,12 +275,16 @@ export function enforceCandidateSafety(
         // `cross-filter` note about EasyList's own vendor rule. Only the two classes that say the
         // candidate should not be added at all still stop it. Exceptions are exempt — an exception
         // contradicts a blocking rule by design — and so is a declared placement, which
-        // prescribes its own append.
+        // prescribes its own edit.
         const refusingClasses: DuplicateClass[] = [DuplicateClass.Exact, DuplicateClass.Conflict];
         if (
             refusingClasses.includes(proposal.duplicateCheck.classification) &&
             !normalized.isException &&
-            !isDeclaredAppendTarget(proposal.placement.filePath, options.declaredPlacement)
+            declaredPlacementForTarget(
+                proposal.placement.filePath,
+                proposal.rule,
+                options.declaredPlacement,
+            ) === undefined
         ) {
             throw new CandidateSafetyError(
                 `Candidate duplicate check reported "${proposal.duplicateCheck.classification}": ` +

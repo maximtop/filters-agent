@@ -4,12 +4,13 @@ import {
     renderTemplate,
     type PlaceholderValues,
 } from '../prompts/template';
-import type { DeclaredPlacement } from '../types/declared-placement';
+import type { DeclaredPlacement, DeclaredPlacementSet } from '../types/declared-placement';
+import { PLACEMENT_RULE_TYPE_VALUES, type PlacementRuleType } from '../types/placement-rule-type';
 import { unfencedInstructionLines } from './instruction-preparation';
 
 /**
- * The `placement:` declaration one run instruction may carry: which file an accepted rule goes
- * into, and the comment line that precedes it.
+ * The `placement:` declarations one run instruction may carry: which file an accepted rule of each
+ * kind goes into, and the comment line that precedes it.
  *
  * The repository, not the agent, knows where its rules live. The deterministic placement resolver
  * routes by language and section the way the AdGuard repository is laid out, which is the wrong
@@ -18,9 +19,14 @@ import { unfencedInstructionLines } from './instruction-preparation';
  * ad-network rule because `TurkishFilter` was absent from the uAssets placement map. An instruction
  * that declares its placement takes that decision away from the routing.
  *
- * The declaration is one line, in the same shape as the `read:` and `launch:` declarations:
- * `placement: <path template> [comment: <comment template>]`. The path template may carry
- * `{{year}}`, the comment template `{{issueUrl}}`; no comment part means no comment line.
+ * Each declaration is one line, in the same shape as the `read:` and `launch:` declarations:
+ * `placement: [<kind>] <path template> [comment: <comment template>]`. The optional leading kind is
+ * one of the placement rule types, so a repository that files by kind can say so — EasyList keeps
+ * site-specific hiding, site-specific blocking and ad servers in three different files, which one
+ * line cannot express. A line naming no kind covers every kind that has no line of its own. The
+ * path template may carry `{{year}}`, the comment template `{{issueUrl}}`; no comment part means no
+ * comment line, and the position inside the file is then inferred exactly as it is without a
+ * declaration.
  */
 
 /**
@@ -57,15 +63,24 @@ const PLACEMENT_COMMENT_PLACEHOLDERS: readonly PlacementPlaceholder[] = [
 ];
 
 /**
- * The declaration grammar: the path template as one space-free token, optionally followed by the
- * `comment:` keyword and the comment template as the rest of the line.
+ * The declaration head: an optional rule-kind token followed by the path template, both space-free.
  */
-const PLACEMENT_DECLARATION_LINE_PATTERN = /^placement:\s*(\S+)(?:\s+comment:\s*(.*\S))?$/;
+const PLACEMENT_DECLARATION_HEAD_PATTERN = /^(?:(\S+)\s+)?(\S+)$/;
+
+/**
+ * Boundary between the declaration head and its `comment:` part.
+ */
+const PLACEMENT_COMMENT_KEYWORD_PATTERN = /\s+comment:\s*/;
 
 /**
  * Keyword a line must start with to be read as a placement declaration.
  */
 const PLACEMENT_DECLARATION_KEYWORD = 'placement:';
+
+/**
+ * The grammar a malformed declaration is quoted against.
+ */
+const PLACEMENT_DECLARATION_GRAMMAR = 'placement: [<kind>] <path> [comment: <text>]';
 
 /**
  * Character ceiling on the declared path template.
@@ -101,9 +116,9 @@ export class InstructionPlacementError extends Error {
 }
 
 /**
- * The placement declaration exactly as the instruction writes it, before any rendering.
+ * One placement declaration exactly as the instruction writes it, before any rendering.
  */
-export interface InstructionPlacement {
+export interface InstructionPlacementTarget {
     /**
      * Checkout-relative path template of the file accepted rules go into, possibly carrying
      * `{{year}}`.
@@ -115,6 +130,21 @@ export interface InstructionPlacement {
      * `{{issueUrl}}`; absent when the declaration asks for no comment.
      */
     commentTemplate?: string;
+}
+
+/**
+ * Every placement declaration one instruction carries, before any rendering.
+ */
+export interface InstructionPlacement {
+    /**
+     * Declarations that named a rule kind, keyed by that kind.
+     */
+    byRuleType: Partial<Record<PlacementRuleType, InstructionPlacementTarget>>;
+
+    /**
+     * The declaration that named no kind; it covers every kind without a line of its own.
+     */
+    unqualified?: InstructionPlacementTarget;
 }
 
 /**
@@ -205,27 +235,73 @@ function assertSupportedPlaceholders(
 }
 
 /**
- * Parse one declaration line into the declared placement.
- *
- * @param declarationLine - Trimmed instruction line starting with the declaration keyword.
- * @returns The declared placement.
- * @throws {InstructionPlacementError} When the line does not follow the grammar or carries an
- *   unusable path or comment template.
+ * One parsed declaration line together with the rule kind it named, if any.
  */
-function parseDeclarationLine(declarationLine: string): InstructionPlacement {
-    const match = PLACEMENT_DECLARATION_LINE_PATTERN.exec(declarationLine);
-    if (match === null) {
+interface ParsedDeclarationLine {
+    /**
+     * Rule kind the line named, or undefined for the unqualified declaration.
+     */
+    ruleType?: PlacementRuleType;
+
+    /**
+     * The declared target the line carries.
+     */
+    target: InstructionPlacementTarget;
+}
+
+/**
+ * Read the optional rule-kind token a declaration leads with.
+ *
+ * @param token - The token preceding the path, when the line carries two.
+ * @param declarationLine - The whole declaration, for the message.
+ * @returns The named rule kind.
+ * @throws {InstructionPlacementError} When the token is not one of the placement rule types.
+ */
+function parseDeclaredRuleType(token: string, declarationLine: string): PlacementRuleType {
+    const named = PLACEMENT_RULE_TYPE_VALUES.find((value) => value === token);
+    if (named === undefined) {
         throw new InstructionPlacementError(
-            `the declaration '${declarationLine}' does not follow ` +
-                '"placement: <path> [comment: <text>]"',
+            `the declaration '${declarationLine}' names an unknown rule kind '${token}'; the ` +
+                `kinds are ${PLACEMENT_RULE_TYPE_VALUES.join(', ')}`,
         );
     }
-    const pathTemplate = match[1] ?? '';
+    return named;
+}
+
+/**
+ * Parse one declaration line into the rule kind it governs and the target it declares.
+ *
+ * @param declarationLine - Trimmed instruction line starting with the declaration keyword.
+ * @returns The named rule kind, when the line names one, and the declared target.
+ * @throws {InstructionPlacementError} When the line does not follow the grammar or carries an
+ *   unusable kind, path, or comment template.
+ */
+function parseDeclarationLine(declarationLine: string): ParsedDeclarationLine {
+    const remainder = declarationLine.slice(PLACEMENT_DECLARATION_KEYWORD.length).trim();
+    const commentBoundary = PLACEMENT_COMMENT_KEYWORD_PATTERN.exec(remainder);
+    const head =
+        commentBoundary === null ? remainder : remainder.slice(0, commentBoundary.index).trim();
+    const commentTemplate =
+        commentBoundary === null
+            ? undefined
+            : remainder.slice(commentBoundary.index + commentBoundary[0].length).trim();
+    const headMatch = PLACEMENT_DECLARATION_HEAD_PATTERN.exec(head);
+    if (headMatch === null || commentTemplate === '') {
+        throw new InstructionPlacementError(
+            `the declaration '${declarationLine}' does not follow ` +
+                `"${PLACEMENT_DECLARATION_GRAMMAR}"`,
+        );
+    }
+    const ruleTypeToken = headMatch[1];
+    const pathTemplate = headMatch[2] ?? '';
     assertRelativeCheckoutPath(pathTemplate);
     assertSupportedPlaceholders(pathTemplate, PLACEMENT_PATH_PLACEHOLDERS, 'path');
-    const commentTemplate = match[2];
+    const ruleType =
+        ruleTypeToken === undefined
+            ? undefined
+            : parseDeclaredRuleType(ruleTypeToken, declarationLine);
     if (commentTemplate === undefined) {
-        return { pathTemplate };
+        return { ...(ruleType === undefined ? {} : { ruleType }), target: { pathTemplate } };
     }
     if (commentTemplate.length > MAX_PLACEMENT_COMMENT_TEMPLATE_CHARACTERS) {
         throw new InstructionPlacementError(
@@ -234,20 +310,26 @@ function parseDeclarationLine(declarationLine: string): InstructionPlacement {
         );
     }
     assertSupportedPlaceholders(commentTemplate, PLACEMENT_COMMENT_PLACEHOLDERS, 'comment');
-    return { pathTemplate, commentTemplate };
+    return {
+        ...(ruleType === undefined ? {} : { ruleType }),
+        target: { pathTemplate, commentTemplate },
+    };
 }
 
 /**
- * Read the placement one run instruction declares.
+ * Read the placements one run instruction declares.
  *
- * Contract: at most one declaration line anywhere outside a fenced block — fenced text is example
- * material, exactly as it is for the other declarations — and a line that opens with the keyword
- * but does not follow the grammar is a named failure, never a skipped line. An instruction that
- * declares no placement leaves the deterministic resolver in charge.
+ * Contract: any number of declaration lines outside a fenced block — fenced text is example
+ * material, exactly as it is for the other declarations — but at most one per rule kind plus at
+ * most one naming no kind. A line that opens with the keyword but does not follow the grammar is a
+ * named failure, never a skipped line, and so is a kind declared twice: a repository that names two
+ * files for its cosmetic rules has not said where they go. An instruction that declares no
+ * placement leaves the deterministic resolver in charge.
  *
  * @param content - Instruction text as loaded.
- * @returns The declared placement, or undefined when the instruction declares none.
- * @throws {InstructionPlacementError} For a second declaration or a malformed one.
+ * @returns The declared placements, or undefined when the instruction declares none.
+ * @throws {InstructionPlacementError} For a repeated kind, a repeated unqualified line, or a
+ *   malformed one.
  */
 export function parseInstructionPlacement(content: string): InstructionPlacement | undefined {
     const declarationLines = unfencedInstructionLines(content).filter((line) =>
@@ -256,13 +338,29 @@ export function parseInstructionPlacement(content: string): InstructionPlacement
     if (declarationLines.length === 0) {
         return undefined;
     }
-    if (declarationLines.length > 1) {
-        throw new InstructionPlacementError(
-            `the instruction carries ${declarationLines.length} placement declarations; one run ` +
-                'sends its rules to one place, so declare it once',
-        );
+    const byRuleType: Partial<Record<PlacementRuleType, InstructionPlacementTarget>> = {};
+    let unqualified: InstructionPlacementTarget | undefined;
+    for (const declarationLine of declarationLines) {
+        const parsed = parseDeclarationLine(declarationLine);
+        if (parsed.ruleType === undefined) {
+            if (unqualified !== undefined) {
+                throw new InstructionPlacementError(
+                    'the instruction declares placement for every remaining rule kind twice; ' +
+                        'declare the unqualified fallback once, or name a kind on each line',
+                );
+            }
+            unqualified = parsed.target;
+            continue;
+        }
+        if (byRuleType[parsed.ruleType] !== undefined) {
+            throw new InstructionPlacementError(
+                `the instruction declares placement for '${parsed.ruleType}' twice; one rule ` +
+                    'kind goes to one place, so declare each kind once',
+            );
+        }
+        byRuleType[parsed.ruleType] = parsed.target;
     }
-    return parseDeclarationLine(declarationLines[0] as string);
+    return { byRuleType, ...(unqualified === undefined ? {} : { unqualified }) };
 }
 
 /**
@@ -294,51 +392,77 @@ function renderDeclaredTemplate(
 }
 
 /**
- * Render one run's declared placement: the exact file path and comment line this run would write.
+ * Render one declared target: the exact file path and comment line this run would write.
  *
- * @param placement - The instruction's declaration as parsed at load.
- * @param context - Run facts filling the declaration's placeholders.
+ * @param target - One declaration as parsed at load.
+ * @param values - Values available for the supported placeholders.
  * @returns The rendered placement the resolver answers with and the edit writes.
- * @throws {PromptRenderError} When the declaration names a placeholder the run cannot fill — a
+ */
+function renderDeclaredTarget(
+    target: InstructionPlacementTarget,
+    values: PlaceholderValues,
+): DeclaredPlacement {
+    const filePath = renderDeclaredTemplate(target.pathTemplate, values, 'path');
+    if (target.commentTemplate === undefined) {
+        return { filePath };
+    }
+    return {
+        filePath,
+        commentLine: renderDeclaredTemplate(target.commentTemplate, values, 'comment'),
+    };
+}
+
+/**
+ * Render one run's declared placements: the exact file path and comment line per rule kind.
+ *
+ * @param placement - The instruction's declarations as parsed at load.
+ * @param context - Run facts filling the declarations' placeholders.
+ * @returns The rendered placements the resolver answers with and the edit writes.
+ * @throws {PromptRenderError} When a declaration names a placeholder the run cannot fill — a
  *   comment declaring `{{issueUrl}}` in a run that holds no issue URL.
  */
 export function renderInstructionPlacement(
     placement: InstructionPlacement,
     context: PlacementRenderContext,
-): DeclaredPlacement {
+): DeclaredPlacementSet {
     const values: PlaceholderValues = {
         [PlacementPlaceholder.Year]: String(context.now.getUTCFullYear()),
         ...(context.issueUrl === undefined
             ? {}
             : { [PlacementPlaceholder.IssueUrl]: context.issueUrl }),
     };
-    const filePath = renderDeclaredTemplate(placement.pathTemplate, values, 'path');
-    if (placement.commentTemplate === undefined) {
-        return { filePath };
+    const byRuleType: Partial<Record<PlacementRuleType, DeclaredPlacement>> = {};
+    for (const ruleType of PLACEMENT_RULE_TYPE_VALUES) {
+        const target = placement.byRuleType[ruleType];
+        if (target !== undefined) {
+            byRuleType[ruleType] = renderDeclaredTarget(target, values);
+        }
     }
     return {
-        filePath,
-        commentLine: renderDeclaredTemplate(placement.commentTemplate, values, 'comment'),
+        byRuleType,
+        ...(placement.unqualified === undefined
+            ? {}
+            : { unqualified: renderDeclaredTarget(placement.unqualified, values) }),
     };
 }
 
 /**
- * Render the placement one run declares, as its whole run then uses it.
+ * Render the placements one run declares, as its whole run then uses them.
  *
- * The run renders its declaration exactly once, at start, and hands the rendered value to every
+ * The run renders its declarations exactly once, at start, and hands the rendered value to every
  * consumer — the `resolve_placement` tool, the candidate safety gate, and the patch the publication
- * builds. Rendering it again later would let a run that straddles a UTC new year answer with one
+ * builds. Rendering them again later would let a run that straddles a UTC new year answer with one
  * year's file and publish into another's.
  *
- * @param placement - The declaration parsed at instruction load, when the run carries one.
+ * @param placement - The declarations parsed at instruction load, when the run carries any.
  * @param issueUrl - Web URL of the issue under investigation, filling `{{issueUrl}}`.
- * @returns The rendered placement, or undefined when the run declares none.
- * @throws {PromptRenderError} When the declaration names a placeholder the run cannot fill.
+ * @returns The rendered placements, or undefined when the run declares none.
+ * @throws {PromptRenderError} When a declaration names a placeholder the run cannot fill.
  */
 export function declaredPlacementForRun(
     placement: InstructionPlacement | undefined,
     issueUrl: string | undefined,
-): DeclaredPlacement | undefined {
+): DeclaredPlacementSet | undefined {
     if (placement === undefined) {
         return undefined;
     }

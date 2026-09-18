@@ -21,7 +21,14 @@ import {
 } from 'node:path';
 import { describeCulpritRemoval } from './culprit-removal';
 import { describeCulpritReplacement } from './culprit-replacement';
-import { extendRuleDomains, isExtensibleFamilyKind, ruleFamilySignature } from './rule-family';
+import { declaredPlacementForTarget } from './declared-placement';
+import { filterFileLines } from './filter-file-lines';
+import {
+    extendRuleDomains,
+    isExtensibleFamilyKind,
+    ruleFamilySignature,
+    samePlacementFamily,
+} from './rule-family';
 import {
     RuleKind,
     SINGLE_LINE_RULE_MESSAGE,
@@ -29,8 +36,9 @@ import {
     normalizeRule,
 } from './rule-normalizer';
 import { describeSharedRuleExtension } from './shared-rule-extension';
+import { findSortedInsertion } from './sorted-insertion';
 import { CandidateOperation } from '../environment/filtering-environment';
-import type { DeclaredPlacement } from '../types/declared-placement';
+import type { DeclaredPlacement, DeclaredPlacementSet } from '../types/declared-placement';
 import type { PreparedFiltersCheckout } from '../local/filters-preparer';
 import type { LocalRunRecord } from '../local/run-output';
 import type { CandidatePatch } from '../types/fix-run-result';
@@ -753,30 +761,6 @@ function selectExtensionCandidate(
 }
 
 /**
- * Test whether two normalized rules belong to the same broad repository placement family.
- *
- * Element hiding, CSS injection, ExtendedCSS, and scriptlets commonly share one domain block in
- * AdguardFilters. Network rules are kept separate from that cosmetic family.
- *
- * @param candidateKind - Kind of the locked candidate rule.
- * @param existingKind - Kind of one existing repository rule.
- * @returns Whether the rules can share a reported-domain placement block.
- */
-function samePlacementFamily(
-    candidateKind: ReturnType<typeof normalizeRule>['kind'],
-    existingKind: ReturnType<typeof normalizeRule>['kind'],
-): boolean {
-    if (candidateKind === RuleKind.Network) {
-        return existingKind === RuleKind.Network;
-    }
-    const candidateIsCosmetic =
-        candidateKind === RuleKind.Cosmetic || candidateKind === RuleKind.Scriptlet;
-    const existingIsCosmetic =
-        existingKind === RuleKind.Cosmetic || existingKind === RuleKind.Scriptlet;
-    return candidateIsCosmetic && existingIsCosmetic;
-}
-
-/**
  * Opening marker for one named AdguardFilters section.
  */
 const SECTION_OPENING_PATTERN = /^!\s*SECTION(?:\[[^\]]+\])?\s*:\s*(.+?)\s*$/iu;
@@ -898,17 +882,31 @@ function planTerminalSectionInsertion(lines: readonly string[]): InsertRepositor
 /**
  * Locate a safe insertion point for a candidate without a shared-rule extension target.
  *
- * An existing reported-domain block remains the strongest placement signal. Otherwise a complete
- * terminal section provides a footer anchor so the candidate cannot be appended after its closing
- * marker. The exact following line is retained as a stale-edit guard.
+ * A file that keeps its rules sorted gets the sorted position first: in such a file a domain's
+ * rules are not adjacent at all, so the domain block below would be looking for something that is
+ * not there, and appending at the end produces the out-of-place line a maintainer then has to move.
+ * Otherwise an existing reported-domain block remains the strongest placement signal, and after
+ * that a complete terminal section provides a footer anchor so the candidate cannot be appended
+ * after its closing marker. The exact following line is retained as a stale-edit guard.
  *
  * @param targetPath - Canonical target filter file.
  * @param candidateRule - Locked domain-scoped candidate rule.
- * @returns Anchored insertion metadata, or a plain insertion when neither safe anchor exists.
+ * @returns Anchored insertion metadata, or a plain insertion when no safe anchor exists.
  */
-function planDomainBlockInsertion(targetPath: string, candidateRule: string): InsertRepositoryEdit {
+function planInFilePosition(targetPath: string, candidateRule: string): InsertRepositoryEdit {
     const candidate = normalizeRule(candidateRule);
-    const lines = readFileSync(targetPath, 'utf8').split(/\r?\n/);
+    // The same line model candidate binding re-derives from the committed blob, so an anchored
+    // position planned here is the position the review checkout proves rather than a stale one.
+    const lines = filterFileLines(readFileSync(targetPath, 'utf8'));
+    const sorted = findSortedInsertion(lines, candidateRule);
+    if (sorted !== undefined) {
+        return {
+            kind: RepositoryEditKind.Insert,
+            insertionPoint: sorted.insertionPoint,
+            ...(sorted.anchorRule === undefined ? {} : { anchorRule: sorted.anchorRule }),
+            basis: PlacementBasis.SortedPosition,
+        };
+    }
     if (candidate.domains.length === 1 && !candidate.domains[0].startsWith('~')) {
         const candidateDomain = candidate.domains[0];
         const insertionPoint = lines.findIndex((line, lineIndex) => {
@@ -940,51 +938,45 @@ function planDomainBlockInsertion(targetPath: string, candidateRule: string): In
 }
 
 /**
- * Plan the append-at-end edit one declared placement asks for.
+ * Plan the edit one declared placement asks for.
  *
- * The declaration replaces the whole placement search: an instruction that says where its rules go
- * also says how they are added — at the end of that file, behind the declared comment — so neither
- * a shared-rule owner nor a domain block may retarget or reposition the edit.
+ * The declaration replaces the whole placement search: no shared-rule owner may retarget the edit
+ * to another file. What it says about the position depends on whether it declares a comment. A
+ * comment naming the issue makes the file a chronological log — uAssets writes one above every
+ * added rule — and the rule belongs at the end behind it. Without a comment the declaration says
+ * only _which_ file, so the position inside it is inferred exactly as it is for an undeclared file:
+ * a sorted file gets the sorted position, a log gets the end.
  *
  * @param checkoutPath - Root of the pinned filters checkout.
- * @param declared - The instruction's declaration, rendered for this run.
- * @returns The declared file and its end-of-file insertion carrying the declared comment.
+ * @param declared - The declaration governing this candidate's kind, rendered for this run.
+ * @param candidateRule - Locked issue-scoped candidate rule.
+ * @returns The declared file and the insertion the declaration asks for.
  * @throws {Error} Naming the declared file when this checkout does not hold it, so the caller
  *   reports a plan it cannot make instead of planning against a file that is not there.
  */
-function planDeclaredAppend(checkoutPath: string, declared: DeclaredPlacement): RepositoryEditPlan {
+function planDeclaredPlacement(
+    checkoutPath: string,
+    declared: DeclaredPlacement,
+    candidateRule: string,
+): RepositoryEditPlan {
     const targetPath = resolveFilterPath(checkoutPath, declared.filePath);
     if (!targetPath) {
         throw new Error(
             `The declared placement target does not exist in the checkout: ${declared.filePath}`,
         );
     }
+    const filePath = repositoryRelativePath(realpathSync(checkoutPath), targetPath);
+    if (declared.commentLine === undefined) {
+        return { filePath, edit: planInFilePosition(targetPath, candidateRule) };
+    }
     return {
-        filePath: repositoryRelativePath(realpathSync(checkoutPath), targetPath),
+        filePath,
         edit: {
             kind: RepositoryEditKind.Insert,
             basis: PlacementBasis.AppendEof,
-            ...(declared.commentLine === undefined
-                ? {}
-                : { precedingComment: declared.commentLine }),
+            precedingComment: declared.commentLine,
         },
     };
-}
-
-/**
- * Whether the run's declared placement settles the edit for this target: the declaration names the
- * candidate's own file, so the plan is an append at the end of that list and never a routed domain
- * extension of a shared-rule owner.
- *
- * @param filePath - Repository-relative target filter file of the candidate.
- * @param declared - The run instruction's declared placement, when its instruction declares one.
- * @returns Whether the declaration owns the edit shape for this target.
- */
-export function isDeclaredAppendTarget(
-    filePath: string,
-    declared?: DeclaredPlacement,
-): declared is DeclaredPlacement {
-    return declared !== undefined && declared.filePath === filePath;
 }
 
 /**
@@ -998,8 +990,8 @@ export function isDeclaredAppendTarget(
  * @param filePath - Repository-relative target filter file.
  * @param candidateRule - Locked issue-scoped candidate rule.
  * @param existingRuleHints - Exact repository rules surfaced by the agent's normalized search.
- * @param declared - The run instruction's declared placement, rendered for this run; when it names
- *   the target file it decides the edit on its own.
+ * @param declared - The run instruction's declared placements, rendered for this run; when one of
+ *   them names the target file for this candidate's kind it decides the edit on its own.
  * @returns Deterministic target file and insert or domain-extension edit.
  */
 export function planRepositoryEdit(
@@ -1007,10 +999,11 @@ export function planRepositoryEdit(
     filePath: string,
     candidateRule: string,
     existingRuleHints: readonly string[] = [],
-    declared?: DeclaredPlacement,
+    declared?: DeclaredPlacementSet,
 ): RepositoryEditPlan {
-    if (isDeclaredAppendTarget(filePath, declared)) {
-        return planDeclaredAppend(checkoutPath, declared);
+    const governing = declaredPlacementForTarget(filePath, candidateRule, declared);
+    if (governing !== undefined) {
+        return planDeclaredPlacement(checkoutPath, governing, candidateRule);
     }
     const targetPath = resolveFilterPath(checkoutPath, filePath);
     const checkoutRoot = realpathSync(checkoutPath);
@@ -1033,7 +1026,7 @@ export function planRepositoryEdit(
         }
         return {
             filePath: repositoryRelativePath(checkoutRoot, targetPath),
-            edit: planDomainBlockInsertion(targetPath, candidateRule),
+            edit: planInFilePosition(targetPath, candidateRule),
         };
     }
     return {

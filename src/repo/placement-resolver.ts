@@ -5,29 +5,25 @@ import {
     declaredPlacementAbsentReason,
     type DeclaredPlacementTarget,
 } from './declared-placement';
-import type { FilterFileEntry, PlacementMap } from '../types/repo-context';
-
-/**
- * The candidate rule's structural type, used to route it to the right filter section.
- */
-export const PlacementRuleType = {
-    Network: 'network',
-    Cosmetic: 'cosmetic',
-    Exception: 'exception',
-    Scriptlet: 'scriptlet',
-} as const;
-
-/**
- * Every placement rule type value, for schemas and exhaustive listings.
- */
-export const PLACEMENT_RULE_TYPE_VALUES = Object.values(PlacementRuleType);
-
-/**
- * Structural type of one candidate as routed by the placement resolver.
- */
-export type PlacementRuleType = (typeof PlacementRuleType)[keyof typeof PlacementRuleType];
-
-export const PlacementRuleTypeSchema = v.picklist(PLACEMENT_RULE_TYPE_VALUES);
+import { PlacementEvidenceSchema } from './placement-evidence';
+import { resolveFromCheckoutEvidence } from './placement-evidence-routing';
+import {
+    ADGUARD_BASE_FILTER,
+    MAX_ALTERNATIVES,
+    distinctFilterNames,
+    familyDirectory,
+    filterInMap,
+    findRegionalSection,
+    findSection,
+    findSectionInDirectory,
+    firstFilePath,
+    firstFilterName,
+    indexPlacementMap,
+    normalizeKey,
+    similarRuleFile,
+} from './placement-map-index';
+import { PlacementRuleType, PlacementRuleTypeSchema } from '../types/placement-rule-type';
+import type { PlacementMap } from '../types/repo-context';
 
 /**
  * The inputs needed to deterministically resolve where a candidate rule belongs.
@@ -44,6 +40,8 @@ export const PlacementInputSchema = v.object({
     product: v.optional(v.string()),
     cyrillicBoth: v.optional(v.boolean()),
     existingSimilarRules: v.array(v.object({ rule: v.string(), filePath: v.string() })),
+    candidateRule: v.optional(v.pipe(v.string(), v.minLength(1))),
+    evidence: v.optional(PlacementEvidenceSchema),
 });
 export type PlacementInput = v.InferOutput<typeof PlacementInputSchema>;
 
@@ -98,11 +96,6 @@ const REGIONAL_FILTERS: Readonly<Record<string, string>> = {
 };
 
 /**
- * Upper bound on the number of alternative filters surfaced in a resolution.
- */
-const MAX_ALTERNATIVES = 5;
-
-/**
  * Extract the lowercase primary language subtag used for regional filter routing.
  *
  * @param languageTag - Language code or BCP-47 language tag supplied by issue analysis.
@@ -110,166 +103,6 @@ const MAX_ALTERNATIVES = 5;
  */
 function primaryLanguageSubtag(languageTag: string): string {
     return languageTag.trim().toLowerCase().split('-')[0] ?? '';
-}
-
-/**
- * Normalize a section or filter name into a stable comparison key.
- *
- * Lower-cases the value and strips every non-alphanumeric character so that `adservers`, `Ad
- * servers`, and `adservers.txt` compare equal.
- *
- * @param value - The raw name to normalize.
- * @returns The lowercase alphanumeric key.
- */
-function normalizeKey(value: string): string {
-    return value.toLowerCase().replace(/[^a-z0-9]+/g, '');
-}
-
-/**
- * Derive the file basename (without extension) from a checkout-relative path.
- *
- * @param relPath - A path relative to the checkout root (forward or back slashes).
- * @returns The final path segment with a trailing `.txt` removed.
- */
-function basename(relPath: string): string {
-    const parts = relPath.split(/[\\/]/);
-    const last = parts[parts.length - 1] ?? relPath;
-    return last.replace(/\.txt$/i, '');
-}
-
-/**
- * Build a filter → section → relative-path lookup index from a placement map.
- *
- * Each detected section name and each file basename is normalized into a section key so lookups are
- * spelling-agnostic. The first file to claim a key wins, keeping the index deterministic.
- *
- * @param map - The generated placement map.
- * @returns A nested record of filter name to section key to relative file path.
- */
-function indexPlacementMap(map: PlacementMap): Record<string, Record<string, string>> {
-    const index: Record<string, Record<string, string>> = {};
-    for (const file of map.files) {
-        const sections: Record<string, string> = index[file.filter] ?? {};
-        index[file.filter] = sections;
-        const setIfNew = (rawKey: string): void => {
-            const key = normalizeKey(rawKey);
-            if (key !== '' && sections[key] === undefined) {
-                sections[key] = file.relativePath;
-            }
-        };
-        for (const section of file.sections) {
-            setIfNew(section.name);
-        }
-        setIfNew(basename(file.relativePath));
-    }
-    return index;
-}
-
-/**
- * The ordered list of distinct filter names present in a placement map.
- *
- * @param map - The generated placement map.
- * @returns Distinct filter names in first-seen order.
- */
-function distinctFilterNames(map: PlacementMap): string[] {
-    const seen = new Set<string>();
-    const names: string[] = [];
-    for (const file of map.files) {
-        if (!seen.has(file.filter)) {
-            seen.add(file.filter);
-            names.push(file.filter);
-        }
-    }
-    return names;
-}
-
-/**
- * Return the first filter name held in an index, if any.
- *
- * @param index - The filter → sections lookup index.
- * @returns The first filter name, or undefined when the index is empty.
- */
-function firstFilterName(index: Record<string, Record<string, string>>): string | undefined {
-    const keys = Object.keys(index);
-    return keys.length > 0 ? keys[0] : undefined;
-}
-
-/**
- * Determine whether a filter name is represented in the index.
- *
- * Matching is spelling-agnostic: an exact normalized match wins, otherwise a containment check in
- * either direction handles compound names; each slash-separated part is also tested so that
- * `Spanish/PortugueseFilter` matches a `SpanishFilter` entry.
- *
- * @param index - The filter → sections lookup index.
- * @param filterName - The candidate filter name to locate.
- * @returns True when the filter (or a closely named sibling) is present.
- */
-function filterInMap(index: Record<string, Record<string, string>>, filterName: string): boolean {
-    const target = normalizeKey(filterName);
-    if (target === '') {
-        return false;
-    }
-    for (const key of Object.keys(index)) {
-        const normalized = normalizeKey(key);
-        if (normalized === target || normalized.includes(target) || target.includes(normalized)) {
-            return true;
-        }
-    }
-    for (const part of filterName.split('/')) {
-        const partKey = normalizeKey(part);
-        if (partKey === '') {
-            continue;
-        }
-        for (const key of Object.keys(index)) {
-            if (normalizeKey(key).includes(partKey)) {
-                return true;
-            }
-        }
-    }
-    return false;
-}
-
-/**
- * Look up a section's file path within a single filter, trying several key spellings.
- *
- * Each preferred key is normalized before lookup so that `adservers` and `adservers.txt` resolve to
- * the same indexed entry when present.
- *
- * @param sections - The section key → relative path record for one filter (or undefined).
- * @param preferredKeys - Ordered section name spellings to try; first hit wins.
- * @returns The relative file path for the first matching section, or undefined.
- */
-function findSection(
-    sections: Readonly<Record<string, string>> | undefined,
-    ...preferredKeys: string[]
-): string | undefined {
-    if (!sections) {
-        return undefined;
-    }
-    for (const preferred of preferredKeys) {
-        const key = normalizeKey(preferred);
-        if (key !== '' && sections[key] !== undefined) {
-            return sections[key];
-        }
-    }
-    return undefined;
-}
-
-/**
- * Return the first stored file path for a filter, if any.
- *
- * Used as a last-resort fallback when no preferred section matches.
- *
- * @param sections - The section key → relative path record for one filter (or undefined).
- * @returns The first relative path, or undefined.
- */
-function firstFilePath(sections: Readonly<Record<string, string>> | undefined): string | undefined {
-    if (!sections) {
-        return undefined;
-    }
-    const values = Object.values(sections);
-    return values.length > 0 ? values[0] : undefined;
 }
 
 /**
@@ -300,148 +133,6 @@ function isRussianAntiAdblock(input: PlacementInput): boolean {
 }
 
 /**
- * Find a section file inside one nested regional path of a top-level filter.
- *
- * Existing similar-rule paths are considered first only when they resolve to a real allowlisted
- * placement-map entry. This accepts absolute checkout paths (including a temporary `source`
- * directory) while returning the portable checkout-relative path.
- *
- * @param map - Generated placement map for the exact checkout.
- * @param filter - Top-level filter name selected by language routing.
- * @param regionalDirectory - Nested regional directory, such as `RussianFilter`.
- * @param section - Desired section or filename.
- * @param existingSimilarRules - Similar rules and their repository paths.
- * @returns A verified checkout-relative path, or undefined when the section is absent.
- */
-function findRegionalSection(
-    map: PlacementMap,
-    filter: string,
-    regionalDirectory: string,
-    section: string,
-    existingSimilarRules: PlacementInput['existingSimilarRules'],
-): string | undefined {
-    const sectionKey = normalizeKey(section);
-    const regionalSegment = `/${normalizeKey(regionalDirectory)}/`;
-    const candidates = map.files.filter((file) => {
-        const normalizedPath = `/${file.relativePath.replace(/\\/gu, '/').toLowerCase()}/`;
-        const pathKey = normalizedPath
-            .split('/')
-            .map((segment) => normalizeKey(segment))
-            .join('/');
-        const sectionMatches =
-            normalizeKey(basename(file.relativePath)) === sectionKey ||
-            file.sections.some((candidate) => normalizeKey(candidate.name) === sectionKey);
-        return file.filter === filter && pathKey.includes(regionalSegment) && sectionMatches;
-    });
-    if (candidates.length === 0) {
-        return undefined;
-    }
-
-    for (const similar of existingSimilarRules) {
-        const similarPath = similar.filePath.replace(/\\/gu, '/').toLowerCase();
-        const matched = candidates.find((candidate) => {
-            const relativePath = candidate.relativePath.replace(/\\/gu, '/').toLowerCase();
-            return similarPath === relativePath || similarPath.endsWith(`/${relativePath}`);
-        });
-        if (matched !== undefined) {
-            return matched.relativePath;
-        }
-    }
-    return candidates[0]?.relativePath;
-}
-
-/**
- * Directory holding one repository file, with its trailing separator.
- *
- * @param relativePath - Checkout-relative file path.
- * @returns The owning lowercase directory prefix, empty for a file at the repository root.
- */
-function familyDirectory(relativePath: string): string {
-    const normalized = relativePath.replace(/\\/gu, '/');
-    const cut = normalized.lastIndexOf('/');
-    return cut === -1 ? '' : normalized.slice(0, cut + 1).toLowerCase();
-}
-
-/**
- * Find a section file of one filter that lives inside an exact directory.
- *
- * A filter may ship several independently distributed sub-filters, so a same-named section in a
- * sibling directory is the wrong file: it ships apart from the rule the exception must cancel.
- *
- * @param map - Generated placement map for the checkout.
- * @param filter - Top-level filter that owns the file.
- * @param directory - Lowercase directory prefix the file must sit in.
- * @param section - Desired section name.
- * @returns The matching checkout-relative path, or undefined when that directory has no such file.
- */
-function findSectionInDirectory(
-    map: PlacementMap,
-    filter: string,
-    directory: string,
-    section: string,
-): string | undefined {
-    if (directory === '') {
-        return undefined;
-    }
-    const sectionKey = normalizeKey(section);
-    const match = map.files.find((file) => {
-        if (file.filter !== filter) {
-            return false;
-        }
-        const normalizedPath = file.relativePath.replace(/\\/gu, '/').toLowerCase();
-        if (!normalizedPath.startsWith(directory)) {
-            return false;
-        }
-        if (normalizedPath.slice(directory.length).includes('/')) {
-            return false;
-        }
-        return (
-            normalizeKey(basename(file.relativePath)) === sectionKey ||
-            file.sections.some((candidate) => normalizeKey(candidate.name) === sectionKey)
-        );
-    });
-    return match?.relativePath;
-}
-
-/**
- * Resolve the single file that already hosts the established family of similar rules.
- *
- * An exception cancels a rule owned by one filter, and maintainers file it beside that family
- * rather than under the reported site's language. Ambiguity is not resolved here: when similar
- * rules straddle several filters, language routing stays in charge.
- *
- * @param existingSimilarRules - Similar rules and their repository paths.
- * @param map - Generated placement map naming the file that owns each path.
- * @returns The single owning file, or undefined when there is no unambiguous one.
- */
-function similarRuleFile(
-    existingSimilarRules: PlacementInput['existingSimilarRules'],
-    map: PlacementMap,
-): FilterFileEntry | undefined {
-    const owners = new Map<string, FilterFileEntry>();
-    for (const similar of existingSimilarRules) {
-        const similarPath = similar.filePath.replace(/\\/gu, '/').toLowerCase();
-        const owner = map.files.find((file) => {
-            const relativePath = file.relativePath.replace(/\\/gu, '/').toLowerCase();
-            return similarPath === relativePath || similarPath.endsWith(`/${relativePath}`);
-        });
-        if (owner !== undefined) {
-            owners.set(owner.relativePath, owner);
-        }
-    }
-    if (owners.size === 0) {
-        return undefined;
-    }
-    const files = [...owners.values()];
-    // One filter may ship several independently distributed sub-filters, so the owning file is
-    // the answer: keeping only its top-level directory would file the exception into a sibling
-    // that ships separately from the rule it must cancel.
-    return files.every((file) => file.relativePath === files[0]!.relativePath)
-        ? files[0]
-        : undefined;
-}
-
-/**
  * Resolve the target filter file and insertion point for a candidate rule.
  *
  * Pure and deterministic: routing follows REQUIREMENTS.md §2.5 / §4.6. Language selects the filter
@@ -457,10 +148,18 @@ function similarRuleFile(
  * and applying it to a repository that declares something else is what filed an ad-network rule
  * into a cookie-annoyance list in run 34996815226.
  *
+ * A repository whose map holds no `BaseFilter` is not that shape at all, and the routing could only
+ * reach its own fallbacks there. Such a checkout is read instead of routed ({@link
+ * resolveFromCheckoutEvidence}), which applies the same signals in the same order under reasons
+ * that are true of it. The gate is the map's shape rather than the branch order so that an
+ * AdguardFilters run keeps exactly the routing it has: a same-family domain census would happily
+ * file an ad rule into the cookie-annoyance list a site already has a rule in, which is the failure
+ * the declaration was added for.
+ *
  * @param input - The site and rule context for the candidate rule.
  * @param map - The generated placement map for the checkout.
  * @param declared - The run instruction's declared placement bound to the checkout, when the
- *   instruction declares one; it decides the answer on its own.
+ *   instruction declares one for this candidate's kind; it decides the answer on its own.
  * @returns The resolved placement decision with confidence, alternatives, and reasons.
  */
 export function resolvePlacement(
@@ -480,6 +179,9 @@ export function resolvePlacement(
         };
     }
     const index = indexPlacementMap(map);
+    if (!filterInMap(index, ADGUARD_BASE_FILTER)) {
+        return resolveFromCheckoutEvidence(input, map);
+    }
     const reasons: string[] = [];
     const lang = primaryLanguageSubtag(input.siteLanguage);
     const russianAntiAdblock = isRussianAntiAdblock(input);
@@ -512,7 +214,7 @@ export function resolvePlacement(
             preferredFilter = regional;
             reasons.push(`language '${lang}' has a dedicated regional filter`);
         } else {
-            preferredFilter = 'BaseFilter';
+            preferredFilter = ADGUARD_BASE_FILTER;
             reasons.push('no dedicated regional filter → BaseFilter (international/misc)');
         }
     }
@@ -524,9 +226,9 @@ export function resolvePlacement(
         chosenFilter = preferredFilter;
     } else {
         filterAbsent = true;
-        chosenFilter = filterInMap(index, 'BaseFilter')
-            ? 'BaseFilter'
-            : (firstFilterName(index) ?? 'BaseFilter');
+        chosenFilter = filterInMap(index, ADGUARD_BASE_FILTER)
+            ? ADGUARD_BASE_FILTER
+            : (firstFilterName(index) ?? ADGUARD_BASE_FILTER);
         reasons.push(
             `filter '${preferredFilter}' absent from placement map → fell back to '${chosenFilter}'`,
         );
@@ -566,7 +268,7 @@ export function resolvePlacement(
     let confidence: number;
     if (filterAbsent) {
         const foreignFallback =
-            preferredFilter !== 'BaseFilter' && chosenFilter === 'BaseFilter'
+            preferredFilter !== ADGUARD_BASE_FILTER && chosenFilter === ADGUARD_BASE_FILTER
                 ? findSection(chosenSections, 'foreign', 'foreign.txt')
                 : undefined;
         filePath =

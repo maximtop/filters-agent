@@ -135,6 +135,10 @@ itself rather than the lists.
 
 {{candidateForReview}}
 
+### Still visible after the rule
+
+{{stillVisible}}
+
 ### Executor and version
 
 {{executor}} {{executorVersion}}
