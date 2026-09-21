@@ -34,7 +34,7 @@ import {
     PublishedBaselineProvenanceSchema,
     type PublishedBaselineProvenance,
 } from './environment-proofs';
-import type { ApplicationInstructionGap } from '../knowledge/instruction-application';
+import type { ApplicationInstructionGap } from './application-instruction-gap';
 import {
     adguardListKey,
     requestedListsToRegistryIds,
@@ -1336,11 +1336,16 @@ export class BrowserExtensionEnvironmentAdapter implements FilteringEnvironmentA
                 packageVersion: this.options.packageVersion,
                 manifestVersion: this.options.manifestVersion,
                 profileKind: this.options.profileKind,
-                // A file-backed read-back cannot see the enabled set: it stays null so the proof
-                // never states "no lists enabled" where the truth is "not observed". The seam is
-                // already keyed, so the proof takes the read-back sets as they arrived.
+                // A file-backed read-back sees neither the enabled set nor the compiled DNR
+                // rulesets: both stay null so the proof never states "no lists enabled" or "no
+                // rulesets active" where the truth is "not observed" — an MV2 route has no DNR
+                // inventory to read either. The seam is already keyed, so the proof takes the
+                // read-back sets as they arrived, and an observed empty set stays empty.
                 enabledListKeys: enabledFilterIds === undefined ? null : [...enabledFilterIds],
-                activeRulesetListKeys: [...(readBack.activeRulesetFilterIds ?? [])],
+                activeRulesetListKeys:
+                    readBack.activeRulesetFilterIds === undefined
+                        ? null
+                        : [...readBack.activeRulesetFilterIds],
                 stealthEnabled: readBack.stealthEnabled ?? null,
                 userRulesDigest: userRulesDigest ?? null,
                 application: {

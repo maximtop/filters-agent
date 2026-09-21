@@ -406,8 +406,10 @@ export function settingsEvidenceFromReadBack(
             readBack.rulesLimits === null
                 ? [...enabledFilterIds]
                 : [...readBack.rulesLimits.actuallyEnabledFilters],
+        // No MV3 counters means nothing was observed about compiled rulesets — null, not the empty
+        // array a reader would take for a verified "no rulesets active".
         activeRulesetFilterIds:
-            readBack.rulesLimits === null ? [] : [...readBack.rulesLimits.actuallyEnabledFilters],
+            readBack.rulesLimits === null ? null : [...readBack.rulesLimits.actuallyEnabledFilters],
         stealthEnabled: readBack.optionsData.settings.values[DISABLE_STEALTH_SETTING] === false,
         limitsExceeded:
             (readBack.rulesLimits?.areFilterLimitsExceeded ?? false) ||

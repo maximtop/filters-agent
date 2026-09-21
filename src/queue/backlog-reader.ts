@@ -23,10 +23,14 @@ import type {
  *
  * Backlog mode reads which open issues exist and, per visited issue, the trusted history it derives
  * its revision state from — nothing else. This module is the module's whole GitHub surface (AC1): a
- * newest-first open-issue listing and a per-issue history read, mapped at the seam before anything
+ * newest-first open-issue listing and a per-issue comment read, mapped at the seam before anything
  * derived touches them. The mapped and schema-validated response vocabulary it admits is
  * `backlog-response.ts`. There is no write endpoint here; publishing stays with the 15-AFK
  * publisher.
+ *
+ * Request budget is part of the contract: the listing item answers every issue-level fact the
+ * selection reads, so a visited issue costs at most the comment pages it actually has, and a listed
+ * issue with no comments costs nothing at all.
  */
 
 /**
@@ -103,10 +107,7 @@ export class BacklogIssueReadError extends Error {
 /**
  * Narrowed REST `issues` surface the adapter drives.
  */
-type BacklogIssuesTransport = Pick<
-    Octokit['rest']['issues'],
-    'listForRepo' | 'get' | 'listComments'
->;
+type BacklogIssuesTransport = Pick<Octokit['rest']['issues'], 'listForRepo' | 'listComments'>;
 
 /**
  * Injectable dependencies replacing the reader's transport and logger.
@@ -153,13 +154,19 @@ export interface BacklogIssueReader {
     readOpenIssuePage(page: number): Promise<BacklogIssuePage>;
 
     /**
-     * Read one issue's summary, reporter, and ordered comment history.
+     * Read one listed issue's ordered comment history beside the summary it was listed with.
      *
-     * @param issueNumber - Positive GitHub issue number.
+     * The summary rides in rather than an issue number because the listing already answered
+     * everything the detail endpoint would: an `issues.get` per visited issue only re-fetched the
+     * dates, labels, login and comment count the page item carries, and a backlog of a few hundred
+     * already-reported issues spent that request on each of them before reaching the first due one.
+     * An issue whose listed count is zero costs no request at all.
+     *
+     * @param summary - The issue's validated summary, as the listing returned it.
      * @returns The validated history derivation input.
-     * @throws {@link BacklogIssueReadError} When a transport call or a response item fails.
+     * @throws {@link BacklogIssueReadError} When a comment page read or a response item fails.
      */
-    readIssueHistory(issueNumber: number): Promise<BacklogIssueHistory>;
+    readIssueHistory(summary: BacklogIssueSummary): Promise<BacklogIssueHistory>;
 }
 
 /**
@@ -312,7 +319,7 @@ class GitHubBacklogIssueReader implements BacklogIssueReader {
     /**
      * Validate one issue item at the seam, logging and naming it when malformed.
      *
-     * @param item - GitHub issue item as listed or fetched.
+     * @param item - GitHub issue item as listed.
      * @param phase - What the reader was doing, for the run log.
      * @returns The validated summary.
      */
@@ -373,32 +380,19 @@ class GitHubBacklogIssueReader implements BacklogIssueReader {
     }
 
     /**
-     * Read one issue's summary, reporter, and ordered comment history.
+     * Read one listed issue's ordered comment history beside the summary it was listed with.
      *
-     * @param issueNumber - Positive GitHub issue number.
+     * @param summary - The issue's validated summary, as the listing returned it.
      * @returns The validated history derivation input.
      */
-    async readIssueHistory(issueNumber: number): Promise<BacklogIssueHistory> {
-        const getPhase = `reading issue ${issueNumber}`;
-        let issueItem: GithubIssueItem;
-        try {
-            const response = await this.issues.get({
-                owner: this.config.owner,
-                repo: this.config.repo,
-                issue_number: issueNumber,
-            });
-            issueItem = response.data;
-        } catch (error) {
-            throw this.failRead(BacklogIssueReadErrorCode.ReadFailed, getPhase, error);
+    async readIssueHistory(summary: BacklogIssueSummary): Promise<BacklogIssueHistory> {
+        const issueNumber = summary.issueNumber;
+        // An issue GitHub listed with no comments has no history to page through, and asking for
+        // its empty first page is a wasted request against the 1,000/hour `github.token` budget —
+        // the budget a backlog run exhausts on its untaken, already-reported majority.
+        if (summary.commentCount === 0) {
+            return { summary, comments: [] };
         }
-        if ('pull_request' in issueItem) {
-            throw this.failInvalidResponse(
-                getPhase,
-                `issue ${issueNumber} refers to a pull request, not an issue`,
-                issueItem,
-            );
-        }
-        const summary = this.parseSummary(issueItem, getPhase);
         const comments: BacklogIssueComment[] = [];
         for (let page = 1; ; page += 1) {
             const phase = `reading issue ${issueNumber} comments page ${page}`;
@@ -422,11 +416,7 @@ class GitHubBacklogIssueReader implements BacklogIssueReader {
                 break;
             }
         }
-        return {
-            summary,
-            reporterAuthor: issueItem.user?.login ?? '',
-            comments,
-        };
+        return { summary, comments };
     }
 }
 

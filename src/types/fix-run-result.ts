@@ -499,7 +499,10 @@ export const AgentSettingsEvidenceSchema = v.strictObject({
             }),
         ),
     ),
-    activeRulesetListKeys: v.array(FilterListKeySchema),
+    // Null when the read-back could not observe the compiled DNR rulesets; the report says
+    // "not observed" here instead of claiming a verified-empty set. An observed empty array stays
+    // empty, and a record written before the field could be null still parses.
+    activeRulesetListKeys: v.nullable(v.array(FilterListKeySchema)),
     // Null when the read-back could not observe the Stealth state; an observed false stays false.
     stealthEnabled: v.nullable(v.boolean()),
     limitsExceeded: v.boolean(),

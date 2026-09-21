@@ -214,9 +214,11 @@ export interface AdGuardExtensionSettingsEvidence {
     runtimeEnabledFilterIds: number[];
 
     /**
-     * Filter IDs whose DNR rulesets Chromium reports as active.
+     * Filter IDs whose DNR rulesets Chromium reports as active, or null when the read-back could
+     * not observe them: an MV2 runtime exposes no MV3 counters, and an empty array there would read
+     * as a verified "no rulesets active".
      */
-    activeRulesetFilterIds: number[];
+    activeRulesetFilterIds: number[] | null;
 
     /**
      * Tracking-protection state read back from the extension's settings, or null when the read-back

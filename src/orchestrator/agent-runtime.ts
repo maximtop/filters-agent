@@ -2,6 +2,7 @@ import {
     applyRuleResultForModel,
     unsupportedCandidateOperationRefusal,
 } from './apply-rule-model-result';
+import { createToolEnumerationBackstop } from './tool-enumeration-backstop';
 import { createHash, randomUUID } from 'node:crypto';
 import * as v from 'valibot';
 import { withToolDeadline } from '../pi/session-tools';
@@ -1063,6 +1064,29 @@ export class AgentRuntime {
      * Whether pinned rule guidance was consulted before a candidate.
      */
     private guidanceConsulted = false;
+
+    /**
+     * The run's one enumeration backstop, shared by every browser tool.
+     *
+     * A streak is consecutive calls of one tool with no other tool between them, so a single
+     * counter serves the whole surface: the tool that enumerates next is caught without anything
+     * here naming it. The `this.options` dereference is deferred to the moment a streak trips, so
+     * this initializer never depends on field-vs-parameter-property ordering.
+     */
+    private readonly toolEnumerationBackstop = createToolEnumerationBackstop({
+        onStreak: (streak) => {
+            createLogger({ verbose: this.options.verbose ?? false }).warn(
+                { tool: streak.tool, consecutiveCalls: streak.consecutiveCalls },
+                'consecutive same-tool streak reached the enumeration bound; the model was asked ' +
+                    'to batch its remaining probes into one evaluate_js call',
+            );
+            this.options.recorder.record(TraceEventType.Decision, {
+                phase: 'tool_enumeration_streak',
+                tool: streak.tool,
+                consecutiveCalls: streak.consecutiveCalls,
+            });
+        },
+    });
 
     /**
      * Canonical candidate rules and their stable attempt numbers.
@@ -4587,7 +4611,13 @@ export class AgentRuntime {
                     // Everything above read the complete result. The model gets the experiment
                     // with its decision first and its bulk bounded, so the verdict is never the
                     // part the tool-result limit cuts away.
-                    return name === 'apply_rule' ? applyRuleResultForModel(result) : result;
+                    const forModel =
+                        name === 'apply_rule' ? applyRuleResultForModel(result) : result;
+                    // Last, because the backstop counts what the model actually sees and adds to
+                    // it: below the bound this returns `forModel` untouched, and at or above it the
+                    // same result carries the notice asking the model to batch the rest of its
+                    // search. It never refuses the call or ends the run.
+                    return this.toolEnumerationBackstop.observe(name, forModel);
                 },
             });
             this.activeBrowserToolNames.add(name);

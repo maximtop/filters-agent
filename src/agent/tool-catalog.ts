@@ -107,7 +107,13 @@ export const TOOL_GUIDANCE: Readonly<Record<string, string>> = {
     [ToolName.OpenPage]:
         'Navigates the browser to a URL. Retries up to 3 times on failure. Returns page URL, title, and status code.',
     [ToolName.StabilizePage]:
-        'Waits for bounded DOM/network stability, optionally scrolls to a target selector or text hint, and proves a second stable capture point.',
+        'Lets the page settle: waits for bounded DOM/network stability and proves a second stable ' +
+        'capture point. This is a settling tool, not a query. Pass targetSelector or targetHint ' +
+        'only to scroll an element you already have reason to believe is on the page into view ' +
+        'before you capture it; the targetFound flag reports whether that scroll landed and is ' +
+        'not a selector test. To find out which of several candidate selectors match, never call ' +
+        'this tool once per candidate — each call costs a full model turn. Put all the candidates ' +
+        'into a single evaluate_js expression and get every answer from one call.',
     [ToolName.Screenshot]:
         'Captures a detailed viewport screenshot plus a full-page context screenshot as PNG artifacts.',
     [ToolName.AnalyzeScreenshot]:

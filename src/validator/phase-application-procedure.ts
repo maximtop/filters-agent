@@ -1,5 +1,5 @@
+import { ApplicationInstructionGap } from '../environment/application-instruction-gap';
 import {
-    ApplicationInstructionGap,
     parseRuleApplication,
     type ApplicationInstructionRefusal,
 } from '../knowledge/instruction-application';

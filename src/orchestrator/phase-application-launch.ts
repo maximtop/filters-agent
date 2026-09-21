@@ -24,7 +24,7 @@ import {
     requireChromiumPreparedExtension,
 } from '../local/prepared-extension';
 import { createLogger, type Logger } from '../logger/logger';
-import type { ApplicationInstructionGap } from '../knowledge/instruction-application';
+import type { ApplicationInstructionGap } from '../environment/application-instruction-gap';
 import type { LoadedInstruction } from '../knowledge/instruction-loader';
 import { PhaseLabel } from '../types/validation';
 import { ApplicationGoalKind } from '../validator/phase-application-contract';

@@ -8,8 +8,8 @@
  * a launch can never serve a different file than the read-back credits.
  */
 import { isAbsolute, relative, resolve, sep } from 'node:path';
+import { ApplicationInstructionGap } from '../environment/application-instruction-gap';
 import {
-    ApplicationInstructionGap,
     parseRuleApplication,
     type ApplicationInstructionRefusal,
 } from '../knowledge/instruction-application';

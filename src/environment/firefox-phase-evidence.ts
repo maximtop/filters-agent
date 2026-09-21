@@ -196,8 +196,9 @@ export function firefoxPhaseExtensionProof(
         manifestVersion: SIGNED_XPI_BUILD_MARKER,
         profileKind: input.profileKind,
         enabledListKeys: [...input.declaredListKeys],
-        // A signed XPI exposes no compiled-ruleset inventory, so nothing is claimed active.
-        activeRulesetListKeys: [],
+        // A signed XPI exposes no compiled-ruleset inventory to read, so the set is unobserved —
+        // null, not an empty array that would read as a verified "no rulesets active".
+        activeRulesetListKeys: null,
         // Tracking protection is an AdGuard setting; this blocker reports none.
         stealthEnabled: null,
         userRulesDigest:

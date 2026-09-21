@@ -106,7 +106,11 @@ export function serializeAgentSettingsEvidence(
             listKey: adguardListKey(filter.filterId),
             ...(filter.name === undefined ? {} : { name: filter.name }),
         })),
-        activeRulesetListKeys: evidence.activeRulesetFilterIds.map(adguardListKey),
+        // An unobserved ruleset set stays null too; the locked evidence never invents an empty one.
+        activeRulesetListKeys:
+            evidence.activeRulesetFilterIds === null
+                ? null
+                : evidence.activeRulesetFilterIds.map(adguardListKey),
         stealthEnabled: evidence.stealthEnabled,
         limitsExceeded: evidence.limitsExceeded,
     };
@@ -131,7 +135,9 @@ export function serializeDeclaredBaselineSettings(
     return {
         profileKind,
         enabledListKeys: [...listKeys],
-        activeRulesetListKeys: [],
+        // No live state was read back, so nothing was observed about compiled rulesets: null, not
+        // an empty array a reader would take for a verified "no rulesets active".
+        activeRulesetListKeys: null,
         stealthEnabled: null,
         limitsExceeded: false,
     };

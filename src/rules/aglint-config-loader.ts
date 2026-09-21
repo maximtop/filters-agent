@@ -3,6 +3,11 @@ import { dirname, join, resolve } from 'node:path';
 import { Linter, type LinterConfig } from '@adguard/aglint';
 import { parse as parseYaml } from 'yaml';
 import type { Logger } from '../logger/logger';
+import {
+    NO_REPOSITORY_CONFIG_FALLBACK,
+    STRIPPED_REPOSITORY_CONFIG_FALLBACK,
+    type LintFallbackNote,
+} from './lint-fallback';
 
 /**
  * AGLint configuration discovery and load: the config-file walk, the 4.0-era compatibility strip,
@@ -77,53 +82,6 @@ const AGLINT_RULE_CONFIG_SEVERITY_INDEX = 0;
 const AGLINT_RULE_CONFIG_OPTIONS_INDEX = 1;
 
 /**
- * Why AGLint linted without a repository configuration.
- */
-export const LintConfigurationFallback = {
-    /**
-     * Neither the explicit repository root nor the discovery walk up from it supplied a
-     * configuration file, so AGLint's defaults (every rule off) governed the lint.
-     */
-    NoRepositoryConfig: 'no-repository-config',
-} as const;
-
-/**
- * LintConfigurationFallback value.
- */
-export type LintConfigurationFallback =
-    (typeof LintConfigurationFallback)[keyof typeof LintConfigurationFallback];
-
-/**
- * The note the syntax-only fallback carries into the run evidence and the report.
- */
-export const LINT_CONFIGURATION_FALLBACK_MESSAGE =
-    'No repository AGLint configuration was found, so only rule syntax was checked.';
-
-/**
- * The syntax-only fallback one lint carries when no repository configuration governed it.
- */
-export interface LintFallbackNote {
-    /**
-     * Why the fallback applied.
-     */
-    kind: LintConfigurationFallback;
-
-    /**
-     * The note carried into the run evidence and the report.
-     */
-    message: string;
-}
-
-/**
- * The one fallback note the default-config branches attach; one shared value so every consumer sees
- * identical prose.
- */
-const NO_REPOSITORY_CONFIG_FALLBACK: LintFallbackNote = {
-    kind: LintConfigurationFallback.NoRepositoryConfig,
-    message: LINT_CONFIGURATION_FALLBACK_MESSAGE,
-};
-
-/**
  * A lint environment resolved to a constructed AGLint linter.
  */
 interface ResolvedLinter {
@@ -133,15 +91,16 @@ interface ResolvedLinter {
     ok: true;
 
     /**
+     * The fallback note when the repository's configuration did not govern the lint as written —
+     * none was found, or the pinned AGLint rejected it and the strip retry reduced it; absent when
+     * a discovered configuration governed as written.
+     */
+    fallback?: LintFallbackNote;
+
+    /**
      * The memoized AGLint linter instance; reusable across `lint` calls.
      */
     linter: Linter;
-
-    /**
-     * The syntax-only fallback note when AGLint's defaults governed because no repository
-     * configuration was found; absent when a discovered configuration governed.
-     */
-    fallback?: LintFallbackNote;
 }
 
 /**
@@ -336,7 +295,8 @@ function stripUnsupportedConfigKeys(config: Record<string, unknown>): Record<str
  * @param config - The merged discovered configuration.
  * @param repoRoot - Repository root, for diagnostics only.
  * @param logger - Diagnostics sink receiving the schema-rejection degradation.
- * @returns The prepared lint environment.
+ * @returns The prepared lint environment, carrying the stripped-configuration note when the retry
+ *   is what produced the linter.
  */
 function constructLinterWithCompatibilityStrip(
     config: Record<string, unknown>,
@@ -354,6 +314,10 @@ function constructLinterWithCompatibilityStrip(
     try {
         return {
             ok: true,
+            // A reduced configuration is not the one the repository wrote: the excluded-rule
+            // allowlist it declares is gone, so a rule it excludes lints clean. The warn log alone
+            // left that invisible to everyone reading the run — the note rides on the result.
+            fallback: STRIPPED_REPOSITORY_CONFIG_FALLBACK,
             linter: new Linter(true, stripUnsupportedConfigKeys(config) as unknown as LinterConfig),
         };
     } catch (stripError) {

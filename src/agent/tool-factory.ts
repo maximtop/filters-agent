@@ -10,6 +10,7 @@ import { registerBrowserTools, type BrowserToolOptions } from './browser-tool-bi
 import { registerGetDetailTool } from './get-detail-tool';
 import { generatePlacementMap } from '../repo/placement-map';
 import { normalizeRule } from '../repo/rule-normalizer';
+import { LintConfigurationFallback } from '../rules/lint-fallback';
 import * as v from 'valibot';
 import { TraceArtifactStore, type IArtifactStore } from '../tracer/artifact-store';
 import type { DeclaredPlacementSet } from '../types/declared-placement';
@@ -197,11 +198,17 @@ function resolveArtifactStore(
 }
 
 /**
- * The missing-information subject naming the AGLint syntax-only fallback; its detail carries the
- * loader's own note.
+ * The missing-information subject naming each AGLint configuration fallback; the detail carries the
+ * loader's own note. The harvest keeps the first of identical subjects, so the two fallbacks get
+ * distinct subjects rather than collapsing into one entry, and the record is total over the kinds
+ * so a new fallback cannot ship without one.
  */
-const LINT_FALLBACK_MISSING_INFORMATION_SUBJECT =
-    'AGLint linted rule syntax without a repository configuration';
+const LINT_FALLBACK_MISSING_INFORMATION_SUBJECTS: Record<LintConfigurationFallback, string> = {
+    [LintConfigurationFallback.NoRepositoryConfig]:
+        'AGLint linted rule syntax without a repository configuration',
+    [LintConfigurationFallback.StrippedRepositoryConfig]:
+        'AGLint linted under a reduced repository configuration',
+};
 
 /**
  * Create a ToolRegistry pre-populated with all agent tools.
@@ -408,12 +415,15 @@ export async function createToolRegistry(options: ToolRegistryOptions): Promise<
                           'Use #$# for CSS injection, then call lint_rule and apply_rule again. Do not use #%# or #?# for CSS resizing.',
                       ]
                     : [],
-                // The syntax-only fallback reaches the run evidence and the report through the
+                // A configuration fallback reaches the run evidence and the report through the
                 // missing-information channel the harvest reads.
                 ...(lintResult.fallback !== undefined
                     ? {
                           missingInformation: {
-                              subject: LINT_FALLBACK_MISSING_INFORMATION_SUBJECT,
+                              subject:
+                                  LINT_FALLBACK_MISSING_INFORMATION_SUBJECTS[
+                                      lintResult.fallback.kind
+                                  ],
                               detail: lintResult.fallback.message,
                           },
                       }

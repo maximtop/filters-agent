@@ -18,7 +18,7 @@ import {
 } from '../environment/browser-extension-environment';
 import type { BlockerVerificationMethod } from '../environment/environment-proofs';
 import { ExtensionLaunchFamily } from '../environment/extension-launch';
-import { ApplicationInstructionGap } from '../knowledge/instruction-application';
+import { ApplicationInstructionGap } from '../environment/application-instruction-gap';
 import { createLogger } from '../logger/logger';
 import {
     PhaseApplicationOutcomeKind,

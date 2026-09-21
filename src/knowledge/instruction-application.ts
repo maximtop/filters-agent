@@ -1,3 +1,4 @@
+import { ApplicationInstructionGap } from '../environment/application-instruction-gap';
 import {
     BLOCKER_VERIFICATION_METHOD_VALUES,
     BlockerVerificationMethod,
@@ -31,53 +32,6 @@ export const RULE_APPLICATION_SECTION_KEYWORDS = ['rule application', 'applicati
  * case-insensitively in the heading text.
  */
 export const STATE_VERIFICATION_SECTION_KEYWORDS = ['state verification', 'verification'] as const;
-
-/**
- * Stable refusal classes for an instruction whose application contract is missing or malformed.
- *
- * This is the AC2 record vocabulary: a run whose instruction cannot describe how to apply and
- * verify a rule records which part is missing and invents nothing.
- */
-export const ApplicationInstructionGap = {
-    /**
-     * The instruction carries no rule-application section: nothing describes how to apply a rule.
-     */
-    NoApplicationMethod: 'no-application-method',
-
-    /**
-     * No state-verification section, or one that never declares a usable `read:` line: the host is
-     * not told how to read the blocker state back.
-     */
-    NoVerificationMethod: 'no-verification-method',
-
-    /**
-     * The declared read method is not one of the known verification methods.
-     */
-    UnknownVerificationMethod: 'unknown-verification-method',
-
-    /**
-     * The declared verification method is known but this executor supplies no reader for it.
-     */
-    VerificationMethodUnsupported: 'verification-method-unsupported',
-
-    /**
-     * The declared file-backed target is relative and its resolution escapes the run's host-state
-     * root: the host maintains file-backed blocker state only inside that run-owned directory —
-     * deliberately outside the repository checkout — and refuses this target before reading it.
-     */
-    VerificationTargetOutsideHostState: 'verification-target-outside-host-state',
-} as const;
-
-/**
- * Every ApplicationInstructionGap value, for exhaustive listings.
- */
-export const APPLICATION_INSTRUCTION_GAP_VALUES = Object.values(ApplicationInstructionGap);
-
-/**
- * ApplicationInstructionGap value.
- */
-export type ApplicationInstructionGap =
-    (typeof ApplicationInstructionGap)[keyof typeof ApplicationInstructionGap];
 
 /**
  * Maximum characters of the declared method token quoted into a refusal detail.

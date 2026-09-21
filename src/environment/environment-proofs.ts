@@ -298,7 +298,11 @@ export const ExtensionAdapterProofSchema = v.strictObject({
     // Null when the read-back could not observe the enabled set: a file-backed verification method
     // reads the rules content only, and an empty array would state "no lists enabled" instead.
     enabledListKeys: v.nullable(v.array(FilterListKeySchema)),
-    activeRulesetListKeys: v.array(FilterListKeySchema),
+    // Null when the read-back could not observe the compiled DNR rulesets — a file-backed method
+    // or an MV2 route has no inventory to read — so the proof never claims a verified-empty set.
+    // An observed empty array stays empty, and a record written before the field could be null
+    // still parses as the observation it was.
+    activeRulesetListKeys: v.nullable(v.array(FilterListKeySchema)),
     // Null when the read-back could not observe the Stealth state; an observed false stays false.
     stealthEnabled: v.nullable(v.boolean()),
     userRulesDigest: v.nullable(DigestSchema),

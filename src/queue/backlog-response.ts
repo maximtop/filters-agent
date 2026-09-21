@@ -61,6 +61,12 @@ export interface GithubIssueItem {
     labels?: ReadonlyArray<GithubLabelObject | string> | null;
 
     /**
+     * How many comments the issue carries; GitHub returns it on every listed item, so the listing
+     * alone decides whether a comment read is worth a request.
+     */
+    comments: number;
+
+    /**
      * Present exactly on pull-request items, which the issues endpoint also returns.
      */
     pull_request?: unknown;
@@ -104,10 +110,16 @@ export const BacklogIssueSummarySchema = v.strictObject({
     createdAt: v.pipe(v.string(), v.isoTimestamp()),
     updatedAt: v.pipe(v.string(), v.isoTimestamp()),
     labels: v.array(v.string()),
+    reporterAuthor: v.string(),
+    commentCount: v.pipe(v.number(), v.integer(), v.minValue(0)),
 });
 
 /**
  * One open issue summary returned by the newest-first listing.
+ *
+ * It carries everything the selection derivation reads about the issue itself — dates, labels, the
+ * reporter login and the comment count — so a visited issue costs no second request for the same
+ * facts.
  */
 export type BacklogIssueSummary = v.InferOutput<typeof BacklogIssueSummarySchema>;
 
@@ -132,19 +144,18 @@ export type BacklogIssueComment = v.InferOutput<typeof BacklogIssueCommentSchema
  */
 export const BacklogIssueHistorySchema = v.strictObject({
     summary: BacklogIssueSummarySchema,
-    reporterAuthor: v.string(),
     comments: v.array(BacklogIssueCommentSchema),
 });
 
 /**
- * One issue's summary, its reporter, and its ordered comment history.
+ * One issue's listed summary — the reporter login included — and its ordered comment history.
  */
 export type BacklogIssueHistory = v.InferOutput<typeof BacklogIssueHistorySchema>;
 
 /**
  * Map one GitHub issue item into a raw summary pre-validation.
  *
- * @param item - GitHub issue item as listed or fetched.
+ * @param item - GitHub issue item as listed.
  * @returns The raw summary fields.
  */
 export function mapGithubIssueToSummary(item: GithubIssueItem): BacklogIssueSummary {
@@ -155,6 +166,8 @@ export function mapGithubIssueToSummary(item: GithubIssueItem): BacklogIssueSumm
         labels: (item.labels ?? [])
             .map((label) => (typeof label === 'string' ? label : label.name))
             .filter((name): name is string => Boolean(name)),
+        reporterAuthor: item.user?.login ?? '',
+        commentCount: item.comments,
     };
 }
 

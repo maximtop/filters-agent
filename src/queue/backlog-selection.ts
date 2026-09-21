@@ -160,7 +160,7 @@ function isOwnReportComment(comment: BacklogIssueComment, reportAuthorLogin: str
  * trust model.
  *
  * @param comment - One mapped issue comment.
- * @param history - The comment's issue history, carrying the reporter login.
+ * @param history - The comment's issue history, whose summary carries the reporter login.
  * @param trustedRoles - The configured trusted associations.
  * @returns True when the comment's author is trusted to change the issue revision.
  */
@@ -170,7 +170,7 @@ function isTrustedCommentAuthor(
     trustedRoles: QueueInputs['trustedRoles'],
 ): boolean {
     const authorLogin = comment.author.toLowerCase();
-    if (authorLogin.length > 0 && authorLogin === history.reporterAuthor.toLowerCase()) {
+    if (authorLogin.length > 0 && authorLogin === history.summary.reporterAuthor.toLowerCase()) {
         return true;
     }
     const association = (comment.authorAssociation ?? '').toUpperCase();
@@ -251,6 +251,10 @@ function issueVerdictOf(history: BacklogIssueHistory, inputs: QueueInputs): Issu
  * the take limit holds, no further page is requested — later issues are left for the next run and
  * appear in neither list. A page is followed by the next only while it reports more.
  *
+ * The listed summary is what a history read is asked for, not an issue number: the listing already
+ * carries every issue-level fact the derivation reads, so a visited issue never costs a second
+ * request for them.
+ *
  * @param reader - The backlog module's whole GitHub read surface.
  * @param inputs - Validated queue inputs; applying the defaults is the caller's responsibility.
  * @returns The taken issue numbers newest first, and the skip tally.
@@ -273,10 +277,7 @@ export async function selectBacklogIssues(
                 skipped[narrowedOut].push(summary.issueNumber);
                 continue;
             }
-            const verdict = issueVerdictOf(
-                await reader.readIssueHistory(summary.issueNumber),
-                inputs,
-            );
+            const verdict = issueVerdictOf(await reader.readIssueHistory(summary), inputs);
             if (verdict === null) {
                 taken.push(summary.issueNumber);
                 continue;

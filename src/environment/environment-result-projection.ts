@@ -163,9 +163,11 @@ function projectPhaseSettings(phase: EnvironmentPhaseEvidence): AgentSettingsEvi
     }
     return {
         profileKind: extension.profileKind,
-        // A null extension set is carried as null, never flattened into "no lists enabled".
+        // A null extension set is carried as null, never flattened into "no lists enabled" or
+        // "no rulesets active".
         enabledListKeys: extension.enabledListKeys === null ? null : [...extension.enabledListKeys],
-        activeRulesetListKeys: [...extension.activeRulesetListKeys],
+        activeRulesetListKeys:
+            extension.activeRulesetListKeys === null ? null : [...extension.activeRulesetListKeys],
         stealthEnabled: extension.stealthEnabled,
         limitsExceeded: false,
     };

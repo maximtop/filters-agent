@@ -14,7 +14,10 @@ import type { Logger } from 'pino';
 import type { AgentObservation } from '../types/agent-run-artifacts';
 import { ToolName } from '../agent/tool-names';
 import { RuleGuidanceNotice } from '../knowledge/instruction-serving';
-import { LintConfigurationFallback } from '../rules/aglint-config-loader';
+import {
+    LINT_CONFIGURATION_FALLBACK_VALUES,
+    type LintConfigurationFallback,
+} from '../rules/lint-fallback';
 import {
     MAX_MISSING_INFORMATION_ENTRIES,
     MissingInformationEntrySchema,
@@ -86,22 +89,23 @@ function entryFromGuidanceNotice(
 }
 
 /**
- * Read the missing-information record a `lint_rule` result carries when the lint ran under AGLint's
- * defaults because no repository configuration was found.
+ * Read the missing-information record a `lint_rule` result carries when the repository's AGLint
+ * configuration did not govern the lint as written — none was found, or the pinned AGLint rejected
+ * it and the strip retry reduced it.
  *
  * @param result - The redacted structured tool result.
- * @returns The validated entry when the result carries the syntax-only fallback marker and a
- *   well-formed record.
+ * @returns The validated entry when the result carries a declared fallback marker and a well-formed
+ *   record.
  */
 function entryFromLintFallback(
     result: Record<string, unknown>,
 ): MissingInformationEntry | undefined {
     const fallback = result.fallback;
-    if (
-        typeof fallback !== 'object' ||
-        fallback === null ||
-        (fallback as Record<string, unknown>).kind !== LintConfigurationFallback.NoRepositoryConfig
-    ) {
+    if (typeof fallback !== 'object' || fallback === null) {
+        return undefined;
+    }
+    const kind = (fallback as Record<string, unknown>).kind as LintConfigurationFallback;
+    if (!LINT_CONFIGURATION_FALLBACK_VALUES.includes(kind)) {
         return undefined;
     }
     return entryFromNestedRecord(result.missingInformation);

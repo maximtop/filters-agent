@@ -1,6 +1,7 @@
 import { type LinterProblem as AglintLinterProblem } from '@adguard/aglint';
 import { createLogger, type Logger } from '../logger/logger';
-import { getPreparedLint, type LintFallbackNote, type PreparedLint } from './aglint-config-loader';
+import { getPreparedLint, type PreparedLint } from './aglint-config-loader';
+import type { LintFallbackNote } from './lint-fallback';
 import { parseSafeCssInjectionRule } from './safe-css-injection';
 
 /**
@@ -88,8 +89,9 @@ export interface LintResult {
     problems: LintProblem[];
 
     /**
-     * The syntax-only fallback note when the lint ran under AGLint's defaults because no repository
-     * configuration was found; absent when a discovered configuration governed the lint.
+     * The fallback note when the repository's configuration did not govern the lint as written —
+     * none was found, or the pinned AGLint rejected it and the strip retry reduced it; absent when
+     * a discovered configuration governed as written.
      */
     fallback?: LintFallbackNote;
 }
@@ -242,9 +244,10 @@ function mapConfigError(error: Error): LintProblem {
  * the config once. With no repository root — or no config file on the walk — AGLint's defaults
  * apply (every rule off, parse failures still reported) and the result carries the syntax-only
  * fallback note that says so. A live 4.0-era configuration (as currently shipped by AdguardFilters
- * master) is repaired at load time by stripping the keys the pinned 3.0.3 package rejects, and
- * every degradation or failure is logged first. Discovery and load failures never throw out of this
- * function: they surface as an error-severity `config-error` problem.
+ * master) is repaired at load time by stripping the keys the pinned 3.0.3 package rejects, and the
+ * result carries its own fallback note saying the configuration was reduced; every degradation or
+ * failure is logged first. Discovery and load failures never throw out of this function: they
+ * surface as an error-severity `config-error` problem.
  *
  * Before the AGLint call, the wrapper runs the `css-with-scriptlet-separator` shape check: CSS
  * declarations spelled with the #%# JavaScript-injection separator are flagged exactly like the old
@@ -252,8 +255,8 @@ function mapConfigError(error: Error): LintProblem {
  *
  * @param rule - A single raw filter-list rule line.
  * @param options - Repository root and diagnostics sink; both optional.
- * @returns The lint result with an overall validity flag, the list of problems, and the syntax-only
- *   fallback note when no repository configuration governed the lint.
+ * @returns The lint result with an overall validity flag, the list of problems, and the fallback
+ *   note when the repository's configuration did not govern the lint as written.
  */
 export function lintRule(rule: string, options?: LintRuleOptions): LintResult {
     const logger = options?.logger ?? createLogger();
