@@ -12,6 +12,7 @@
         "@earendil-works/pi-coding-agent": "0.84.1",
         "@octokit/rest": "^21.1.0",
         "@valibot/to-json-schema": "^1.7.0",
+        "acorn": "8.16.0",
         "cloakbrowser": "^0.3.31",
         "commander": "^14.0.3",
         "dotenv": "^16.4.0",

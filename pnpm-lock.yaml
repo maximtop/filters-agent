@@ -38,6 +38,9 @@ importers:
       '@valibot/to-json-schema':
         specifier: ^1.7.0
         version: 1.7.0(valibot@1.4.1(typescript@5.9.3))
+      acorn:
+        specifier: 8.16.0
+        version: 8.16.0
       cloakbrowser:
         specifier: ^0.3.31
         version: 0.3.31(playwright-core@1.60.0)

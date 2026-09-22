@@ -42,7 +42,11 @@ import {
     type PageStabilizationEvidence,
 } from './page-stability';
 import { applyConsentStrategy } from './consent-interaction';
-import { validateExpression, describeLargeEvaluationResult } from './expression-validator';
+import {
+    ExpressionRejectionKind,
+    describeLargeEvaluationResult,
+    validateExpression,
+} from './expression-validator';
 import { writeArtifact, captureFullPageTiles, parseTileWindowArg } from './full-page-tiles';
 import { inspectPageState } from './page-state-probe';
 import type { PageStateInspection } from '../types/page-state-inspection';
@@ -193,7 +197,7 @@ export interface BrowserToolHandlers {
  * three refusals in a row, so producer and matcher must spell it identically; it is exported from
  * the producer rather than restated there.
  */
-export const EVALUATE_JS_POLICY_REJECTION_KIND = 'policy_rejection';
+export const EVALUATE_JS_POLICY_REJECTION_KIND = ExpressionRejectionKind.Policy;
 
 /**
  * Maximum serialized size of the complete validated ad-slot inspection artifact.
@@ -788,8 +792,10 @@ export function createBrowserToolHandlers(config: BrowserToolConfig): BrowserToo
         /**
          * Evaluate a read-only JavaScript diagnostic in the page context.
          *
-         * Expressions that assign, update, delete, mutate DOM/browser state, schedule callbacks,
-         * execute dynamic code, access sensitive storage, navigate, or make requests are rejected.
+         * Expressions that write page state — assign, update or delete anything but the variables
+         * and literals they declare, mutate DOM/browser state, schedule callbacks, execute dynamic
+         * code, access sensitive storage, navigate, or make requests — are rejected. An expression
+         * that does not parse is refused too, as a syntax error, and never reaches the page.
          *
          * @param args - Tool arguments with `expression` property.
          * @returns The evaluation result, or an error if validation failed.
@@ -801,10 +807,7 @@ export function createBrowserToolHandlers(config: BrowserToolConfig): BrowserToo
             }
             const rejection = validateExpression(expression, maxEvalLen);
             if (rejection) {
-                return {
-                    error: rejection,
-                    errorKind: EVALUATE_JS_POLICY_REJECTION_KIND,
-                };
+                return { error: rejection.message, errorKind: rejection.kind };
             }
             const page = session.getPage();
             const result = await page.evaluate(expression);
