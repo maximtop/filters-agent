@@ -139,7 +139,10 @@ import { extractBrowserLaunchSignal } from './browser-launch-signal';
 import { PhaseLabel } from '../types/validation';
 import { SettingsProfileKind } from '../types/settings-profile-kind';
 import { RuleSyntaxKind } from '../types/rule-syntax-kind';
-import { isTargetEnvironmentFallbackReason } from '../types/browser-fallback-origin';
+import {
+    isAgentRefusalFallback,
+    isTargetEnvironmentFallbackReason,
+} from '../types/browser-fallback-origin';
 import { BrowserFallbackReason } from '../types/browser-fallback-reason';
 import {
     registerEnvironmentSelectionTools,
@@ -855,6 +858,20 @@ function browserEnvironmentKey(
 }
 
 /**
+ * Read the fallback reason a browser-tool failure carries, whatever its class.
+ *
+ * @param result - Browser tool result returned by the active session registry.
+ * @returns The typed fallback reason, or null when the result carries none.
+ */
+function refusedNavigationFallbackReason(
+    result: Record<string, unknown>,
+): BrowserFallbackReason | null {
+    return typeof result.error === 'string' && typeof result.fallbackReason === 'string'
+        ? (result.fallbackReason as BrowserFallbackReason)
+        : null;
+}
+
+/**
  * Read a typed technical navigation category from a browser-tool failure.
  *
  * @param result - Browser tool result returned by the active session registry.
@@ -867,11 +884,17 @@ function technicalNavigationFallbackReason(
         return undefined;
     }
     const fallbackReason = result.fallbackReason as BrowserFallbackReason;
-    // Every navigation outcome counts, including one we refused ourselves: this decides whether the
-    // target's per-run budget is charged and whether the failure is remembered at all. A reason
-    // missing from here is treated as a malformed model argument, so the run forgets it and the
-    // model may retry the same doomed navigation until its iteration budget is gone.
-    return isTargetEnvironmentFallbackReason(fallbackReason) ? fallbackReason : undefined;
+    // Every navigation outcome the site or the network produced counts: this decides whether the
+    // target's per-run budget is charged and whether the failure is remembered at all. A refusal
+    // of our own — the model named a URL off the issue origins, or an unsafe one — says nothing
+    // about the target and is not counted: it used to charge the budget and retire the session,
+    // so three excursions declared a reachable site unavailable (AdguardFilters #242110). The
+    // model may repeat the refused URL, but each repeat is one refused call, bounded by the
+    // iteration budget and the same-tool streak notice.
+    return isTargetEnvironmentFallbackReason(fallbackReason) &&
+        !isAgentRefusalFallback(fallbackReason)
+        ? fallbackReason
+        : undefined;
 }
 
 /**
@@ -4572,6 +4595,18 @@ export class AgentRuntime {
                             : BROWSER_TOOL_DEADLINE_MS,
                     );
                     if (name === 'open_page' && activeTargetUrl) {
+                        if (isAgentRefusalFallback(refusedNavigationFallbackReason(result))) {
+                            return {
+                                ...result,
+                                errorKind: 'navigation_refused',
+                                retryable: true,
+                                requiredAction: 'stay_on_issue_origin',
+                                guidance:
+                                    'This session stays open on the current page. Open only URLs ' +
+                                    'on the issue origins: the reported page, its own redirects ' +
+                                    'and the pages it links to there.',
+                            };
+                        }
                         const fallbackReason = technicalNavigationFallbackReason(result);
                         if (fallbackReason) {
                             const activeState = this.activeSessionId

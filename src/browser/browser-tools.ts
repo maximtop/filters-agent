@@ -82,7 +82,9 @@ export interface BrowserToolConfig {
     logger?: Logger;
 
     /**
-     * Reported issue URL whose canonical origin top-level navigation is restricted to.
+     * Reported issue URL whose canonical origin top-level navigation is restricted to. A redirect
+     * the site itself performs while an admitted page loads widens the restriction to the landing
+     * origin for the rest of the session.
      */
     allowedOrigin: string;
 
@@ -342,15 +344,49 @@ export function createBrowserToolHandlers(config: BrowserToolConfig): BrowserToo
         inFlightDnsResolutions.set(hostname, pending);
         return pending;
     };
-    let allowedOrigin: string | undefined;
+    // The origins a top-level navigation may land on: the reported issue origin, plus every origin
+    // the site itself redirected an admitted page to. A reported URL that is a short link or an
+    // interstitial lands somewhere else by design — the reporter saw the landing page — and the
+    // guard used to refuse that landing on every attempt until the target counted as unavailable
+    // (AdguardFilters #239967, oii.la). The model's own navigation still has to name one of these.
+    const issueOrigins = new Set<string>();
     let allowedOriginError: string | undefined;
     try {
-        allowedOrigin = canonicalHttpOrigin(config.allowedOrigin);
+        issueOrigins.add(canonicalHttpOrigin(config.allowedOrigin));
     } catch (error) {
         allowedOriginError = (error as Error).message;
     }
+    // True only while open_page loads a URL the guard admitted, from the navigation request to the
+    // end of stabilization: a cross-origin top-level navigation in that window is the site's own
+    // redirect. Outside it — consent setup, a click, a later script — it is refused as before.
+    let loadingAdmittedUrl = false;
     let blockedNavigationError: string | undefined;
     let safetyGuardInstall: Promise<void> | undefined;
+
+    /**
+     * Admit one top-level navigation, following the site's own redirect while an admitted page
+     * loads.
+     *
+     * @param rawUrl - The URL the main frame is navigating to or landed on.
+     * @returns Nothing when the navigation may proceed.
+     * @throws UnsafeNetworkUrlError when the URL is unsafe, or leaves the issue origins outside a
+     *   page load.
+     */
+    async function admitMainNavigation(rawUrl: string): Promise<void> {
+        const url = await validatePublicHttpUrl(rawUrl, {
+            ...(loadingAdmittedUrl ? {} : { expectedOrigins: [...issueOrigins] }),
+            resolveHostname: resolveHostnameFresh,
+        });
+        if (issueOrigins.has(url.origin)) {
+            return;
+        }
+        issueOrigins.add(url.origin);
+        config.logger?.info(
+            { landingOrigin: url.origin, issueOrigins: [...issueOrigins] },
+            'the site redirected the loading page off the issue origin; the landing origin ' +
+                'joins the issue origins for this session',
+        );
+    }
 
     /**
      * Install the public-network route exactly once for the lifetime of this browser session.
@@ -366,10 +402,13 @@ export function createBrowserToolHandlers(config: BrowserToolConfig): BrowserToo
             const isMainNavigation =
                 request.isNavigationRequest() && request.frame() === page.mainFrame();
             try {
-                await validatePublicHttpUrl(request.url(), {
-                    expectedOrigin: isMainNavigation ? allowedOrigin : undefined,
-                    resolveHostname: resolveHostnameFresh,
-                });
+                if (isMainNavigation) {
+                    await admitMainNavigation(request.url());
+                } else {
+                    await validatePublicHttpUrl(request.url(), {
+                        resolveHostname: resolveHostnameFresh,
+                    });
+                }
                 await route.fallback();
             } catch (error) {
                 if (isMainNavigation) {
@@ -395,7 +434,7 @@ export function createBrowserToolHandlers(config: BrowserToolConfig): BrowserToo
             if (!url) {
                 return { error: 'url is required' };
             }
-            if (!allowedOrigin) {
+            if (issueOrigins.size === 0) {
                 return {
                     error: `navigation blocked: ${allowedOriginError ?? 'allowed origin is invalid'}`,
                     fallbackReason: BrowserFallbackReason.UnsafeTargetUrl,
@@ -403,7 +442,7 @@ export function createBrowserToolHandlers(config: BrowserToolConfig): BrowserToo
             }
             try {
                 await validatePublicHttpUrl(url, {
-                    expectedOrigin: allowedOrigin,
+                    expectedOrigins: [...issueOrigins],
                     resolveHostname: resolveHostnameFresh,
                 });
             } catch (error) {
@@ -429,6 +468,7 @@ export function createBrowserToolHandlers(config: BrowserToolConfig): BrowserToo
                     blockedNavigationError = undefined;
                     try {
                         const attemptStartedAt = Date.now();
+                        loadingAdmittedUrl = true;
                         const response = await page.goto(url, {
                             waitUntil: 'domcontentloaded',
                             timeout: pageStabilizationTimeoutMs,
@@ -437,10 +477,9 @@ export function createBrowserToolHandlers(config: BrowserToolConfig): BrowserToo
                             throw new Error(blockedNavigationError);
                         }
                         const finalUrl = page.url();
-                        await validatePublicHttpUrl(finalUrl, {
-                            expectedOrigin: allowedOrigin,
-                            resolveHostname: resolveHostnameFresh,
-                        });
+                        // The route sees a script or meta redirect as a new request; an HTTP
+                        // redirect is followed by the browser and only its landing shows here.
+                        await admitMainNavigation(finalUrl);
                         const statusCode = response?.status() ?? 200;
                         const fallbackReason =
                             statusCode === 451
@@ -481,6 +520,7 @@ export function createBrowserToolHandlers(config: BrowserToolConfig): BrowserToo
                                 ),
                             },
                         });
+                        loadingAdmittedUrl = false;
                         if (stabilization.status !== 'stable') {
                             throw new Error(
                                 stabilization.detail ?? 'page did not stabilize before capture',
@@ -505,9 +545,10 @@ export function createBrowserToolHandlers(config: BrowserToolConfig): BrowserToo
                         }
                         const postConsentUrl = page.url();
                         try {
-                            if (canonicalHttpOrigin(postConsentUrl) !== allowedOrigin) {
+                            if (!issueOrigins.has(canonicalHttpOrigin(postConsentUrl))) {
                                 throw new Error(
-                                    `URL origin must remain ${allowedOrigin} after consent setup`,
+                                    `URL origin must remain on ${[...issueOrigins].join(', ')} ` +
+                                        'after consent setup',
                                 );
                             }
                         } catch (error) {
@@ -530,6 +571,7 @@ export function createBrowserToolHandlers(config: BrowserToolConfig): BrowserToo
                             consent,
                         };
                     } catch (err) {
+                        loadingAdmittedUrl = false;
                         lastError = blockedNavigationError ?? (err as Error).message;
                         lastFallbackReason = blockedNavigationError
                             ? BrowserFallbackReason.NavigationOffOrigin

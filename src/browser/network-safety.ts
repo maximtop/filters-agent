@@ -10,9 +10,10 @@ export type HostnameResolver = (hostname: string) => Promise<string[]>;
  */
 export interface PublicHttpUrlOptions {
     /**
-     * Canonical origin that a top-level navigation must remain on.
+     * Canonical origins a top-level navigation must remain on: the reported issue origin and the
+     * origins the reported page itself redirected to.
      */
-    expectedOrigin?: string;
+    expectedOrigins?: readonly string[];
 
     /**
      * Exact hostnames accepted by the caller, when the destination is allowlist-only.
@@ -365,12 +366,15 @@ export async function validatePublicHttpUrl(
 ): Promise<URL> {
     const url = parseHttpUrl(rawUrl, options.httpsOnly ?? false);
     const hostname = normalizeHostname(url.hostname);
-    if (options.expectedOrigin) {
-        const expectedOrigin = canonicalHttpOrigin(options.expectedOrigin);
-        if (url.origin !== expectedOrigin) {
+    if (options.expectedOrigins) {
+        const expectedOrigins = options.expectedOrigins.map(canonicalHttpOrigin);
+        if (!expectedOrigins.includes(url.origin)) {
+            const quoted = expectedOrigins.map((origin) => `'${origin}'`).join(', ');
             throw new UnsafeNetworkUrlError(
                 UnsafeUrlRefusal.OriginMismatch,
-                `URL must remain on configured issue origin '${expectedOrigin}'.`,
+                expectedOrigins.length === 1
+                    ? `URL must remain on configured issue origin ${quoted}.`
+                    : `URL must remain on the configured issue origins ${quoted}.`,
             );
         }
     }
