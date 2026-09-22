@@ -184,39 +184,107 @@ export const ReportSchema = v.object({
 export type Report = v.InferOutput<typeof ReportSchema>;
 
 /**
- * The extraction envelope payload: a filled report or an explicit skip with a reason.
+ * Build the extraction envelope payload schema over one report schema.
  *
  * A variant (discriminated union) on `verdict`, not a plain union: a plain union collapses the
  * failing variant's issues into one pathless message, which would break the contract that a
  * validation failure names the field. The variant keeps the nested paths (`report.siteUrls`,
  * `verdict`) in the issue list.
+ *
+ * @param report - The report schema the filter-report verdict carries.
+ * @returns The envelope schema.
  */
-export const IntakeExtractionPayloadSchema = v.variant('verdict', [
-    v.object({
-        /**
-         * Discriminator: the issue is a filter report.
-         */
-        verdict: v.literal(IntakeVerdict.FilterReport),
+export function intakeExtractionPayloadSchema<TReport extends v.GenericSchema>(report: TReport) {
+    return v.variant('verdict', [
+        v.object({
+            /**
+             * Discriminator: the issue is a filter report.
+             */
+            verdict: v.literal(IntakeVerdict.FilterReport),
 
-        /**
-         * The filled report.
-         */
-        report: ReportSchema,
-    }),
-    v.object({
-        /**
-         * Discriminator: the issue is not a filter report.
-         */
-        verdict: v.literal(IntakeVerdict.NotAFilterReport),
+            /**
+             * The filled report.
+             */
+            report,
+        }),
+        v.object({
+            /**
+             * Discriminator: the issue is not a filter report.
+             */
+            verdict: v.literal(IntakeVerdict.NotAFilterReport),
 
-        /**
-         * Why the issue is not a filter report.
-         */
-        reason: v.pipe(v.string(), v.minLength(1)),
-    }),
-]);
+            /**
+             * Why the issue is not a filter report.
+             */
+            reason: v.pipe(v.string(), v.minLength(1)),
+        }),
+    ]);
+}
+
+/**
+ * The extraction envelope payload: a filled report or an explicit skip with a reason.
+ */
+export const IntakeExtractionPayloadSchema = intakeExtractionPayloadSchema(ReportSchema);
 
 /**
  * The validated extraction payload, ready for verdict dispatch.
  */
 export type IntakeExtractionPayload = v.InferOutput<typeof IntakeExtractionPayloadSchema>;
+
+/**
+ * The scheme prefix a site URL may carry that the issue's own text may have omitted.
+ */
+const URL_SCHEME_PATTERN = /^https?:\/\//u;
+
+/**
+ * Whether a site URL was copied from the issue rather than composed by the model.
+ *
+ * The URL itself, or the URL without its scheme and a trailing slash, occurs in the issue text: a
+ * reporter who wrote `sitepoint.com` stated the site the model returns as `https://sitepoint.com/`,
+ * while a query string the model garbled — a 1.3 KB base64 payload it could not reproduce, in
+ * AdguardFilters #242138 — occurs nowhere. A 19-issue census of live extractions found every
+ * faithful copy verbatim in its issue and the one garbled copy absent.
+ *
+ * @param url - The site URL the model returned.
+ * @param issueText - The issue text the model was shown.
+ * @returns Whether the issue states that URL.
+ */
+function siteUrlCopiedFromIssue(url: string, issueText: string): boolean {
+    if (issueText.includes(url)) {
+        return true;
+    }
+    const schemeless = url.replace(URL_SCHEME_PATTERN, '');
+    const stated = schemeless.endsWith('/') ? schemeless.slice(0, -1) : schemeless;
+    return stated.length > 0 && issueText.includes(stated);
+}
+
+/**
+ * The report schema whose site URLs must be copied from the given issue text.
+ *
+ * The model's copy of a site URL is the run's whole navigation allow-list, and the model in the fix
+ * loop can only ever echo the issue back — so a copy the issue does not state leaves every browser
+ * launch refused. The rule is a schema check so the structured call's bounded repair asks for a
+ * faithful copy before the extraction gives up.
+ *
+ * @param issueText - The issue text the model was shown: title, body and the trusted comments.
+ * @returns The report schema bound to that issue.
+ */
+export function reportSchemaCopiedFrom(issueText: string) {
+    return v.object({
+        ...ReportSchema.entries,
+        siteUrls: v.pipe(
+            v.array(
+                v.pipe(
+                    v.string(),
+                    v.url(),
+                    v.check(
+                        (url) => siteUrlCopiedFromIssue(url, issueText),
+                        'must be copied from the issue exactly as the issue states it; ' +
+                            'this value does not occur in the issue',
+                    ),
+                ),
+            ),
+            v.minLength(1),
+        ),
+    });
+}

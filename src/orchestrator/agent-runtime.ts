@@ -89,7 +89,7 @@ import {
 } from '../environment/filtering-environment';
 import type { CliAdapterProof } from '../environment/environment-proofs';
 import { INTERACT_PAGE_TOOL_NAME } from '../agent/interact-page-tool';
-import { convergeExecutorRequestedLists } from './executor-list-convergence';
+import { executorRequestedLists } from './executor-list-convergence';
 import {
     buildAgentRuntimeListCatalog,
     type AgentRuntimeListCatalogBundle,
@@ -3611,18 +3611,14 @@ export class AgentRuntime {
         // catalog (32-AFK Decision 1): the declaration is the run's executable baseline and the
         // environment requests no official list at all.
         const firefoxLaunch = firefoxPreparedLaunch(state.extension);
-        const executingFilterIds = firefoxLaunch
-            ? []
-            : (state.extensionBaselineReadBack?.optionsEnabledFilterIds ??
-              this.activatedReporterFilterIds);
-        // The executor request converges the run's requested official ids onto the ids the AdGuard
-        // catalog publishes, and records the rest as the run's classified filter-selection
-        // approximation — the same policy the browser-extension launch applies against the
-        // installed build catalog. Refusing on the first absent id instead cost a live desktop run
-        // of AdguardFilters #241534 its whole investigation: the reporter had third-party list 207
-        // enabled, so the run ended `capability_limited` before `apply_rule` ever executed.
-        const convergence = convergeExecutorRequestedLists({
-            requestedFilterIds: executingFilterIds,
+        // A launched blocker's read-back is a fact the adapter replays whole; only ids the reporter
+        // merely had enabled converge onto the AdGuard catalog, with the rest recorded as the
+        // run's filter-selection approximation. `executorRequestedLists` owns that distinction.
+        const convergence = executorRequestedLists({
+            observedFilterIds: firefoxLaunch
+                ? []
+                : state.extensionBaselineReadBack?.optionsEnabledFilterIds,
+            reportedFilterIds: this.activatedReporterFilterIds,
             environmentHost: this.environmentHost,
             verbose: this.options.verbose ?? false,
         });

@@ -36,6 +36,10 @@ import {
 } from './environment-proofs';
 import type { ApplicationInstructionGap } from './application-instruction-gap';
 import {
+    describeOfficialFilterSetDisagreement,
+    officialFilterSetDisagreement,
+} from './official-filter-set-agreement';
+import {
     adguardListKey,
     requestedListsToRegistryIds,
     resolveAdguardListKey,
@@ -939,19 +943,6 @@ interface OpenBrowserExtensionLease {
 }
 
 /**
- * Compare two ordered numeric identity sets.
- *
- * @param left - First identity list.
- * @param right - Second identity list.
- * @returns Whether their canonical values agree exactly.
- */
-function sameIds(left: readonly number[], right: readonly number[]): boolean {
-    const canonicalLeft = canonicalIds(left);
-    const canonicalRight = canonicalIds(right);
-    return JSON.stringify(canonicalLeft) === JSON.stringify(canonicalRight);
-}
-
-/**
  * Browser Extension implementation of the common filtering environment contract.
  */
 export class BrowserExtensionEnvironmentAdapter implements FilteringEnvironmentAdapter {
@@ -1100,14 +1091,18 @@ export class BrowserExtensionEnvironmentAdapter implements FilteringEnvironmentA
                 };
             }
             const settings = await this.options.settingsProvider([...requestedFilterIds]);
-            if (!sameIds(settings.enabledFilterIds, requestedFilterIds)) {
+            const disagreement = officialFilterSetDisagreement(
+                requestedFilterIds,
+                settings.enabledFilterIds,
+            );
+            if (disagreement) {
                 this.lifecycle = 'limited';
                 return {
                     ready: false,
                     limitation: limitation(
                         EnvironmentAdapterLimitationCode.SettingsMismatch,
                         'preparation',
-                        'The Extension did not activate exactly the requested official filters.',
+                        describeOfficialFilterSetDisagreement(disagreement),
                     ),
                 };
             }
@@ -1265,7 +1260,11 @@ export class BrowserExtensionEnvironmentAdapter implements FilteringEnvironmentA
                         ? request.candidate.rule
                         : null,
                 application: this.options.application,
-                baselineEnabledFilterIds: this.preparedFilterIds.map(adguardListKey),
+                // The locked baseline names every list the blocker activated, third-party rulesets
+                // included; the requested ids name only the pinned official part of it, and a
+                // phase session configured from those would run a narrower set than the one the
+                // investigation ran on.
+                baselineEnabledFilterIds: [...this.baseline.enabledListKeys],
                 // Forwarded from the phase request so an experiment timeout aborts this B/C
                 // application session instead of letting it run out its own per-session budget
                 // after the parent deadline already fired.

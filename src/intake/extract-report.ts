@@ -8,7 +8,12 @@ import {
     PromptDocumentName,
     type PromptDocumentLoader,
 } from '../prompts/prompt-documents';
-import { IntakeExtractionPayloadSchema, IntakeVerdict, type Report } from './report';
+import {
+    intakeExtractionPayloadSchema,
+    IntakeVerdict,
+    reportSchemaCopiedFrom,
+    type Report,
+} from './report';
 
 /**
  * Intake extraction outcomes: the issue becomes a report or is skipped.
@@ -114,8 +119,9 @@ function renderTrustedComments(comments: RawIssue['comments']): string {
  * The trust boundary is reapplied here, on the raw issue's own comments: extraction must not rely
  * on the caller's view of the comments, because the `RawIssue` may not have come from `fetchIssue`.
  * A `not-a-filter-report` verdict ends as a skip with a log note (the no-URL criterion stated in
- * the prompt); a reply that never validates throws naming the failing field; a provider failure
- * throws with the stop reason and the provider message.
+ * the prompt); a reply that never validates — a malformed field, or a site URL the issue does not
+ * state — throws naming the failing field; a provider failure throws with the stop reason and the
+ * provider message.
  *
  * @param raw - The raw, prompt-safe issue.
  * @param options - Client, prompt loader, logger and signal.
@@ -142,9 +148,16 @@ export async function extractReport(
         issueBody: raw.body ?? '',
         trustedComments: renderTrustedComments(trustedComments),
     });
+    // The site-URL rule is bound to exactly the text the model was shown — the title, the body and
+    // the trusted comments — so a copy is judged against what the model could copy from.
+    const issueText = [
+        raw.title,
+        raw.body ?? '',
+        ...trustedComments.map((comment) => comment.body),
+    ].join('\n');
     const result = await options.client.structured({
         messages: [{ role: 'user', text: task }],
-        schema: IntakeExtractionPayloadSchema,
+        schema: intakeExtractionPayloadSchema(reportSchemaCopiedFrom(issueText)),
         logger: options.logger,
         ...(options.signal !== undefined ? { signal: options.signal } : {}),
     });

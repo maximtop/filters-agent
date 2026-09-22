@@ -106,7 +106,7 @@ function recordConvergenceFidelity(
 }
 
 /**
- * Build the executor's preparation request from the run's requested official filter ids.
+ * Build the executor's preparation request from the filter ids the reporter had enabled.
  *
  * The requested set converges onto the ids the AdGuard catalog publishes rather than failing on the
  * first one it does not, exactly as the browser-extension launch converges onto the installed build
@@ -127,7 +127,7 @@ function recordConvergenceFidelity(
  * @param input.verbose - Whether verbose lifecycle logging is enabled.
  * @returns The lists to prepare, or the refusal when nothing converged.
  */
-export function convergeExecutorRequestedLists(input: {
+function convergeReportedFilterIds(input: {
     /**
      * The run's executing official filter ids, in evidence order.
      */
@@ -175,4 +175,73 @@ export function convergeExecutorRequestedLists(input: {
     );
     recordConvergenceFidelity(input.environmentHost, conflicts, logger);
     return { lists: projection.convergentLists, limitation: null };
+}
+
+/**
+ * Build the executor's preparation request from the run's filter ids.
+ *
+ * Two kinds of id reach this seam, and only one of them can be approximated. Ids the reporter had
+ * enabled are a wish: an executor that builds its baseline from the AdGuard catalog runs the part
+ * of them the catalog publishes, and the rest is recorded as the run's filter-selection
+ * approximation. Ids a launched blocker reported back are a fact: every one of them is already
+ * running, the launch has already recorded whatever the installed build could not activate, and the
+ * adapter locks and replays the whole observed set from its own read-back. The request names the
+ * pinned official part of that set because a list reference exists for nothing else — and nothing
+ * is recorded, since a report saying a running ruleset was left out of the executed baseline would
+ * state the opposite of what ran. Treating an observed set as a wish did exactly that, and the
+ * narrowed request then failed the Extension adapter's exact-set check: every live run whose
+ * reporter import activated a build-shipped third-party ruleset (216, 238, 252) ended
+ * `capability_limited` at `apply_rule`.
+ *
+ * @param input - The run's filter ids and the seams the record and the log line reach.
+ * @param input.observedFilterIds - The enabled ids the launched blocker reported back, or undefined
+ *   when the run's executor launches no blocker of its own.
+ * @param input.reportedFilterIds - The ids the reporter had enabled, used when nothing was
+ *   observed.
+ * @param input.environmentHost - The environment-selection host an approximation is recorded on.
+ * @param input.verbose - Whether verbose lifecycle logging is enabled.
+ * @returns The lists to prepare, or the refusal when a reported request converged on nothing.
+ */
+export function executorRequestedLists(input: {
+    /**
+     * The enabled ids the launched blocker reported back, or undefined when the run's executor
+     * launches no blocker of its own.
+     */
+    observedFilterIds: readonly number[] | undefined;
+
+    /**
+     * The ids the reporter had enabled, used when nothing was observed.
+     */
+    reportedFilterIds: readonly number[];
+
+    /**
+     * The environment-selection host an approximation is recorded on.
+     */
+    environmentHost: EnvironmentSelectionHost;
+
+    /**
+     * Whether verbose lifecycle logging is enabled.
+     */
+    verbose: boolean;
+}): ExecutorListConvergence {
+    if (input.observedFilterIds !== undefined) {
+        const projection = requestedListsForExecutor(input.observedFilterIds);
+        if (projection.conflicts.length > 0) {
+            createLogger({ verbose: input.verbose }).info(
+                {
+                    observedFilterIds: [...input.observedFilterIds],
+                    outsidePinnedCatalog: projection.conflicts.map((conflict) => conflict.filterId),
+                    requestedListKeys: projection.convergentLists.map((list) => list.key),
+                },
+                'the observed blocker set runs lists outside the pinned catalog; the request ' +
+                    'names the official part and the adapter prepares the whole observed set',
+            );
+        }
+        return { lists: projection.convergentLists, limitation: null };
+    }
+    return convergeReportedFilterIds({
+        requestedFilterIds: input.reportedFilterIds,
+        environmentHost: input.environmentHost,
+        verbose: input.verbose,
+    });
 }

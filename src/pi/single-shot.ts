@@ -156,6 +156,21 @@ function boundedAssistantReplay(message: AssistantMessage): AssistantMessage {
 }
 
 /**
+ * How the accepted-reply schema is projected into the JSON Schema the model is shown.
+ *
+ * A `check` action is a predicate over the parsed value and has no JSON Schema form, so it projects
+ * to nothing: the pipe's other keywords stay advertised, the parse enforces the predicate, and the
+ * repair prompt names it through its message when a reply fails it. That is how a caller states a
+ * rule only it can decide — the intake's "a site URL is copied from the issue" — without a second
+ * validation path beside the schema. Every other unconvertible action still throws, as before, so
+ * the advertised schema never silently loses a constraint the parse enforces.
+ */
+const ADVERTISED_SCHEMA_CONVERSION: Parameters<typeof toJsonSchema>[1] = {
+    overrideAction: ({ valibotAction, jsonSchema }) =>
+        valibotAction.type === 'check' ? jsonSchema : undefined,
+};
+
+/**
  * Run one structured single-shot call with bounded repair.
  *
  * @param runtime - The pi runtime to call through.
@@ -168,7 +183,7 @@ export async function runStructuredSingleShot<T>(
     model: Model<Api>,
     options: SingleShotStructuredOptions<T>,
 ): Promise<SingleShotResult<T>> {
-    const schemaJson = JSON.stringify(toJsonSchema(options.schema));
+    const schemaJson = JSON.stringify(toJsonSchema(options.schema, ADVERTISED_SCHEMA_CONVERSION));
     if (schemaJson.length > MAX_SCHEMA_CHARS) {
         throw new Error(`Vision JSON Schema exceeds ${MAX_SCHEMA_CHARS} characters`);
     }
