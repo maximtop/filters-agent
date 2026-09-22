@@ -265,13 +265,52 @@ function launchBrowserDescription(policy: LaunchBrowserSettingsPolicy): string {
 }
 
 /**
- * The one part of a Valibot issue the refusal quotes.
+ * One step of a Valibot issue path: the property key the failing value sits under.
+ */
+interface RequestValidationPathItem {
+    /**
+     * The property key, as Valibot reports it.
+     */
+    key: unknown;
+}
+
+/**
+ * The parts of a Valibot issue the refusal reads.
  */
 interface RequestValidationIssue {
     /**
      * The issue's own message, as Valibot phrased it.
      */
     message: string;
+
+    /**
+     * What the schema expected at the failing path, as Valibot names it (`never` for a property the
+     * request shape declares absent; null when the action has no expectation to name).
+     */
+    expected?: string | null;
+
+    /**
+     * The path of the failing property, from the request root.
+     */
+    path?: readonly RequestValidationPathItem[];
+}
+
+/**
+ * Whether the request paired an unfiltered control session with blocker settings.
+ *
+ * The control shape declares `settings` as `never`, so Valibot reports the pairing as "Expected
+ * never but received Object" — which the generic refusal answered by listing the accepted settings
+ * shapes, and the model then resent the same settings on the same control session: four times in
+ * AdguardFilters #242140, where it concluded the browser was unavailable and finished without ever
+ * launching one, and eight times in #239967.
+ *
+ * @param issues - The Valibot issues the request failed with.
+ * @returns Whether the failure is `settings` on a control session.
+ */
+function pairsControlSessionWithSettings(issues: readonly RequestValidationIssue[]): boolean {
+    return issues.some(
+        (issue) => issue.expected === 'never' && issue.path?.[0]?.key === 'settings',
+    );
 }
 
 /**
@@ -300,6 +339,14 @@ export function launchBrowserRefusal(
             'startup. Accepted shapes:',
             '{"extension":"none","targetUrl":"https://...","profile":{...}};',
             '{"extension":"prepared","targetUrl":"https://...","profile":{...}}.',
+            `Validation detail: ${validationDetail}`,
+        ].join(' ');
+    }
+    if (pairsControlSessionWithSettings(issues)) {
+        return [
+            'Invalid launch_browser request. A control session (extension "none") runs no blocker',
+            'and takes no "settings". Drop "settings" to launch the unfiltered control session, or',
+            'pass extension "prepared" to launch the prepared blocker with these settings.',
             `Validation detail: ${validationDetail}`,
         ].join(' ');
     }

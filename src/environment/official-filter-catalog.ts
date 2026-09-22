@@ -27,8 +27,8 @@ const CLI_ONLY_THIRD_PARTY_FILTER_NAMES: readonly string[] = Object.freeze([]);
  * pins each name beside the numeric id the extension route resolves it from. Two hand-maintained
  * copies of ~70 names diverge as soon as one is refreshed alone, and the same list would then
  * resolve on the extension route while the CLI proxy route — which matches reporter text against
- * these names — failed it as `filter_normalization_failed`. One copy also means the exact bytes of
- * an awkward name (both `uBlock Origin` entries contain an en dash, U+2013) exist only once.
+ * these names — recorded it as an unrecognized name. One copy also means the exact bytes of an
+ * awkward name (both `uBlock Origin` entries contain an en dash, U+2013) exist only once.
  */
 export const KNOWN_THIRD_PARTY_FILTER_NAMES = Object.freeze([
     ...THIRD_PARTY_FILTER_CATALOG.map((entry) => entry.name),
@@ -54,11 +54,6 @@ export const LEGACY_THIRD_PARTY_FILTER_ALIASES: ReadonlyMap<string, string> = ne
 const REPORTED_NAME_MAX_LENGTH = 200;
 
 /**
- * Maximum number of unresolved reported names a normalization failure carries.
- */
-const UNRESOLVED_NAMES_MAX_COUNT = 32;
-
-/**
  * Maximum number of skipped sources either decision variant carries.
  *
  * The reported selection is untrusted and unbounded — the issue parser splits the `Filters` cell
@@ -81,8 +76,43 @@ export const OfficialFilterIdentitySchema = v.strictObject({
     reportedName: ReportedFilterNameSchema,
 });
 
+/**
+ * Why a reported filter source is recorded and skipped rather than executed.
+ */
+export const SkippedFilterSourceKind = {
+    /**
+     * A known third-party list AdGuard redistributes but does not author.
+     */
+    ThirdPartyCatalog: 'third_party_catalog',
+
+    /**
+     * A subscription the reporter named by URL.
+     */
+    CustomSubscription: 'custom_subscription',
+
+    /**
+     * A name that matches neither catalog: a private list, a DNS filter, or a misspelled name. The
+     * run cannot fetch what it cannot identify, so the name is recorded and the baseline runs on
+     * the official filters that did resolve. Failing the whole selection on one such name cost two
+     * desktop runs their investigation before a browser ever opened (AdguardFilters #239516
+     * "Youtube - remove shorts", #242052 "KOR: YousList").
+     */
+    UnresolvedName: 'unresolved_name',
+} as const;
+
+/**
+ * SkippedFilterSourceKind value.
+ */
+export type SkippedFilterSourceKind =
+    (typeof SkippedFilterSourceKind)[keyof typeof SkippedFilterSourceKind];
+
+/**
+ * Every skipped-source kind, for the schema picklist.
+ */
+export const SKIPPED_FILTER_SOURCE_KIND_VALUES = Object.values(SkippedFilterSourceKind);
+
 export const SkippedFilterSourceSchema = v.strictObject({
-    kind: v.picklist(['third_party_catalog', 'custom_subscription']),
+    kind: v.picklist(SKIPPED_FILTER_SOURCE_KIND_VALUES),
     reportedName: ReportedFilterNameSchema,
 });
 
@@ -96,13 +126,8 @@ export const NonExecutableFilterCode = {
     FilterSelectionMissing: 'filter_selection_missing',
 
     /**
-     * At least one reported filter name resolved to neither an official nor a known third-party
-     * catalog entry, so the whole decision fails closed.
-     */
-    FilterNormalizationFailed: 'filter_normalization_failed',
-
-    /**
-     * Every named entry resolved, but none named an official AdGuard filter to reproduce.
+     * The named entries carried no official AdGuard filter to reproduce: only third-party, custom
+     * or unrecognized sources, all of them recorded as skipped.
      */
     NoOfficialFilterBaseline: 'no_official_filter_baseline',
 } as const;
@@ -131,10 +156,6 @@ export const ExecutableFilterDecisionSchema = v.pipe(
         v.strictObject({
             status: v.literal('not_executable'),
             code: NonExecutableFilterCodeSchema,
-            unresolvedNames: v.pipe(
-                v.array(ReportedFilterNameSchema),
-                v.maxLength(UNRESOLVED_NAMES_MAX_COUNT),
-            ),
             skippedSources: v.pipe(
                 v.array(SkippedFilterSourceSchema),
                 v.maxLength(SKIPPED_SOURCES_MAX_COUNT),
@@ -151,13 +172,6 @@ export const ExecutableFilterDecisionSchema = v.pipe(
                 new Set(decision.officialFilters.map((filter) => filter.listKey)).size ===
                     decision.officialFilters.length),
         'Official filter identities must be unique and ascending.',
-    ),
-    v.check(
-        (decision) =>
-            decision.status !== 'not_executable' ||
-            (decision.code === NonExecutableFilterCode.FilterNormalizationFailed) ===
-                decision.unresolvedNames.length > 0,
-        'Unresolved names belong to a normalization failure and to nothing else.',
     ),
 );
 
@@ -254,15 +268,15 @@ const LEGACY_ALIAS_KEYS: ReadonlySet<string> = new Set(
 /**
  * Decide, offline and without inventing defaults, which reported filters this run may reproduce.
  *
- * Classification is single-pass and fails closed: any entry that neither resolves to an official
- * identity nor matches a known third-party name or a subscription URL aborts the whole decision as
- * a normalization failure, because silently reducing the requested baseline would misreport what
- * was reproduced. Skipped third-party and custom sources are recorded but never fetched or
- * applied.
+ * Classification is single-pass: an entry resolves to an official identity, or it is recorded as a
+ * skipped source — a known third-party name, a subscription URL, or a name neither catalog knows —
+ * and never fetched or applied. The run executes the official identities that resolved and the
+ * report names every source it left out, so a narrower baseline is stated rather than silent. Only
+ * a selection with nothing official in it yields no baseline at all.
  *
- * The verdict is decided over the whole selection, but the recorded evidence lists are truncated to
- * their schema bounds: an unbounded selection of unknown names or custom URLs still returns its
- * finite code rather than failing validation and degrading into an unclassified run.
+ * The verdict is decided over the whole selection, but the recorded evidence list is truncated to
+ * its schema bound: an unbounded selection of unknown names or custom URLs still returns its finite
+ * code rather than failing validation and degrading into an unclassified run.
  *
  * @param reportedFilters - The reporter's filter selection exactly as parsed from the issue.
  * @returns Schema-validated executable identities or the finite reason no baseline exists.
@@ -272,7 +286,6 @@ export function decideExecutableFilters(
 ): ExecutableFilterDecision {
     const officialByFilterId = new Map<number, OfficialFilterIdentity>();
     const skippedByKey = new Map<string, SkippedFilterSource>();
-    const unresolvedByKey = new Map<string, string>();
     let namedEntries = 0;
 
     for (const entry of reportedFilters) {
@@ -284,7 +297,10 @@ export function decideExecutableFilters(
         const reportedName = sanitizeReportedName(entry);
         if (SUBSCRIPTION_URL_PATTERN.test(key)) {
             if (!skippedByKey.has(key)) {
-                skippedByKey.set(key, { kind: 'custom_subscription', reportedName });
+                skippedByKey.set(key, {
+                    kind: SkippedFilterSourceKind.CustomSubscription,
+                    reportedName,
+                });
             }
             continue;
         }
@@ -304,45 +320,38 @@ export function decideExecutableFilters(
         // still publishes is never reinterpreted by a stale rename.
         if (THIRD_PARTY_FILTER_KEYS.has(key) || LEGACY_ALIAS_KEYS.has(key)) {
             if (!skippedByKey.has(key)) {
-                skippedByKey.set(key, { kind: 'third_party_catalog', reportedName });
+                skippedByKey.set(key, {
+                    kind: SkippedFilterSourceKind.ThirdPartyCatalog,
+                    reportedName,
+                });
             }
             continue;
         }
-        if (!unresolvedByKey.has(key)) {
-            unresolvedByKey.set(key, reportedName);
+        if (!skippedByKey.has(key)) {
+            skippedByKey.set(key, { kind: SkippedFilterSourceKind.UnresolvedName, reportedName });
         }
     }
 
     const skippedSources = [...skippedByKey.values()].slice(0, SKIPPED_SOURCES_MAX_COUNT);
-    const unresolvedNames = [...unresolvedByKey.values()].slice(0, UNRESOLVED_NAMES_MAX_COUNT);
     const decision: ExecutableFilterDecision =
         namedEntries === 0
             ? {
                   status: 'not_executable',
                   code: NonExecutableFilterCode.FilterSelectionMissing,
-                  unresolvedNames: [],
                   skippedSources,
               }
-            : unresolvedByKey.size > 0
+            : officialByFilterId.size === 0
               ? {
                     status: 'not_executable',
-                    code: NonExecutableFilterCode.FilterNormalizationFailed,
-                    unresolvedNames,
+                    code: NonExecutableFilterCode.NoOfficialFilterBaseline,
                     skippedSources,
                 }
-              : officialByFilterId.size === 0
-                ? {
-                      status: 'not_executable',
-                      code: NonExecutableFilterCode.NoOfficialFilterBaseline,
-                      unresolvedNames: [],
-                      skippedSources,
-                  }
-                : {
-                      status: 'executable',
-                      officialFilters: OFFICIAL_ADGUARD_FILTERS.map((filter) =>
-                          officialByFilterId.get(filter.filterId),
-                      ).filter((identity) => identity !== undefined),
-                      skippedSources,
-                  };
+              : {
+                    status: 'executable',
+                    officialFilters: OFFICIAL_ADGUARD_FILTERS.map((filter) =>
+                        officialByFilterId.get(filter.filterId),
+                    ).filter((identity) => identity !== undefined),
+                    skippedSources,
+                };
     return v.parse(ExecutableFilterDecisionSchema, decision);
 }

@@ -745,10 +745,10 @@ function filterBaselineLimitDetail(code: NonExecutableFilterCode): string {
     if (code === NonExecutableFilterCode.FilterSelectionMissing) {
         return 'The report names no filter selection, and no default filter baseline is invented.';
     }
-    if (code === NonExecutableFilterCode.FilterNormalizationFailed) {
-        return 'A reported filter name matched no official AdGuard filter and was not omitted.';
-    }
-    return 'Only third-party or custom filter sources were reported, which this run never executes.';
+    return (
+        'Only third-party, custom or unrecognized filter sources were reported, which this run ' +
+        'never executes.'
+    );
 }
 
 /**

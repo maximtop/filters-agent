@@ -20,9 +20,10 @@
  * - Their third-party sets are not (see `third-party-filter-catalog.ts` for the union).
  *
  * Nothing here is fetched at runtime. When upstream adds or renames a list, the reported name stops
- * resolving and surfaces as a `filter_normalization_failed` diagnosis rather than a silent skip or
- * a silently reduced baseline. Refreshing both tables from both catalogs together is the documented
- * maintenance action; a list present in only one catalog belongs in the union, never dropped.
+ * resolving and is recorded as an `unresolved_name` skipped source on the run's baseline — the
+ * report names it beside the other sources the run left out, so the reduced baseline is stated,
+ * never silent. Refreshing both tables from both catalogs together is the documented maintenance
+ * action; a list present in only one catalog belongs in the union, never dropped.
  */
 export const OFFICIAL_ADGUARD_FILTERS = Object.freeze([
     Object.freeze({ filterId: 1, name: 'AdGuard Russian filter' }),
