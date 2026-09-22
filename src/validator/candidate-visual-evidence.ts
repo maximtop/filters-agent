@@ -1,4 +1,5 @@
 import type { SingleShotClient } from '../pi/single-shot-types';
+import type { CandidateNetworkVerification } from './candidate-network-verification';
 import type { SymptomKind } from './symptom-rubric';
 import type { TraceRecorder } from '../tracer/trace-recorder';
 
@@ -196,6 +197,13 @@ export interface CandidateVisualVerifierOptions {
      * demands a visibly intact page.
      */
     reportedPageUrl?: string;
+
+    /**
+     * The runner's network verification of the candidate, when it is a third-party host block the
+     * phase network logs can judge. It decides the symptom half of the verdict when vision finds
+     * nothing to judge, and is stored on the review either way.
+     */
+    networkVerification?: CandidateNetworkVerification;
 
     /**
      * Per-run directory where the trusted review JSON is persisted.

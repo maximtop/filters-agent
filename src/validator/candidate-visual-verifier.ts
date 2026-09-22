@@ -11,6 +11,7 @@ import { formatCandidateArtifactExecutionSuffix } from '../types/candidate-artif
 import {
     CandidateVisualReviewSchema,
     deriveCandidateVisualIntegrityBasis,
+    deriveCandidateVisualSymptomBasis,
     deriveCandidateVisualVerdict,
     type CandidateVisualInventoryReconciliation,
     type CandidateVisualReview,
@@ -366,12 +367,23 @@ export async function reviewCandidateVisually(
     // Computed here, from runner-owned inputs only, so the whole review — verdict, basis, and the
     // stored scope the schema re-derives both from — is decided in one place.
     const candidateNetworkScope = reviewNetworkScope(options);
+    const networkVerification = options.networkVerification;
     const integrityBasis = deriveCandidateVisualIntegrityBasis(
         semanticOutput,
         candidateNetworkScope,
+        networkVerification,
+    );
+    const symptomBasis = deriveCandidateVisualSymptomBasis(
+        semanticOutput,
+        candidateNetworkScope,
+        networkVerification,
     );
     const review = v.parse(CandidateVisualReviewSchema, {
-        verdict: deriveCandidateVisualVerdict(semanticOutput, candidateNetworkScope),
+        verdict: deriveCandidateVisualVerdict(
+            semanticOutput,
+            candidateNetworkScope,
+            networkVerification,
+        ),
         symptom: semanticOutput.symptom,
         symptomScope: semanticOutput.symptomScope,
         adLayoutResidue: semanticOutput.adLayoutResidue,
@@ -381,6 +393,8 @@ export async function reviewCandidateVisually(
         pageIntegrity: semanticOutput.pageIntegrity,
         candidateNetworkScope,
         ...(integrityBasis === undefined ? {} : { integrityBasis }),
+        ...(networkVerification === undefined ? {} : { networkVerification }),
+        ...(symptomBasis === undefined ? {} : { symptomBasis }),
         validationArtifactId: options.validationArtifactId,
         candidateRuleHash,
         beforeViewportArtifactId: options.evidence.beforeViewport.id,

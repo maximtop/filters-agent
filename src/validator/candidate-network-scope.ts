@@ -110,6 +110,27 @@ function pageHostname(pageUrl: string): string | undefined {
 }
 
 /**
+ * The host a third-party host block is anchored to, when the candidate is one.
+ *
+ * Runner-owned like the scope itself: read from the exact candidate text and the trusted reported
+ * URL, so the network verification that judges requests to this host cannot be pointed at a host
+ * the model chose to name.
+ *
+ * @param candidateRule - Exact candidate rule text the experiment applied.
+ * @param pageUrl - Trusted reported page URL the experiment navigated to.
+ * @returns The blocked hostname, or undefined when the candidate is not a third-party host block.
+ */
+export function candidateBlockedHost(candidateRule: string, pageUrl: string): string | undefined {
+    if (
+        deriveCandidateNetworkScope(candidateRule, pageUrl) !==
+        CandidateNetworkScope.ThirdPartyHostBlock
+    ) {
+        return undefined;
+    }
+    return anchoredHostname(normalizeRule(candidateRule).urlPattern);
+}
+
+/**
  * Classify what a candidate rule does to the reported page's request graph.
  *
  * Both inputs are runner-owned: the exact candidate text the experiment applied and the trusted

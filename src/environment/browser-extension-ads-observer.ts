@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createBrowserToolHandlers } from '../browser/browser-tools';
 import { createTrustedPageEvaluator } from '../browser/trusted-page-evaluator';
@@ -7,6 +7,13 @@ import { inspectFullPageVisualCapture } from '../analyzer/full-page-capture-insp
 import { resolveCandidateVisualEvidence } from '../validator/candidate-evidence-resolver';
 import { reviewCandidateVisually } from '../validator/candidate-visual-verifier';
 import { SymptomKind, isBreakageSymptom } from '../validator/symptom-rubric';
+import {
+    judgeableBlockedHost,
+    phaseHostRequests,
+    verifyCandidateNetwork,
+    type CandidateNetworkVerification,
+} from '../validator/candidate-network-verification';
+import type { NetworkRequestEntry } from '../browser/browser-interfaces';
 import { normalizeRule } from '../repo/rule-normalizer';
 import {
     probeStructuralSnapshot,
@@ -141,6 +148,16 @@ export interface BrowserExtensionAdsObserverDependencies {
     ) => ReturnType<typeof inspectFullPageVisualCapture>;
 
     /**
+     * Read one phase's recorded network log through a deterministic fixture boundary. Production
+     * reads the phase's own HAR artifact back from disk; a fixture that registers no HAR file
+     * supplies the entries directly.
+     */
+    readPhaseNetworkLog?: (
+        input: AdsEnvironmentPhaseObservationInput,
+        har: EnvironmentArtifactReference,
+    ) => NetworkRequestEntry[];
+
+    /**
      * Resolve the exact before/after artifact pairing for candidate review.
      */
     resolveCandidateVisualEvidence?: (
@@ -197,6 +214,12 @@ interface ObservedExtensionPhase {
      * Canonical screenshot/HAR/DOM/vision references owned by this phase.
      */
     artifacts: EnvironmentArtifactReference[];
+
+    /**
+     * The phase's recorded requests, read back from its HAR artifact when the candidate is a host
+     * block the runner judges by them; empty otherwise.
+     */
+    network: NetworkRequestEntry[];
 
     /**
      * Compatibility capture projected from the canonical phase.
@@ -363,7 +386,18 @@ export class BrowserExtensionAdsObserver {
      *
      * @param options - Trusted candidate, browser, vision, and artifact inputs.
      */
-    constructor(private readonly options: BrowserExtensionAdsObserverOptions) {}
+    /**
+     * The host the candidate blocks, when it is a third-party host block the phase network logs can
+     * judge; undefined leaves every decision to vision and the structural probe as before.
+     */
+    private readonly blockedHost: string | undefined;
+
+    constructor(private readonly options: BrowserExtensionAdsObserverOptions) {
+        this.blockedHost = judgeableBlockedHost(
+            options.candidateRule,
+            options.trustedValidationContext.reportedUrl,
+        );
+    }
 
     /**
      * Observe one adapter-established phase without applying any browser-emulated rules.
@@ -469,6 +503,7 @@ export class BrowserExtensionAdsObserver {
         );
         const har = environmentArtifact(this.options.recorder, phaseResult.harArtifactId, 'har');
         const dom = environmentArtifact(this.options.recorder, phaseResult.domArtifactId, 'dom');
+        const network = this.blockedHost === undefined ? [] : this.readPhaseNetworkLog(input, har);
         const viewport = screenshots.find(
             (artifact) => artifact.artifactId === phaseResult.screenshotArtifactId,
         );
@@ -487,6 +522,7 @@ export class BrowserExtensionAdsObserver {
             visionVerified: visualInventory.coverageComplete,
             inventoryArtifact,
             artifacts: [...screenshots, har, dom, inventoryArtifact],
+            network,
             capture: {
                 visionVerified: visualInventory.coverageComplete,
                 viewportArtifactId: viewport?.artifactId ?? null,
@@ -516,6 +552,49 @@ export class BrowserExtensionAdsObserver {
     }
 
     /**
+     * Read one phase's requests back from its HAR artifact.
+     *
+     * The HAR is the run's own redacted record, written by the phase runner moments earlier, so it
+     * is parsed and trusted; a file that does not parse is a producer fault and fails loudly.
+     *
+     * @param input - The phase being observed.
+     * @param har - The phase's HAR artifact reference.
+     * @returns The phase's recorded requests.
+     */
+    private readPhaseNetworkLog(
+        input: AdsEnvironmentPhaseObservationInput,
+        har: EnvironmentArtifactReference,
+    ): NetworkRequestEntry[] {
+        if (this.options.dependencies?.readPhaseNetworkLog) {
+            return this.options.dependencies.readPhaseNetworkLog(input, har);
+        }
+        return JSON.parse(readFileSync(har.path, 'utf8')) as NetworkRequestEntry[];
+    }
+
+    /**
+     * Judge a host-block candidate by the three phases' requests to the blocked host.
+     *
+     * @param phaseA - Observed unfiltered control.
+     * @param control - Observed published baseline.
+     * @param candidatePhase - Observed candidate phase.
+     * @returns The verification, or undefined when the candidate is not one requests can judge.
+     */
+    private candidateNetworkVerification(
+        phaseA: ObservedExtensionPhase,
+        control: ObservedExtensionPhase,
+        candidatePhase: ObservedExtensionPhase,
+    ): CandidateNetworkVerification | undefined {
+        if (this.blockedHost === undefined) {
+            return undefined;
+        }
+        return verifyCandidateNetwork({
+            candidateRule: this.options.candidateRule,
+            reportedUrl: this.options.trustedValidationContext.reportedUrl,
+            phases: { A: phaseA.network, B: control.network, C: candidatePhase.network },
+        });
+    }
+
+    /**
      * Decide whether the reporter symptom is present in one observed phase.
      *
      * A breakage symptom is the ABSENCE of content, which single-state vision judges badly: it
@@ -533,7 +612,12 @@ export class BrowserExtensionAdsObserver {
             !observed.structure.probeSucceeded ||
             observed.structure.targetCount === 0
         ) {
-            return observed.symptomPresence !== ReporterSymptomPresence.Absent;
+            // A tracker has no picture: for a host block the runner can judge by requests, an
+            // allowed request to the blocked host is the symptom, present whatever vision saw.
+            const requestsAllowed =
+                this.blockedHost !== undefined &&
+                phaseHostRequests(observed.network, this.blockedHost).allowed > 0;
+            return requestsAllowed || observed.symptomPresence !== ReporterSymptomPresence.Absent;
         }
         // The unfiltered control defines how much of the named content a healthy page renders.
         // Judging visibility absolutely would call a page broken whenever the site itself hides
@@ -669,10 +753,16 @@ export class BrowserExtensionAdsObserver {
         const evidence = this.options.dependencies?.resolveCandidateVisualEvidence
             ? this.options.dependencies.resolveCandidateVisualEvidence(input, evidenceOptions)
             : resolveCandidateVisualEvidence(evidenceOptions);
+        const networkVerification = this.candidateNetworkVerification(
+            phaseA,
+            control,
+            candidatePhase,
+        );
         const reviewOptions: Parameters<typeof reviewCandidateVisually>[0] = {
             candidateRule: this.options.candidateRule,
             validationArtifactId: validationArtifact.artifactId,
             evidence,
+            ...(networkVerification === undefined ? {} : { networkVerification }),
             reporterSymptom: this.options.reporterSymptom,
             symptomKind: this.options.symptomKind ?? SymptomKind.Ads,
             reportedPageUrl: this.options.trustedValidationContext.reportedUrl,

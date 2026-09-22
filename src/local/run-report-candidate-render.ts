@@ -11,7 +11,14 @@ import { describeCulpritRemoval } from '../repo/culprit-removal';
 import { describeCulpritReplacement } from '../repo/culprit-replacement';
 import { describeSharedRuleExtension } from '../repo/shared-rule-extension';
 import { NOT_OBSERVED_TEXT } from '../environment/environment-proofs';
-import { CandidateVisualIntegrityBasis } from '../types/candidate-visual-review';
+import {
+    CandidateVisualIntegrityBasis,
+    CandidateVisualSymptomBasis,
+} from '../types/candidate-visual-review';
+import type {
+    CandidateNetworkVerification,
+    PhaseHostRequests,
+} from '../validator/candidate-network-verification';
 import type { FixRunResult } from '../types/fix-run-result';
 import { RepositoryEditKind } from '../types/repository-edit-kind';
 import type {
@@ -203,6 +210,48 @@ const CANDIDATE_VISUAL_INTEGRITY_BASIS_TEXT: Record<CandidateVisualIntegrityBasi
 };
 
 /**
+ * The reason a verified review's symptom claim rests on what it rests on, spelled out beside the
+ * basis: a tracker report verified by requests alone would otherwise read as a review that saw
+ * nothing and passed anyway.
+ */
+const CANDIDATE_VISUAL_SYMPTOM_BASIS_TEXT: Record<CandidateVisualSymptomBasis, string> = {
+    [CandidateVisualSymptomBasis.Observed]: 'vision saw the symptom before and gone after',
+    [CandidateVisualSymptomBasis.NetworkRequestsBlocked]:
+        'nothing visible to judge; the network log proved the requests blocked',
+};
+
+/**
+ * One phase's requests to the blocked host, by how they ended.
+ *
+ * @param label - The phase as the report names it.
+ * @param counts - The phase's request counts.
+ * @returns The indented line.
+ */
+function renderPhaseHostRequests(label: string, counts: PhaseHostRequests): string {
+    return `  - ${label}: ${counts.allowed} allowed, ${counts.blocked} blocked`;
+}
+
+/**
+ * Say what the phase network logs recorded about the blocked host.
+ *
+ * @param network - The runner's network verification of the candidate.
+ * @returns One line per phase plus the fallback-host observation.
+ */
+function renderNetworkVerification(network: CandidateNetworkVerification): string[] {
+    return [
+        `- Network verification: \`${network.verdict}\` — requests to \`${network.blockedHost}\``,
+        renderPhaseHostRequests('Unfiltered control', network.phases.A),
+        renderPhaseHostRequests('Published baseline', network.phases.B),
+        renderPhaseHostRequests('With the candidate', network.phases.C),
+        `  - New third-party hosts after the block: ${
+            network.newThirdPartyHosts.length === 0
+                ? 'none'
+                : network.newThirdPartyHosts.map((host) => `\`${host}\``).join(', ')
+        }`,
+    ];
+}
+
+/**
  * Longest omission reason appended to the coverage line, so one page cannot flood the report.
  */
 const MAX_OVERVIEW_OMISSION_REASON_CHARS = 400;
@@ -263,6 +312,16 @@ export function renderCandidateVisualReview(result: FixRunResult): string[] {
                       CANDIDATE_VISUAL_INTEGRITY_BASIS_TEXT[review.integrityBasis]
                   }`
         }`,
+        `- Symptom basis: ${
+            review.symptomBasis === undefined
+                ? '`n/a`'
+                : `\`${review.symptomBasis}\` — ${
+                      CANDIDATE_VISUAL_SYMPTOM_BASIS_TEXT[review.symptomBasis]
+                  }`
+        }`,
+        ...(review.networkVerification === undefined
+            ? []
+            : renderNetworkVerification(review.networkVerification)),
         `- Model: \`${review.model}\``,
         `- Validation artifact: \`${review.validationArtifactId}\``,
         `- Rationale: ${review.rationale}`,

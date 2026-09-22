@@ -90,6 +90,7 @@ import {
 import type { CliAdapterProof } from '../environment/environment-proofs';
 import { INTERACT_PAGE_TOOL_NAME } from '../agent/interact-page-tool';
 import { executorRequestedLists } from './executor-list-convergence';
+import { judgeableBlockedHost } from '../validator/candidate-network-verification';
 import {
     buildAgentRuntimeListCatalog,
     type AgentRuntimeListCatalogBundle,
@@ -4096,10 +4097,17 @@ export class AgentRuntime {
             );
             const seen = (this.baselineSymptomAbsentCounts.get(ledgerKey) ?? 0) + 1;
             this.baselineSymptomAbsentCounts.set(ledgerKey, seen);
+            const blockedHost = judgeableBlockedHost(candidateRule, state.targetUrl);
             const restatement = [
                 'The phase sessions judge one symptom description. The description in force did not',
                 'name anything that differs between the unfiltered page and the filtered baseline, so',
                 'the candidate was never judged.',
+                ...(blockedHost === undefined
+                    ? []
+                    : [
+                          `The filtered baseline also made no allowed request to ${blockedHost}, so`,
+                          'a block of that host has nothing to stop on this page.',
+                      ]),
                 'Pass symptomDescription to apply_rule and state the breakage you proved live: name the',
                 'element or content that filtering removes and where on the page it sits. Never describe',
                 'framing properties of the reporter screenshot such as cropping, window width, or text',

@@ -4,6 +4,11 @@ import {
     CandidateNetworkScope,
 } from '../validator/candidate-network-scope';
 import { CANDIDATE_VALIDATION_ARTIFACT_ID_PATTERN } from './candidate-artifact-identity';
+import {
+    CandidateNetworkVerdict,
+    CandidateNetworkVerificationSchema,
+    type CandidateNetworkVerification,
+} from '../validator/candidate-network-verification';
 
 /**
  * Maximum number of page-damage observations accepted from one visual review.
@@ -112,6 +117,37 @@ export const CandidateVisualPageIntegrity = {
  * Every page integrity value, for schemas and exhaustive listings.
  */
 export const CANDIDATE_VISUAL_PAGE_INTEGRITY_VALUES = Object.values(CandidateVisualPageIntegrity);
+
+/**
+ * What a verified review's symptom claim rests on.
+ */
+export const CandidateVisualSymptomBasis = {
+    /**
+     * Vision saw the reporter's symptom before the candidate and saw it gone after.
+     */
+    Observed: 'observed',
+
+    /**
+     * Vision saw nothing to judge — the symptom is a request, not a picture — and the runner's
+     * network verification proved the candidate blocked it: the baseline let requests to the host
+     * through, the candidate let none through, and no third party the page had not contacted before
+     * appeared in its place.
+     */
+    NetworkRequestsBlocked: 'network_requests_blocked',
+} as const;
+
+/**
+ * Every symptom basis value, for schemas and exhaustive listings.
+ */
+export const CANDIDATE_VISUAL_SYMPTOM_BASIS_VALUES = Object.values(CandidateVisualSymptomBasis);
+
+export const CandidateVisualSymptomBasisSchema = v.picklist(CANDIDATE_VISUAL_SYMPTOM_BASIS_VALUES);
+
+/**
+ * CandidateVisualSymptomBasis value.
+ */
+export type CandidateVisualSymptomBasis =
+    (typeof CandidateVisualSymptomBasis)[keyof typeof CandidateVisualSymptomBasis];
 
 /**
  * What a verified review's page-safety claim rests on.
@@ -310,6 +346,8 @@ export const CandidateVisualReviewSchema = v.pipe(
         pageIntegrity: CandidateVisualPageIntegritySchema,
         candidateNetworkScope: v.optional(CandidateVisualNetworkScopeSchema),
         integrityBasis: v.optional(CandidateVisualIntegrityBasisSchema),
+        networkVerification: v.optional(CandidateNetworkVerificationSchema),
+        symptomBasis: v.optional(CandidateVisualSymptomBasisSchema),
         validationArtifactId: v.pipe(v.string(), v.regex(CANDIDATE_VALIDATION_ARTIFACT_ID_PATTERN)),
         candidateRuleHash: v.pipe(v.string(), v.regex(/^[a-f0-9]{64}$/)),
         beforeViewportArtifactId: ArtifactIdSchema,
@@ -332,15 +370,20 @@ export const CandidateVisualReviewSchema = v.pipe(
     }),
     v.check((review) => {
         const scope = review.candidateNetworkScope;
+        const network = review.networkVerification;
         return (
-            review.verdict === deriveCandidateVisualVerdict(review, scope) &&
-            // A review written before the basis existed carries none and is left alone; one that
-            // states a basis must state the basis its own observations and scope produce, so the
-            // annotation a maintainer reads can never disagree with the verdict beside it.
+            review.verdict === deriveCandidateVisualVerdict(review, scope, network) &&
+            // A review written before the bases existed carries none and is left alone; one that
+            // states a basis must state the basis its own observations, scope and network
+            // verification produce, so the annotation a maintainer reads can never disagree with
+            // the verdict beside it.
             (review.integrityBasis === undefined ||
-                review.integrityBasis === deriveCandidateVisualIntegrityBasis(review, scope))
+                review.integrityBasis ===
+                    deriveCandidateVisualIntegrityBasis(review, scope, network)) &&
+            (review.symptomBasis === undefined ||
+                review.symptomBasis === deriveCandidateVisualSymptomBasis(review, scope, network))
         );
-    }, 'Visual review verdict and integrity basis must match its semantic observations.'),
+    }, 'Visual review verdict and bases must match its semantic observations.'),
 );
 
 /**
@@ -445,16 +488,47 @@ function residueStandsAgainstCandidate(
 }
 
 /**
+ * Whether the runner's network verification, not the model's symptom judgement, decides this
+ * review.
+ *
+ * It does when there is one and vision found no instance of the symptom before the candidate: a
+ * request has no picture, so the images could never have shown it and cannot show it gone. When
+ * vision did see instances the symptom is visible after all, and the visual judgement decides as
+ * for any other candidate; the network facts then stay a recorded fact beside it.
+ *
+ * @param output - Parsed semantic output returned by the visual model.
+ * @param network - Runner-computed network verification of the candidate, when it is a host block.
+ * @returns Whether the network verification carries the symptom half of the verdict.
+ */
+function networkDecidesSymptom(
+    output: CandidateVisualReviewModelOutput,
+    network: CandidateNetworkVerification | undefined,
+): network is CandidateNetworkVerification {
+    return network !== undefined && output.beforeInstances.length === 0;
+}
+
+/**
  * Derives the final verdict from the model's independent symptom and integrity judgments.
  *
  * @param output - Parsed semantic output returned by the visual model.
  * @param scope - Runner-computed scope of the candidate, absent for a review that predates it.
+ * @param network - Runner-computed network verification of the candidate, when it is a host block.
  * @returns The final candidate verdict enforced by the runner.
  */
 export function deriveCandidateVisualVerdict(
     output: CandidateVisualReviewModelOutput,
     scope?: CandidateNetworkScope,
+    network?: CandidateNetworkVerification,
 ): CandidateVisualVerdict {
+    if (networkDecidesSymptom(output, network)) {
+        // The images hold only the page-safety half here: a page the candidate visibly broke
+        // rejects the block however cleanly the requests stopped.
+        return network.verdict === CandidateNetworkVerdict.Verified &&
+            output.pageIntegrity !== CandidateVisualPageIntegrity.Regressed &&
+            output.observedDamage.length === 0
+            ? CandidateVisualVerdict.Verified
+            : CandidateVisualVerdict.Rejected;
+    }
     if (
         output.symptom === CandidateVisualSymptom.NotResolved ||
         residueStandsAgainstCandidate(output, scope) ||
@@ -485,18 +559,41 @@ export function deriveCandidateVisualVerdict(
  *
  * @param output - Parsed semantic output returned by the visual model.
  * @param scope - Runner-computed scope of the candidate, absent for a review that predates it.
+ * @param network - Runner-computed network verification of the candidate, when it is a host block.
  * @returns The basis of a verified verdict, or undefined when the verdict is not verified.
  */
 export function deriveCandidateVisualIntegrityBasis(
     output: CandidateVisualReviewModelOutput,
     scope?: CandidateNetworkScope,
+    network?: CandidateNetworkVerification,
 ): CandidateVisualIntegrityBasis | undefined {
-    if (deriveCandidateVisualVerdict(output, scope) !== CandidateVisualVerdict.Verified) {
+    if (deriveCandidateVisualVerdict(output, scope, network) !== CandidateVisualVerdict.Verified) {
         return undefined;
     }
     return output.pageIntegrity === CandidateVisualPageIntegrity.Intact
         ? CandidateVisualIntegrityBasis.Intact
         : CandidateVisualIntegrityBasis.ThirdPartyNetworkCleanBeforeAfter;
+}
+
+/**
+ * Derives what a verified review's symptom claim rests on, so a report can show it.
+ *
+ * @param output - Parsed semantic output returned by the visual model.
+ * @param scope - Runner-computed scope of the candidate, absent for a review that predates it.
+ * @param network - Runner-computed network verification of the candidate, when it is a host block.
+ * @returns The basis of a verified verdict, or undefined when the verdict is not verified.
+ */
+export function deriveCandidateVisualSymptomBasis(
+    output: CandidateVisualReviewModelOutput,
+    scope?: CandidateNetworkScope,
+    network?: CandidateNetworkVerification,
+): CandidateVisualSymptomBasis | undefined {
+    if (deriveCandidateVisualVerdict(output, scope, network) !== CandidateVisualVerdict.Verified) {
+        return undefined;
+    }
+    return networkDecidesSymptom(output, network)
+        ? CandidateVisualSymptomBasis.NetworkRequestsBlocked
+        : CandidateVisualSymptomBasis.Observed;
 }
 
 /**
