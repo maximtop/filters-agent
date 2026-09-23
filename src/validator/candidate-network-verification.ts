@@ -38,8 +38,9 @@ export const CandidateNetworkVerdict = {
     RequestsAllowed: 'requests_allowed',
 
     /**
-     * With the block in place the page contacted third-party hosts it had not contacted in either
-     * earlier phase, in the request kinds a tracker uses — the shape of a fallback loader.
+     * With the block in place the page reached third-party hosts it had not contacted in either
+     * earlier phase, in the request kinds a tracker uses, and the requests went through — the shape
+     * of a fallback loader the published filters do not stop.
      */
     NewThirdPartyHosts: 'new_third_party_hosts',
 } as const;
@@ -76,6 +77,15 @@ const TRACKING_RESOURCE_TYPES: ReadonlySet<string> = new Set([
     'websocket',
     'other',
 ]);
+
+/**
+ * URL schemes of requests that leave the browser for a host. Everything else in a phase log is
+ * served locally: an MV3 blocker's `$redirect` resources arrive as `chrome-extension://<per-session
+ * id>/web-accessible-resources/redirects/…`, whose "host" is a fresh random id in every session,
+ * and read as a new third party in every candidate phase — both network candidates of the 18:35Z
+ * pass on 2026-09-22 reported one. `blob:` and `data:` carry no host at all.
+ */
+const NETWORK_SCHEMES: ReadonlySet<string> = new Set(['http:', 'https:', 'ws:', 'wss:']);
 
 /**
  * Modifiers that leave a host block judgeable by requests to the host alone. A resource-type
@@ -150,14 +160,17 @@ function underBlockedHost(host: string, blockedHost: string): boolean {
 }
 
 /**
- * The lowercase hostname of a request URL.
+ * The lowercase hostname of a request that left the browser.
  *
  * @param url - Absolute request URL as the network log recorded it.
- * @returns The hostname, or undefined when the URL does not parse.
+ * @returns The hostname, or undefined when the URL does not parse or was served locally.
  */
 function requestHost(url: string): string | undefined {
     try {
-        return new URL(url).hostname.toLowerCase().replace(/\.$/u, '');
+        const parsed = new URL(url);
+        return NETWORK_SCHEMES.has(parsed.protocol)
+            ? parsed.hostname.toLowerCase().replace(/\.$/u, '')
+            : undefined;
     } catch {
         return undefined;
     }
@@ -216,11 +229,13 @@ export function phaseHostRequests(
 }
 
 /**
- * Third-party hosts the candidate phase reached with tracker-shaped requests and neither earlier
- * phase had reached at all.
+ * Third-party hosts the candidate phase reached with tracker-shaped requests that went through, and
+ * that neither earlier phase had reached at all.
  *
  * Two earlier loads of the same page stand in for its ordinary host rotation; a host absent from
- * both and contacted only once the block was in place is what a fallback loader looks like.
+ * both and contacted only once the block was in place is what a fallback loader looks like. A
+ * fallback the published filters already stop leaves the page as clean as the block alone, so only
+ * a request that completed counts against the candidate.
  *
  * @param logs - The three phase network logs.
  * @param reportedUrl - Trusted reported page URL, for the third-party classification.
@@ -244,6 +259,7 @@ function newThirdPartyHosts(
         const host = requestHost(entry.url);
         if (
             host === undefined ||
+            entry.statusCode === 0 ||
             seenBefore.has(host) ||
             underBlockedHost(host, blockedHost) ||
             !TRACKING_RESOURCE_TYPES.has(entry.resourceType) ||
