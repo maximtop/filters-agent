@@ -1,3 +1,4 @@
+import { OFFICIAL_ADGUARD_FILTERS } from '../environment/official-filter-table';
 import type { RawIssue } from '../github/fetch-issue';
 import { selectPromptSafeReporterComments } from '../github/prompt-safety';
 import { DEFAULT_TRUSTED_ROLES, type TrustedRole } from '../queue/queue-inputs';
@@ -61,6 +62,13 @@ export type IntakeExtraction =
            */
           reason: string;
       };
+
+/**
+ * The official AdGuard filter catalog as the extraction prompt shows it, one `id: name` per line.
+ */
+const OFFICIAL_FILTER_CATALOG_TEXT = OFFICIAL_ADGUARD_FILTERS.map(
+    (filter) => `- ${filter.filterId}: ${filter.name}`,
+).join('\n');
 
 /**
  * Options for one extraction call.
@@ -147,6 +155,7 @@ export async function extractReport(
         issueTitle: raw.title,
         issueBody: raw.body ?? '',
         trustedComments: renderTrustedComments(trustedComments),
+        officialFilterCatalog: OFFICIAL_FILTER_CATALOG_TEXT,
     });
     // The site-URL rule is bound to exactly the text the model was shown — the title, the body and
     // the trusted comments — so a copy is judged against what the model could copy from.

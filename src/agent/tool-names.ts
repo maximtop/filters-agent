@@ -61,11 +61,6 @@ export const ToolName = {
     PolicyCheck: 'policy_check',
 
     /**
-     * Scores a candidate rule's risk from deterministic heuristics.
-     */
-    ScoreRisk: 'score_risk',
-
-    /**
      * Validates a candidate rule's syntax.
      */
     LintRule: 'lint_rule',

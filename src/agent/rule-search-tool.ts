@@ -97,7 +97,6 @@ function compactDomainInventoryMatch(
                 ? undefined
                 : truncateUtf8(match.section, MAX_INVENTORY_LABEL_BYTES),
         line: match.line,
-        classification: match.classification,
         syntaxKind: ruleInventoryKind(match.rule),
     };
 }
@@ -159,32 +158,6 @@ function compactDomainRuleInventory(
               }
             : {}),
     };
-}
-
-/**
- * Determine whether an existing exact-selector rule is a factual domain-extension candidate.
- *
- * @param rule - Existing repository rule returned by normalized search.
- * @param reportedDomain - Trusted reported hostname used for locale-aware search.
- * @param selector - Exact cosmetic selector requested by the model.
- * @returns True when the existing shared rule can potentially receive the reported domain.
- */
-function isDomainExtensionCandidate(
-    rule: string,
-    reportedDomain: string | undefined,
-    selector: string | undefined,
-): boolean {
-    if (!reportedDomain || !selector) {
-        return false;
-    }
-    const normalized = normalizeRule(rule);
-    return (
-        normalized.kind === RuleKind.Cosmetic &&
-        !normalized.isException &&
-        normalized.selector === selector.trim() &&
-        normalized.domains.length >= 2 &&
-        !normalized.domains.includes(reportedDomain)
-    );
 }
 
 /**
@@ -264,27 +237,12 @@ export function registerRuleSearchTool(
             if (isDomainOnlyQuery) {
                 return compactDomainRuleInventory(allMatches, effectiveDomain, artifactStore);
             }
-            const matches = allMatches.slice(0, MAX_AGENT_RULE_SEARCH_MATCHES).map((match) => ({
-                ...match,
-                domainExtensionCandidate: isDomainExtensionCandidate(
-                    match.rule,
-                    effectiveDomain,
-                    query.selector,
-                ),
-            }));
-            const extensionCandidateCount = matches.filter(
-                (match) => match.domainExtensionCandidate,
-            ).length;
+            const matches = allMatches.slice(0, MAX_AGENT_RULE_SEARCH_MATCHES);
             return {
                 effectiveDomain,
                 totalMatches: allMatches.length,
                 truncated: allMatches.length > matches.length,
                 matches,
-                extensionCandidateCount,
-                guidance:
-                    extensionCandidateCount > 0
-                        ? 'The reported domain being absent from a matching shared rule is expected: it is a candidate for extend_domains, not a reason to ignore the selector family.'
-                        : undefined,
             };
         },
     });

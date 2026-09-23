@@ -8,12 +8,10 @@ import {
     isSingleLineRule,
     normalizeRule,
 } from '../repo/rule-normalizer';
-import { DuplicateClass, RiskLevel, RuleType } from '../types/rule-proposal';
+import { RuleType } from '../types/rule-proposal';
 import { candidateScopeProblem, normalizeScopeDomain } from './candidate-scope';
 import type { DeclaredPlacementSet } from '../types/declared-placement';
-import { declaredPlacementForTarget } from '../repo/declared-placement';
 import { planRepositoryEdit } from '../repo/repository-edit';
-import { scoreRisk } from '../risk/risk-scorer';
 import { lintRule } from '../rules/aglint-linter';
 import { parseSafeCssInjectionRule } from '../rules/safe-css-injection';
 
@@ -166,7 +164,10 @@ function rejectCandidate(outcome: FixOutcome, reason: string): CandidateSafetyDe
  * Enforce deterministic publication invariants before a runtime candidate reaches the publisher.
  *
  * Unsafe drafts are downgraded to analysis-only so the publisher can still create its single
- * report-only PR. Safe drafts receive a recomputed risk payload rather than trusting model output.
+ * report-only PR. The risk assessment is the agent's: what the rule may touch beyond the reported
+ * symptom is judged from the evidence the run collected, not from keywords in the rule text, and
+ * the only structural limit it answers to — a rule scoped to the reported domain alone — is the
+ * scope check below.
  *
  * @param outcome - Parsed agent outcome.
  * @param options - Reported domain and checkout context.
@@ -233,13 +234,6 @@ export function enforceCandidateSafety(
             throw new CandidateSafetyError(scopeProblem);
         }
 
-        const risk = scoreRisk(proposal.rule, { trustedReportedDomain: expectedDomain });
-        if (risk.level === RiskLevel.Blocker || risk.requiredAction === 'human_only') {
-            throw new CandidateSafetyError(
-                `Candidate risk is not publication-eligible: ${risk.level}/${risk.requiredAction}.`,
-            );
-        }
-
         if (!options.checkoutPath) {
             throw new CandidateSafetyError(
                 'Candidate target cannot be verified without a checkout.',
@@ -260,49 +254,19 @@ export function enforceCandidateSafety(
                 `Candidate target or repository placement is unsafe: ${detail}`,
             );
         }
-        // The model's duplicate classification does not choose the edit. The planner above scans
-        // the checkout itself and answers extension-or-insertion deterministically, the
-        // exact-duplicate scan below refuses a rule that already exists, and the experiment behind
-        // the verdict proves the candidate does what the baseline does not. A `semantic`,
-        // `subsumed` or `cross-filter` note is the model saying related rules exist, and it used to
-        // cost the run its fix whenever those rules had a different body: nottinghampost.com lost a
-        // vision-verified `div[class^="sc-"]:has(…)` rule to a `semantic` note about the
-        // `aside > div[class^="sc-"]:has(…)` rule other Reach plc sites carry, which no domain
-        // extension could have turned into this fix; sarkisozleri.bbs.tr lost one to a
-        // `cross-filter` note about EasyList's own vendor rule. Only the two classes that say the
-        // candidate should not be added at all still stop it. Exceptions are exempt — an exception
-        // contradicts a blocking rule by design — and so is a declared placement, which
-        // prescribes its own edit.
-        const refusingClasses: DuplicateClass[] = [DuplicateClass.Exact, DuplicateClass.Conflict];
-        if (
-            refusingClasses.includes(proposal.duplicateCheck.classification) &&
-            !normalized.isException &&
-            declaredPlacementForTarget(
-                proposal.placement.filePath,
-                proposal.rule,
-                options.declaredPlacement,
-            ) === undefined
-        ) {
-            throw new CandidateSafetyError(
-                `Candidate duplicate check reported "${proposal.duplicateCheck.classification}": ` +
-                    'the rule duplicates or contradicts an existing one.',
-            );
-        }
+        // The duplicate check in the proposal is the agent's reading of the rules search showed
+        // it, written for the reviewer; it refuses nothing. The one duplicate code settles is the
+        // mechanical one: an exact copy of the candidate already in the checkout. A class the model
+        // chose used to cost a verified fix — nottinghampost.com lost a
+        // `div[class^="sc-"]:has(…)` rule to a `semantic` note about the `aside > …` rule other
+        // Reach plc sites carry, sarkisozleri.bbs.tr one to a `cross-filter` note about EasyList's
+        // own vendor rule.
         const candidateCanonical = normalized.canonical;
         if (hasExactDuplicate(options.checkoutPath!, candidateCanonical)) {
             throw new CandidateSafetyError('Candidate rule already exists in the checkout.');
         }
 
-        return {
-            outcome: {
-                ...outcome,
-                ruleProposal: {
-                    ...proposal,
-                    risk,
-                },
-            },
-            rejectionReason: null,
-        };
+        return { outcome, rejectionReason: null };
     } catch (error) {
         const reason =
             error instanceof CandidateSafetyError

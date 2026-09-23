@@ -101,16 +101,13 @@ import type { ToolDefinition } from '../agent/tool-registry';
 import type { FixOutcome } from '../pr/fix-outcome';
 import type { PreparedExtension } from '../local/prepared-extension';
 import { createLogger } from '../logger/logger';
-import { RuleKind, normalizeRule, type NormalizedRule } from '../repo/rule-normalizer';
+import { normalizeRule, type NormalizedRule } from '../repo/rule-normalizer';
 import type { TraceRecorder } from '../tracer/trace-recorder';
 import { TraceEventType } from '../types/trace';
 import { Viewport, ConsentStrategy, type ReproProfile } from '../types/repro-profile';
 import { ExtensionMode, type SymptomObservation } from '../types/fix-run-result';
 import {
     CandidateVisualVerdict,
-    CandidateVisualPageIntegrity,
-    CandidateVisualAdLayoutResidue,
-    CandidateVisualSymptom,
     CandidateVisualReviewSchema,
     type CandidateVisualReview,
 } from '../types/candidate-visual-review';
@@ -138,7 +135,6 @@ import {
 import { extractBrowserLaunchSignal } from './browser-launch-signal';
 import { PhaseLabel } from '../types/validation';
 import { SettingsProfileKind } from '../types/settings-profile-kind';
-import { RuleSyntaxKind } from '../types/rule-syntax-kind';
 import {
     isAgentRefusalFallback,
     isTargetEnvironmentFallbackReason,
@@ -691,51 +687,6 @@ interface TechnicalBrowserFailureState {
 }
 
 /**
- * Bounded semantic outcome retained for one normalized cosmetic selector.
- */
-interface SelectorVisualReviewMemory {
-    /**
-     * Canonical rule that produced the review.
-     */
-    canonicalRule: string;
-
-    /**
-     * One-based runtime candidate attempt number.
-     */
-    attemptNumber: number;
-
-    /**
-     * Concrete cosmetic syntax used by the reviewed candidate.
-     */
-    syntaxKind?: RuleSyntaxKind;
-
-    /**
-     * Vision-derived final verdict.
-     */
-    verdict: string;
-
-    /**
-     * Vision-derived state of the reporter-defined symptom.
-     */
-    symptom: string;
-
-    /**
-     * Vision-owned state of reporter-related advertising layout after the candidate.
-     */
-    adLayoutResidue?: string;
-
-    /**
-     * Count of reporter-related instances still visible after the candidate.
-     */
-    remainingInstanceCount: number;
-
-    /**
-     * Vision-derived state of non-target page integrity.
-     */
-    pageIntegrity: string;
-}
-
-/**
  * Candidate metadata retained across the browser dispatch boundary.
  */
 interface PendingCandidateAttempt {
@@ -950,29 +901,6 @@ function environmentEvidence(state: AgentRuntimeSessionState): AgentRuntimeEnvir
 }
 
 /**
- * Derive a stable class selector from a compound BEM-like modifier selector.
- *
- * This is advisory syntax processing only. It does not decide whether the broader selector is safe;
- * repository search and browser vision remain responsible for that judgment.
- *
- * @param selector - Normalized cosmetic selector from a rejected candidate.
- * @returns Stable base class selector worth searching, when one is recognizable.
- */
-function stableBaseClassSelector(selector: string): string | undefined {
-    const classNames = [...selector.matchAll(/\.([A-Za-z_][A-Za-z0-9_-]*)/gu)].map(
-        (match) => match[1],
-    );
-    const modifierClass = classNames.find(
-        (className) => className.includes('--') || className.includes('__'),
-    );
-    if (!modifierClass) {
-        return undefined;
-    }
-    const baseClass = modifierClass.split(/--|__/u, 1)[0];
-    return baseClass ? `.${baseClass}` : undefined;
-}
-
-/**
  * Browser lifecycle tool whose failure counts against the target-wide technical budget.
  */
 const BrowserLifecycleToolName = {
@@ -1105,24 +1033,6 @@ export class AgentRuntime {
      * cannot be judged in a controlled experiment at all.
      */
     private readonly baselineSymptomAbsentCounts = new Map<string, number>();
-
-    /**
-     * Most recent typed visual review indexed by normalized cosmetic selector.
-     */
-    private readonly visualReviewsBySelector = new Map<string, SelectorVisualReviewMemory>();
-
-    /**
-     * Latest ordinary element-hiding review retained separately from later CSS trials.
-     */
-    private readonly elementHidingVisualReviewsBySelector = new Map<
-        string,
-        SelectorVisualReviewMemory
-    >();
-
-    /**
-     * Stable selectors whose repository search exposed an existing shared domain-rule family.
-     */
-    private readonly searchedDomainExtensionSelectors = new Set<string>();
 
     /**
      * Browser-bound candidate outcomes indexed by canonical rule.
@@ -1382,7 +1292,7 @@ export class AgentRuntime {
             // Decision 1).
             filterBaseline: runDeclaredFilterBaseline(
                 options.preparedExtension,
-                options.issueFacts.enabledFilters,
+                options.issueFacts.enabledFilters.map((filter) => filter.name),
             ),
         });
         // One placement-map walk per run: its map feeds the checkout tools below, and its derived
@@ -1391,7 +1301,7 @@ export class AgentRuntime {
         // checkout-readiness gate for the code path that can reach it.
         const listCatalog = buildAgentRuntimeListCatalog({
             filtersPath: options.filtersPath,
-            enabledListTexts: options.issueFacts.enabledFilters,
+            enabledListTexts: options.issueFacts.enabledFilters.map((filter) => filter.name),
             verbose: options.verbose ?? false,
         });
         let baseRegistry: ToolRegistry;
@@ -2421,9 +2331,6 @@ export class AgentRuntime {
             dispatchBaseTool: async (name, args) => await this.dispatchBaseTool(name, args),
             recordFetchedIssue: () => {
                 this.fetchedIssueNumber = this.options.issue.number;
-            },
-            recordDomainExtensionSelectorSearch: (selector) => {
-                this.searchedDomainExtensionSelectors.add(selector);
             },
             recordGuidanceConsulted: () => {
                 this.guidanceConsulted = true;
@@ -4121,135 +4028,6 @@ export class AgentRuntime {
     }
 
     /**
-     * Prevent a syntax-only retry when vision proved that selector coverage was too narrow.
-     *
-     * A CSS-injection retry for the same selector remains available only after ordinary element
-     * hiding visibly damaged page integrity, which is the typed evidence that intentional spacing
-     * may need to be preserved.
-     *
-     * @param normalized - Shared normalized representation of the proposed retry.
-     * @returns Typed retry guidance, or undefined when the candidate is semantically distinct.
-     */
-    private selectorRetryGuidance(normalized: NormalizedRule): Record<string, unknown> | undefined {
-        if (normalized.kind !== RuleKind.Cosmetic || !normalized.selector) {
-            return undefined;
-        }
-        const stableBaseSelector = stableBaseClassSelector(normalized.selector);
-        if (
-            stableBaseSelector &&
-            this.searchedDomainExtensionSelectors.has(stableBaseSelector) &&
-            normalized.domains.length === 1
-        ) {
-            const suggestedCandidateRule = `${normalized.domains[0]}##${stableBaseSelector}`;
-            const stableBaseCanonical = normalizeRule(suggestedCandidateRule).canonical;
-            // The ledger is keyed by operation; the suggested base trial is itself an add.
-            if (
-                !this.candidateAttempts.has(
-                    candidateLedgerKey(CandidateOperation.Add, stableBaseCanonical),
-                )
-            ) {
-                return {
-                    validationSkipped: true,
-                    errorKind: 'stable_base_candidate_trial_required',
-                    retryable: true,
-                    normalizedSelector: normalized.selector,
-                    stableBaseSelector,
-                    suggestedCandidateRule,
-                    requiredAction: 'validate_stable_base_candidate',
-                    guidance: [
-                        'Repository search found an established shared rule for the stable base selector.',
-                        'Validate the domain-scoped stable base with vision before narrowing to a BEM modifier.',
-                        'This ordering requirement does not consume a semantic candidate attempt.',
-                    ],
-                };
-            }
-        }
-        const prior = this.visualReviewsBySelector.get(normalized.selector);
-        const priorElementHiding = this.elementHidingVisualReviewsBySelector.get(
-            normalized.selector,
-        );
-        if (normalized.syntaxKind === RuleSyntaxKind.CssInjection && !priorElementHiding) {
-            const elementHidingSeparator = normalized.isException ? '#@#' : '##';
-            const rejection: Record<string, unknown> = {
-                validationSkipped: true,
-                errorKind: 'css_injection_requires_element_hiding_trial',
-                retryable: true,
-                normalizedSelector: normalized.selector,
-                requiredAction: 'try_element_hiding_same_selector',
-                suggestedCandidateRule: `${normalized.domains.join(',')}${elementHidingSeparator}${normalized.selector}`,
-                guidance: [
-                    'Validate ordinary element hiding for this exact selector before CSS injection.',
-                    'This required process retry does not consume a semantic candidate attempt.',
-                    'Use CSS injection only if the bound vision review shows that element hiding regressed page integrity and intentional nonzero spacing must be preserved.',
-                ],
-            };
-            if (prior) {
-                rejection.priorAttemptNumber = prior.attemptNumber;
-                rejection.priorSyntaxKind = prior.syntaxKind;
-            }
-            return rejection;
-        }
-        if (!prior || prior.canonicalRule === normalized.canonical) {
-            return undefined;
-        }
-
-        // The broaden-selector heuristic encodes ads semantics (residual ad footprint means the
-        // selector was too narrow); for a breakage review adLayoutResidue=present means the
-        // exception let advertising back in, where broadening would make it worse.
-        const unresolvedResidualInstances =
-            this.symptomKind() === SymptomKind.Ads &&
-            prior.verdict === 'rejected' &&
-            ((prior.symptom === CandidateVisualSymptom.NotResolved &&
-                prior.remainingInstanceCount > 0) ||
-                prior.adLayoutResidue === CandidateVisualAdLayoutResidue.Present) &&
-            prior.pageIntegrity === CandidateVisualPageIntegrity.Intact;
-        if (unresolvedResidualInstances) {
-            const retryStableBaseSelector = stableBaseClassSelector(normalized.selector);
-            return {
-                validationSkipped: true,
-                errorKind: 'selector_scope_not_broadened',
-                retryable: true,
-                normalizedSelector: normalized.selector,
-                priorAttemptNumber: prior.attemptNumber,
-                priorVisualReview: {
-                    verdict: prior.verdict,
-                    symptom: prior.symptom,
-                    adLayoutResidue: prior.adLayoutResidue ?? null,
-                    remainingInstanceCount: prior.remainingInstanceCount,
-                    pageIntegrity: prior.pageIntegrity,
-                },
-                requiredAction: 'broaden_selector',
-                stableBaseSelectorSearchRequired: retryStableBaseSelector !== undefined,
-                ...(retryStableBaseSelector ? { stableBaseSelector: retryStableBaseSelector } : {}),
-                guidance: [
-                    'Vision found unresolved instances while non-target page integrity remained intact.',
-                    'Changing only rule syntax for the same selector is not a semantically distinct candidate.',
-                    'Broaden the selector, search its stable base class separately, and use or extend an existing multi-domain base rule when present.',
-                ],
-            };
-        }
-
-        const unjustifiedCssFallback =
-            normalized.syntaxKind === RuleSyntaxKind.CssInjection &&
-            priorElementHiding?.pageIntegrity !== CandidateVisualPageIntegrity.Regressed;
-        if (unjustifiedCssFallback) {
-            return {
-                validationSkipped: true,
-                errorKind: 'css_fallback_not_justified',
-                retryable: true,
-                normalizedSelector: normalized.selector,
-                priorAttemptNumber: priorElementHiding?.attemptNumber,
-                priorPageIntegrity: priorElementHiding?.pageIntegrity,
-                requiredAction: 'use_element_hiding_or_broaden_selector',
-                guidance: [
-                    'CSS injection for the same selector is allowed only when element hiding caused a vision-confirmed page-integrity regression that justifies preserving intentional spacing.',
-                    'Keep ordinary element hiding or choose a broader semantically distinct selector.',
-                ],
-            };
-        }
-        return undefined;
-    }
-    /**
      * Determine whether one canonical candidate may repeat without consuming a semantic attempt.
      *
      * An attempt that ended before any validation evidence was recorded (for example a tool
@@ -4305,50 +4083,6 @@ export class AgentRuntime {
                 ? { visualRationale: review.rationale.slice(0, 1_000) }
                 : {}),
         });
-    }
-
-    /**
-     * Retain the bounded visual decision needed to evaluate a later same-selector retry.
-     *
-     * @param candidate - Candidate identity registered before browser validation.
-     * @param result - Browser tool response containing the runner-bound visual review.
-     */
-    private recordCandidateVisualReview(
-        candidate: PendingCandidateAttempt,
-        result: Record<string, unknown>,
-    ): void {
-        if (candidate.normalized.kind !== RuleKind.Cosmetic || !candidate.normalized.selector) {
-            return;
-        }
-        const review =
-            typeof result.visualReview === 'object' && result.visualReview !== null
-                ? (result.visualReview as Record<string, unknown>)
-                : undefined;
-        if (
-            !review ||
-            typeof review.verdict !== 'string' ||
-            typeof review.symptom !== 'string' ||
-            !Array.isArray(review.remainingInstances) ||
-            typeof review.pageIntegrity !== 'string'
-        ) {
-            return;
-        }
-        const memory: SelectorVisualReviewMemory = {
-            canonicalRule: candidate.normalized.canonical,
-            attemptNumber: candidate.attemptNumber,
-            syntaxKind: candidate.normalized.syntaxKind,
-            verdict: review.verdict,
-            symptom: review.symptom,
-            ...(typeof review.adLayoutResidue === 'string'
-                ? { adLayoutResidue: review.adLayoutResidue }
-                : {}),
-            remainingInstanceCount: review.remainingInstances.length,
-            pageIntegrity: review.pageIntegrity,
-        };
-        this.visualReviewsBySelector.set(candidate.normalized.selector, memory);
-        if (candidate.normalized.syntaxKind === RuleSyntaxKind.ElementHiding) {
-            this.elementHidingVisualReviewsBySelector.set(candidate.normalized.selector, memory);
-        }
     }
 
     /**
@@ -4536,13 +4270,6 @@ export class AgentRuntime {
                                 ...(originalRule === undefined ? {} : { originalRule }),
                             };
                         } else {
-                            const selectorGuidance =
-                                operation === CandidateOperation.Add
-                                    ? this.selectorRetryGuidance(normalized)
-                                    : undefined;
-                            if (selectorGuidance) {
-                                return selectorGuidance;
-                            }
                             if (this.candidateAttempts.size >= 3) {
                                 return {
                                     validationSkipped: true,
@@ -4628,7 +4355,6 @@ export class AgentRuntime {
                             this.candidateAttemptSessionIds.delete(freshLedgerKey);
                         }
                         this.recordCandidateValidationOutcome(pendingCandidate, result);
-                        this.recordCandidateVisualReview(pendingCandidate, result);
                     }
                     this.recordBrowserToolResult(name, result);
                     // Everything above read the complete result. The model gets the experiment

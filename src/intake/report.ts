@@ -1,4 +1,6 @@
 import * as v from 'valibot';
+import { OFFICIAL_ADGUARD_FILTERS } from '../environment/official-filter-table';
+import { ReportedFilterSchema } from '../types/issue-facts';
 
 /**
  * Problem-type vocabulary of the model-filled report, per the PRD's Report entity.
@@ -120,6 +122,36 @@ export type ReportEnvironment = v.InferOutput<typeof ReportEnvironmentSchema>;
  * `siteUrls` is mandatory with at least one entry: an issue without a site URL is the skip variant
  * of the extraction envelope, never an empty-array report.
  */
+/**
+ * The ids of the official AdGuard filter catalog the extraction prompt lists.
+ */
+const OFFICIAL_FILTER_IDS: ReadonlySet<number> = new Set(
+    OFFICIAL_ADGUARD_FILTERS.map((filter) => filter.filterId),
+);
+
+/**
+ * One enabled list as the model fills it: the name copied from the report and, when the model
+ * recognises the list as one of AdGuard's own, its id from the catalog the prompt carries.
+ *
+ * Which reported name is which official list is the model's reading — a localized name, a name with
+ * a version suffix or a settings-link id all mean the same list. Code checks only that an id it
+ * returns is one the catalog has, so the structured call's repair asks again for anything else.
+ */
+const ReportedListSchema = v.object({
+    ...ReportedFilterSchema.entries,
+    officialFilterId: v.optional(
+        v.pipe(
+            v.number(),
+            v.integer(),
+            v.check(
+                (filterId) => OFFICIAL_FILTER_IDS.has(filterId),
+                'must be an id from the official filter catalog in the prompt; leave it out for ' +
+                    'a list the catalog does not name',
+            ),
+        ),
+    ),
+});
+
 export const ReportSchema = v.object({
     /**
      * Target URLs from the issue; at least one is required for a filter report.
@@ -153,9 +185,10 @@ export const ReportSchema = v.object({
     environment: ReportEnvironmentSchema,
 
     /**
-     * Enabled filter lists, including the lists named by the settings-import link.
+     * Enabled filter lists, including the lists named by the settings-import link, each with its
+     * official catalog id when it is one of AdGuard's own lists.
      */
-    enabledLists: v.array(v.string()),
+    enabledLists: v.array(ReportedListSchema),
 
     /**
      * The settings-import link the run seeds the blocker from, when the issue carries one.

@@ -204,7 +204,7 @@ const LINT_FALLBACK_MISSING_INFORMATION_SUBJECTS: Record<LintConfigurationFallba
 /**
  * Create a ToolRegistry pre-populated with all agent tools.
  *
- * Always registers four pure tools: `fetch_issue`, `policy_check`, `score_risk`, `lint_rule`. When
+ * Always registers three pure tools: `fetch_issue`, `policy_check`, `lint_rule`. When
  * `checkoutPath` is provided, additionally registers `search_rules` against the checkout. When
  * `browserTools` is provided, additionally registers browser evidence and validation tools. If
  * vision configuration is present, it also registers `analyze_screenshot`.
@@ -346,30 +346,6 @@ export async function createToolRegistry(options: ToolRegistryOptions): Promise<
                     : [],
                 problemType,
             });
-        },
-    });
-
-    // ── score_risk (always) ────────────────────────────────────────────────
-    registry.register({
-        definition: {
-            type: 'function',
-            function: {
-                name: ToolName.ScoreRisk,
-                description:
-                    'Score a candidate filter rule for risk. Returns score (0-5), level (low/medium/high/blocker), reasons, and required action.',
-                parameters: registeredParameters(ToolName.ScoreRisk),
-            },
-        },
-        handler: async (args) => {
-            const guidanceRequirement = requireGuidanceBeforeCandidate();
-            if (guidanceRequirement) {
-                return guidanceRequirement;
-            }
-            const { scoreRisk } = await import('../risk/risk-scorer');
-            if (typeof args.rule !== 'string' || args.rule.trim().length === 0) {
-                return { error: 'Invalid input: rule must be a non-empty string' };
-            }
-            return scoreRisk(args.rule, { trustedReportedDomain });
         },
     });
 

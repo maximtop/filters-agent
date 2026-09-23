@@ -19,7 +19,6 @@ import type { CandidateVisualReview } from '../types/candidate-visual-review';
 import { CandidateVisualReviewSchema } from '../types/candidate-visual-review';
 import {
     FixRunStatus,
-    SymptomObservation,
     type CandidatePatch,
     type VerifiedCandidateScreenshotPaths,
 } from '../types/fix-run-result';
@@ -185,37 +184,33 @@ export function candidatePatchAfterBrowserEvidence(
 /**
  * Derive the product outcome without conflating missing tool evidence with non-reproduction.
  *
+ * A no-patch claim is taken as the model made it. Whether full-page vision agrees with it is
+ * `finish_fix`'s question, asked while the model can still answer it: the terminal judgement
+ * rejects a `not_reproduced` or `already_fixed_current` the session-bound symptom presence does not
+ * support, with the reason. A second copy of that comparison here only turned a claim the gate had
+ * accepted into `analysis_only` without telling anyone why.
+ *
  * @param outcome - Explicit structured outcome returned by the agent.
  * @param candidatePatch - Candidate patch extracted from the outcome, when present.
  * @param browserUsable - Whether browser preflight produced usable evidence.
- * @param symptomObservation - Explicit vision observation of the reporter-defined symptom.
  * @returns The product status for the serialized result.
  */
 export function deriveFixRunStatus(
     outcome: FixOutcome,
     candidatePatch: CandidatePatch | null,
     browserUsable: boolean,
-    symptomObservation: SymptomObservation,
 ): FixRunStatus {
     if (candidatePatch) {
         return FixRunStatus.PatchProposed;
     }
     if (outcome.outcome === FixOutcomeKind.ResolveWithoutPatch && browserUsable) {
-        if (outcome.runStatus === FixRunStatus.NotReproduced) {
-            return symptomObservation === SymptomObservation.NotReproduced
-                ? outcome.runStatus
-                : FixRunStatus.AnalysisOnly;
-        }
-        return symptomObservation === SymptomObservation.Reproduced
-            ? outcome.runStatus
-            : FixRunStatus.AnalysisOnly;
+        return outcome.runStatus;
     }
     if (
         outcome.outcome === FixOutcomeKind.ProposeClose &&
         outcome.reproductionStatus === ReproductionStatus.NotReproduced &&
         outcome.policyDecision.decision === 'allow_rule_generation' &&
-        browserUsable &&
-        symptomObservation === SymptomObservation.NotReproduced
+        browserUsable
     ) {
         return FixRunStatus.NotReproduced;
     }

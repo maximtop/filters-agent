@@ -5,6 +5,7 @@ import {
     OFFICIAL_FILTER_PUBLISHED_URL_TEMPLATE,
 } from './official-filter-table';
 import { THIRD_PARTY_FILTER_CATALOG } from './third-party-filter-catalog';
+import type { ReportedFilter } from '../types/issue-facts';
 
 export { OFFICIAL_ADGUARD_FILTERS, OFFICIAL_FILTER_PUBLISHED_URL_TEMPLATE };
 
@@ -241,15 +242,10 @@ function sanitizeReportedName(raw: string): string {
 }
 
 /**
- * Official identities indexed by the normalized form of their canonical catalog name.
+ * Official catalog entries indexed by their registry id.
  */
-const OFFICIAL_FILTERS_BY_KEY: ReadonlyMap<string, (typeof OFFICIAL_ADGUARD_FILTERS)[number]> =
-    new Map(
-        OFFICIAL_ADGUARD_FILTERS.map((filter) => [
-            normalizeReportedFilterName(filter.name),
-            filter,
-        ]),
-    );
+const OFFICIAL_FILTERS_BY_ID: ReadonlyMap<number, (typeof OFFICIAL_ADGUARD_FILTERS)[number]> =
+    new Map(OFFICIAL_ADGUARD_FILTERS.map((filter) => [filter.filterId, filter]));
 
 /**
  * Normalized forms of every known third-party catalog name.
@@ -268,11 +264,14 @@ const LEGACY_ALIAS_KEYS: ReadonlySet<string> = new Set(
 /**
  * Decide, offline and without inventing defaults, which reported filters this run may reproduce.
  *
- * Classification is single-pass: an entry resolves to an official identity, or it is recorded as a
- * skipped source — a known third-party name, a subscription URL, or a name neither catalog knows —
- * and never fetched or applied. The run executes the official identities that resolved and the
- * report names every source it left out, so a narrower baseline is stated rather than silent. Only
- * a selection with nothing official in it yields no baseline at all.
+ * Classification is single-pass: an entry the extraction recognised as an official list carries its
+ * catalog id and becomes that official identity; every other entry is recorded as a skipped source
+ * — a known third-party name, a subscription URL, or a name neither catalog knows — and never
+ * fetched or applied. Which reported name is which official list is the extraction model's reading,
+ * checked against the catalog at that boundary; nothing here matches names to official lists. The
+ * run executes the official identities that resolved and the report names every source it left out,
+ * so a narrower baseline is stated rather than silent. Only a selection with nothing official in it
+ * yields no baseline at all.
  *
  * The verdict is decided over the whole selection, but the recorded evidence list is truncated to
  * its schema bound: an unbounded selection of unknown names or custom URLs still returns its finite
@@ -282,30 +281,28 @@ const LEGACY_ALIAS_KEYS: ReadonlySet<string> = new Set(
  * @returns Schema-validated executable identities or the finite reason no baseline exists.
  */
 export function decideExecutableFilters(
-    reportedFilters: readonly string[],
+    reportedFilters: readonly ReportedFilter[],
 ): ExecutableFilterDecision {
     const officialByFilterId = new Map<number, OfficialFilterIdentity>();
     const skippedByKey = new Map<string, SkippedFilterSource>();
     let namedEntries = 0;
 
     for (const entry of reportedFilters) {
-        const key = normalizeReportedFilterName(entry);
+        const key = normalizeReportedFilterName(entry.name);
         if (key === '') {
             continue;
         }
         namedEntries += 1;
-        const reportedName = sanitizeReportedName(entry);
-        if (SUBSCRIPTION_URL_PATTERN.test(key)) {
-            if (!skippedByKey.has(key)) {
-                skippedByKey.set(key, {
-                    kind: SkippedFilterSourceKind.CustomSubscription,
-                    reportedName,
-                });
+        const reportedName = sanitizeReportedName(entry.name);
+        if (entry.officialFilterId !== undefined) {
+            const official = OFFICIAL_FILTERS_BY_ID.get(entry.officialFilterId);
+            if (official === undefined) {
+                throw new Error(
+                    `Reported filter "${reportedName}" carries official id ` +
+                        `${entry.officialFilterId}, which the catalog does not have; the ` +
+                        'extraction boundary admits only catalog ids.',
+                );
             }
-            continue;
-        }
-        const official = OFFICIAL_FILTERS_BY_KEY.get(key);
-        if (official) {
             if (!officialByFilterId.has(official.filterId)) {
                 officialByFilterId.set(official.filterId, {
                     filterId: official.filterId,
@@ -316,8 +313,15 @@ export function decideExecutableFilters(
             }
             continue;
         }
-        // The alias table is consulted only after both catalog lookups miss, so a name upstream
-        // still publishes is never reinterpreted by a stale rename.
+        if (SUBSCRIPTION_URL_PATTERN.test(key)) {
+            if (!skippedByKey.has(key)) {
+                skippedByKey.set(key, {
+                    kind: SkippedFilterSourceKind.CustomSubscription,
+                    reportedName,
+                });
+            }
+            continue;
+        }
         if (THIRD_PARTY_FILTER_KEYS.has(key) || LEGACY_ALIAS_KEYS.has(key)) {
             if (!skippedByKey.has(key)) {
                 skippedByKey.set(key, {

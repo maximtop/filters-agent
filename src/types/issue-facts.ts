@@ -45,6 +45,25 @@ export const IssueScreenshotSchema = v.object({
 
 export type IssueScreenshot = v.InferOutput<typeof IssueScreenshotSchema>;
 
+export const ReportedFilterSchema = v.object({
+    /**
+     * The list exactly as the report names it: a list name, or a subscription URL.
+     */
+    name: v.string(),
+
+    /**
+     * The list's id in the official AdGuard filter catalog, when the extraction recognised it as
+     * one of those lists; absent for every other list.
+     */
+    officialFilterId: v.optional(v.number()),
+});
+
+/**
+ * One filter list the reporter has enabled, with the official catalog id the extraction found for
+ * it.
+ */
+export type ReportedFilter = v.InferOutput<typeof ReportedFilterSchema>;
+
 export const IssueFactsSchema = v.object({
     issueNumber: v.pipe(v.number(), v.integer(), v.minValue(1)),
     issueUrl: v.pipe(v.string(), v.url()),
@@ -55,7 +74,7 @@ export const IssueFactsSchema = v.object({
     product: v.string(),
     os: v.optional(v.string()),
     browser: v.optional(v.string()),
-    enabledFilters: v.array(v.string()),
+    enabledFilters: v.array(ReportedFilterSchema),
     settingsImportUrl: v.optional(v.pipe(v.string(), v.url())),
     userComment: v.optional(v.string()),
     screenshots: v.array(IssueScreenshotSchema),

@@ -1,6 +1,5 @@
 import * as v from 'valibot';
 import {
-    classifyBrowserPreflight,
     classifyWithheldPageText,
     type BrowserPreflightEvidence,
 } from '../analyzer/browser-first-run';
@@ -105,49 +104,11 @@ const AUTHENTICATION_WALL_RE =
     /sign in to continue|log in to continue|please (?:sign|log) in|members? only|subscribers? only/i;
 
 /**
- * Decide whether one observed page can carry a reproduction claim.
- *
- * Deterministic on purpose: an access decision that a model can be argued out of is exactly the
- * failure mode that lets an unreachable, gated, or emptied page be reported as a reproduction.
- *
- * @param evidence - Navigation, status, text and artifact facts from one browser phase.
- * @returns Exactly one finite access classification.
- */
-export function classifyTargetAccess(
-    evidence: BrowserPreflightEvidence,
-): TargetAccessClassification {
-    const preflight = classifyBrowserPreflight(evidence);
-    if (
-        preflight.fallbackReason !== null &&
-        preflight.fallbackReason !== BrowserFallbackReason.HttpBlocked
-    ) {
-        return ACCESS_BY_FALLBACK[preflight.fallbackReason];
-    }
-    if (preflight.fallbackReason === BrowserFallbackReason.HttpBlocked) {
-        if (evidence.statusCode === 401 || evidence.statusCode === 403) {
-            return TargetAccessClassification.AuthenticationRequired;
-        }
-        if (evidence.statusCode === 404 || evidence.statusCode === 410) {
-            return TargetAccessClassification.ContentAbsent;
-        }
-        return TargetAccessClassification.ServerError;
-    }
-    // Regional blocks and bot challenges already returned above, so this detector cannot claim a
-    // page either of them owns.
-    if (AUTHENTICATION_WALL_RE.test(`${evidence.title}\n${evidence.visibleTextPreview}`)) {
-        return TargetAccessClassification.AuthenticationRequired;
-    }
-    return TargetAccessClassification.Accessible;
-}
-
-/**
  * Decide whether one observed page could carry a reproduction claim, from navigation and text facts
  * alone.
  *
- * A browser session inside a run holds these facts but never assembles a preflight capture, so it
- * cannot use {@link classifyTargetAccess} without inventing artifact identities. Both entry points
- * share one set of detectors, so a login wall or a regional block means the same thing wherever it
- * is observed.
+ * Deterministic on purpose: an access decision that a model can be argued out of is exactly the
+ * failure mode that lets an unreachable, gated, or emptied page be reported as a reproduction.
  *
  * @param evidence - Status, title and visible text observed after navigation.
  * @returns Exactly one finite access classification.

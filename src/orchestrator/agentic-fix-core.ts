@@ -157,7 +157,7 @@ export async function runAgenticFixCore(
         // what this run's own extraction read, never on a publication-time re-parse.
         reporterSettings: {
             settingsImportUrl: facts.settingsImportUrl,
-            enabledFilters: facts.enabledFilters,
+            enabledFilters: facts.enabledFilters.map((filter) => filter.name),
             product: facts.product,
         },
     };
@@ -583,12 +583,7 @@ export async function runAgenticFixCore(
                     : runtime.getTerminalSymptomObservation()
                 : symptomFromTerminal(outcome)
             : 'indeterminate';
-        const derivedStatus = deriveFixRunStatus(
-            outcome,
-            candidatePatch,
-            browserState.usable,
-            symptomObservation,
-        );
+        const derivedStatus = deriveFixRunStatus(outcome, candidatePatch, browserState.usable);
         runtime.bindPreparedExtensionActualContextForResult();
         const environmentSelection = runtime.getEnvironmentSelection();
         const agentTerminationReason = run.terminationReason ?? undefined;

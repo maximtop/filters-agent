@@ -281,19 +281,6 @@ export const TrustedValidationEvidenceSchema = v.object({
 });
 
 /**
- * The four possible validation verdicts.
- *
- * Set by the LLM after inspecting the factual validation results — NOT computed by the
- * orchestrator. `determineVerdict` does not exist.
- */
-export const ValidationVerdictSchema = v.picklist([
-    'ad_blocked',
-    'ad_not_blocked',
-    'cannot_reproduce',
-    'anti_adblock_triggered',
-]);
-
-/**
  * Schema for the factual three-phase validation result returned by `runValidation` and the
  * `apply_rule` tool. Contains no verdict — the LLM determines the verdict after inspecting the
  * returned artifact IDs and summary.
@@ -310,29 +297,8 @@ export const FactualValidationResultSchema = v.object({
     summary: v.string(),
 });
 
-/**
- * Schema for the complete validation result with the LLM-determined verdict.
- *
- * Fields are declared inline (not spread from FactualValidationResultSchema.entries) to match
- * codebase conventions.
- */
-export const ValidationResultSchema = v.object({
-    trustedValidationContext: TrustedValidationEvidenceSchema,
-    phaseA: PhaseResultSchema,
-    phaseB: PhaseResultSchema,
-    phaseC: PhaseResultSchema,
-    layoutFacts: v.optional(CandidateLayoutFactsSchema),
-    validatedSelector: v.string(),
-    adElementStatus: AdElementStatusSchema,
-    structureFacts: v.optional(CandidateStructureFactsSchema),
-    summary: v.string(),
-    verdict: v.optional(ValidationVerdictSchema),
-    reasoning: v.optional(v.string()),
-});
-
 export type PhaseLabel = v.InferOutput<typeof PhaseLabelSchema>;
 export type PhaseResult = v.InferOutput<typeof PhaseResultSchema>;
-export type ValidationVerdict = v.InferOutput<typeof ValidationVerdictSchema>;
 export type ElementGeometry = v.InferOutput<typeof ElementGeometrySchema>;
 export type ValidationViewportPosition = v.InferOutput<typeof ValidationViewportPositionSchema>;
 export type FullPageTile = v.InferOutput<typeof FullPageTileSchema>;
@@ -346,4 +312,3 @@ export type CandidateStructureFacts = v.InferOutput<typeof CandidateStructureFac
 export type CandidateLayoutFacts = v.InferOutput<typeof CandidateLayoutFactsSchema>;
 export type TrustedValidationEvidence = v.InferOutput<typeof TrustedValidationEvidenceSchema>;
 export type FactualValidationResult = v.InferOutput<typeof FactualValidationResultSchema>;
-export type ValidationResult = v.InferOutput<typeof ValidationResultSchema>;

@@ -1130,59 +1130,6 @@ export interface SafeInteractionRecord {
     dialogs: InteractionDialogObservation[];
 }
 
-/**
- * Small projection of one sequence the phase validators consume.
- */
-export interface SafeInteractionSummary {
-    /**
-     * Digest of the normalized plan this sequence executed.
-     */
-    planDigest: string;
-
-    /**
-     * Finite terminal status of the sequence.
-     */
-    status: SafeInteractionRecord['status'];
-
-    /**
-     * Category that refused the sequence, else null.
-     */
-    refusalReason: SafeInteractionRefusalReason | null;
-
-    /**
-     * Number of steps that were actually performed.
-     */
-    executedSteps: number;
-
-    /**
-     * Pages the site opened during the sequence.
-     *
-     * Carried per phase because the contrast between phases is the proof a popup rule needs: the
-     * unfiltered phase opens the tab, the candidate phase does not.
-     */
-    popupsOpened: number;
-}
-
-/**
- * Project one record into the summary a phase observation carries.
- *
- * @param record - Complete interaction record.
- * @returns The small projection both validators judge.
- */
-export function summarizeSafeInteractionRecord(
-    record: SafeInteractionRecord,
-): SafeInteractionSummary {
-    return {
-        planDigest: record.planDigest,
-        status: record.status,
-        refusalReason: record.refusal?.reason ?? null,
-        executedSteps: record.steps.filter(
-            (step) => step.outcome === SafeInteractionStepOutcome.Performed,
-        ).length,
-        popupsOpened: record.popupsOpened,
-    };
-}
-
 export const SafeInteractionDifferenceKindSchema = v.picklist([
     'plan_mismatch',
     'outcome',

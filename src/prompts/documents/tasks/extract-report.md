@@ -30,7 +30,12 @@ Fill these report fields:
 - `environment`: the reporter's environment — `product`, `browser`, `os`,
   `version` — copied verbatim; keep version and MV markers inside `product`.
 - `enabledLists`: the filter lists the reporter has enabled, including the lists
-  named by a settings-import link and the lists in a uBO-widget YAML block.
+  named by a settings-import link and the lists in a uBO-widget YAML block. For
+  each list copy its `name` as the issue states it. When the list is one of
+  AdGuard's own filters in the catalog below — under whatever name the issue
+  uses, localized, abbreviated or with a version — also set `officialFilterId`
+  to its id. Leave `officialFilterId` out for any other list: a third-party
+  list, a custom subscription URL, or a name the catalog does not have.
 - `settingsImportUrl`: the settings-import link when the issue carries one,
   copied verbatim.
 - `userRules`: the reporter's custom or applied rules; the applied rules of a
@@ -38,6 +43,10 @@ Fill these report fields:
 - `blockedCounts`: the per-list blocked counts of a uBO-widget YAML block, when
   the block carries them.
 - `reproductionSteps`: the steps to reproduce the problem, one per entry.
+
+The official AdGuard filter catalog, as `id: name`:
+
+{{officialFilterCatalog}}
 
 The issue body:
 

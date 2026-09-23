@@ -46,7 +46,6 @@ const FIX_SESSION_SURFACE: readonly ToolName[] = [
     ToolName.LookupRuleGuidance,
     ToolName.ReportMissingInformation,
     ToolName.SearchRules,
-    ToolName.ScoreRisk,
     ToolName.LintRule,
     ToolName.AnalyzeScreenshot,
     ToolName.InspectFullPageCapture,

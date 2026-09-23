@@ -26,9 +26,7 @@ export function renderAnalyzeOutcome(outcome: TerminalOutcome<FixOutcome>): stri
                 lines.push(
                     `Rule: ${report.ruleProposal.rule}`,
                     `Rule type: ${report.ruleProposal.ruleType}`,
-                    `Risk: ${report.ruleProposal.risk.level} ` +
-                        `(score ${report.ruleProposal.risk.score}), ` +
-                        `action ${report.ruleProposal.risk.requiredAction}`,
+                    `Risk: ${report.ruleProposal.risk.level}`,
                     `Placement: ${report.ruleProposal.placement.filter} → ` +
                         `${report.ruleProposal.placement.filePath} ` +
                         `(confidence ${report.ruleProposal.placement.confidence})`,

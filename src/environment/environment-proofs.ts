@@ -10,7 +10,6 @@ import {
     LIST_KEY_MAX_COUNT,
     FilterListKeyListSchema,
     FilterListKeySchema,
-    sortListKeys,
 } from './filter-list-ref';
 import { ExecutorNameSchema } from './executor-name';
 import { ActualExecutionContextSchema } from './environment-selection';
@@ -421,21 +420,3 @@ export type PublishedBaselineProvenance = v.InferOutput<typeof PublishedBaseline
  * CLI-authored evidence of which official lists one phase actually had enabled.
  */
 export type CliAdapterProof = v.InferOutput<typeof CliAdapterProofSchema>;
-
-/**
- * Read the official list set one phase proof actually proved enabled.
- *
- * The proof is the record: a phase is credited with a narrowed set only when the environment proved
- * that set, never because the request asked for it.
- *
- * @param proof - Adapter-authored proof for one established phase.
- * @returns Canonically sorted proven list keys, or null when no environment member described the
- *   phase or the enabled set was not observed.
- */
-export function provenEnabledListKeys(proof: EnvironmentPhaseStateProof): readonly string[] | null {
-    const proven = proof.cli?.enabledListKeys ?? proof.extension?.enabledListKeys;
-    if (proven === undefined || proven === null) {
-        return null;
-    }
-    return sortListKeys(proven);
-}

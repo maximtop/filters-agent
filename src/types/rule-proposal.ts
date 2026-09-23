@@ -1,26 +1,32 @@
 import * as v from 'valibot';
 
 /**
- * Severity tier assigned to a candidate rule's blast-radius risk assessment.
+ * How far the agent judges a candidate rule to reach beyond the reported symptom, as it tells the
+ * reviewer.
+ *
+ * The agent assesses this from the evidence it collected — what the rule matched on the page, what
+ * else it could match elsewhere — and nothing gates publication on it: the only structural limit a
+ * candidate answers to is being scoped to the reported domain alone, which the candidate safety
+ * gate checks on its own.
  */
 export const RiskLevel = {
     /**
-     * Safe to publish without additional review.
+     * Touches only the reported symptom on the reported site.
      */
     Low: 'low',
 
     /**
-     * Publishable, but worth a reviewer's attention.
+     * May touch other content on the reported site; worth a reviewer's attention.
      */
     Medium: 'medium',
 
     /**
-     * Requires explicit human sign-off before publication.
+     * May affect content beyond the reported symptom; the reviewer should check it closely.
      */
     High: 'high',
 
     /**
-     * Must not be published automatically under any circumstance.
+     * The agent does not stand behind shipping it; a human has to decide.
      */
     Blocker: 'blocker',
 } as const;
@@ -37,44 +43,12 @@ export type RiskLevel = (typeof RiskLevel)[keyof typeof RiskLevel];
 
 export const RiskLevelSchema = v.picklist(RISK_LEVEL_VALUES);
 
-/**
- * The publication path a candidate rule's risk assessment requires.
- */
-export const RequiredAction = {
-    /**
-     * May be opened as a pull request without human involvement.
-     */
-    AutoPr: 'auto_pr',
-
-    /**
-     * May be opened as a pull request, but must carry a visible risk warning.
-     */
-    PrWithWarning: 'pr_with_warning',
-
-    /**
-     * Must not be turned into a pull request without a human driving it.
-     */
-    HumanOnly: 'human_only',
-} as const;
-
-/**
- * Every RequiredAction value, for schemas and exhaustive listings.
- */
-export const REQUIRED_ACTION_VALUES = Object.values(RequiredAction);
-
-/**
- * Publication path required for one candidate rule's risk assessment.
- */
-export type RequiredAction = (typeof RequiredAction)[keyof typeof RequiredAction];
-
-export const RequiredActionSchema = v.picklist(REQUIRED_ACTION_VALUES);
-
+// The agent's own assessment: a level and the reasons behind it. The numeric score, blast-radius
+// flags and required action were the removed keyword scorer's vocabulary; artifacts that still
+// carry them parse fine - v.object drops unknown keys.
 export const RuleRiskSchema = v.object({
-    score: v.pipe(v.number(), v.minValue(0), v.maxValue(5)),
     level: RiskLevelSchema,
     reasons: v.array(v.string()),
-    blastRadiusFlags: v.array(v.string()),
-    requiredAction: RequiredActionSchema,
 });
 
 /**

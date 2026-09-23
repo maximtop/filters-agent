@@ -1,5 +1,4 @@
 import * as v from 'valibot';
-import { DuplicateClassSchema } from './rule-proposal';
 
 /**
  * A query describing a candidate rule target to search for in the AdguardFilters checkout.
@@ -119,11 +118,6 @@ export const RuleMatchSchema = v.object({
      * Section name the rule falls within, if any.
      */
     section: v.optional(v.string()),
-
-    /**
-     * Similarity classification of the match relative to the query.
-     */
-    classification: DuplicateClassSchema,
 });
 export type RuleMatch = v.InferOutput<typeof RuleMatchSchema>;
 

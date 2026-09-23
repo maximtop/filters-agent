@@ -1,8 +1,8 @@
 /**
  * The issue and browser lifecycle tools the agent runtime owns: `fetch_issue`, the runtime's own
- * wrappers over the base registry's search, guidance and screenshot tools, full-page capture
- * inspection, and the `launch_browser` / `close_browser` session lifecycle. The run's extension
- * build is prepared host-side before the session, so no preparation tool exists here.
+ * wrappers over the base registry's guidance and screenshot tools, full-page capture inspection,
+ * and the `launch_browser` / `close_browser` session lifecycle. The run's extension build is
+ * prepared host-side before the session, so no preparation tool exists here.
  *
  * They register through {@link RuntimeLifecycleToolsHost} rather than against the runtime class, so
  * each handler's bookkeeping is one named seam instead of a reach into runtime state. The
@@ -87,13 +87,6 @@ export interface RuntimeLifecycleToolsHost {
      * Record that the model read the issue through `fetch_issue`.
      */
     recordFetchedIssue(): void;
-
-    /**
-     * Record that repository search offered a domain-extension candidate for one selector.
-     *
-     * @param selector - Exact selector the model searched for.
-     */
-    recordDomainExtensionSelectorSearch(selector: string): void;
 
     /**
      * Record that the model consulted the rule guidance knowledge base.
@@ -230,32 +223,6 @@ export function registerLifecycleTools(
         },
     });
     host.markBaseTool('fetch_issue');
-
-    const searchDefinition = host.baseRegistry
-        .getDefinitions()
-        .find((definition) => definition.function.name === 'search_rules');
-    if (searchDefinition) {
-        registry.register({
-            definition: searchDefinition,
-            handler: async (args) => {
-                const result = await host.baseRegistry.dispatch('search_rules', args);
-                const selector =
-                    typeof args.selector === 'string' ? args.selector.trim() : undefined;
-                const matches = Array.isArray(result.matches) ? result.matches : [];
-                const hasDomainExtensionCandidate = matches.some(
-                    (match) =>
-                        typeof match === 'object' &&
-                        match !== null &&
-                        'domainExtensionCandidate' in match &&
-                        match.domainExtensionCandidate === true,
-                );
-                if (selector && hasDomainExtensionCandidate) {
-                    host.recordDomainExtensionSelectorSearch(selector);
-                }
-                return result;
-            },
-        });
-    }
 
     const guidanceDefinition = registry
         .getDefinitions()

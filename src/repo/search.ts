@@ -6,16 +6,13 @@ import type {
     RuleMatch,
     FilterSectionContent,
 } from '../types/repo-context';
-import type { DuplicateClass } from '../types/rule-proposal';
 import { RuleKind, normalizeRule, type NormalizedRule } from './rule-normalizer';
-import { classifyMatch } from './rule-classifier';
+import { matchesQuery } from './rule-matcher';
 import { domainScopeCovers, domainScopeSearchTerms, isEntityScope } from './domain-scope';
 
 /**
- * An intermediate search result, before the cross-filter reclassification pass.
- *
- * Carries the public {@link RuleMatch} fields plus the normalized target key and normalized rule
- * needed to decide cross-filter promotion.
+ * An intermediate search result: the public {@link RuleMatch} fields plus the normalized rule the
+ * domain-affinity ranking reads.
  */
 interface PreliminaryMatch {
     /**
@@ -42,16 +39,6 @@ interface PreliminaryMatch {
      * Section name the rule falls within, if any.
      */
     section?: string;
-
-    /**
-     * Similarity classification of the match relative to the query (pre cross-filter).
-     */
-    classification: DuplicateClass;
-
-    /**
-     * Normalized target key used to detect cross-filter duplicates.
-     */
-    key?: string;
 
     /**
      * The normalized rule descriptor.
@@ -189,25 +176,6 @@ function preFilter(line: string, query: SearchQuery): boolean {
 }
 
 /**
- * A normalized target key used to detect cross-filter duplicates.
- *
- * @param n - A normalized rule.
- * @returns A string key identifying the rule's target (selector/pattern/scriptlet).
- */
-function targetKey(n: NormalizedRule): string | undefined {
-    if (n.kind === RuleKind.Cosmetic) {
-        return `cosmetic:${n.selector ?? ''}`;
-    }
-    if (n.kind === RuleKind.Network) {
-        return `network:${n.urlPattern ?? ''}`;
-    }
-    if (n.kind === RuleKind.Scriptlet) {
-        return `scriptlet:${n.scriptletName ?? ''}`;
-    }
-    return undefined;
-}
-
-/**
  * Find the section name containing a given 1-based line number.
  *
  * @param sections - The file's sections.
@@ -224,14 +192,15 @@ function sectionForLine(
 /**
  * Search the checkout for rules matching the query.
  *
- * Matching uses normalization (not raw grep): each candidate line is normalized and classified via
- * {@link classifyMatch}. A substring pre-filter keeps the scan fast on large checkouts. Cross-filter
- * duplicates (same target in another filter file) are marked `'cross-filter'` in a second pass.
+ * Matching uses normalization (not raw grep): each candidate line is normalized and kept when it
+ * answers the query ({@link matchesQuery}). A substring pre-filter keeps the scan fast on large
+ * checkouts. Matches carry where they are, never how they relate to the candidate: that is the
+ * agent's reading of the rules it is shown.
  *
  * @param query - The candidate rule target. At least one field is required.
  * @param map - The placement map for the checkout.
  * @param checkoutPath - Absolute path to the checkout root.
- * @returns Matching rules with locations and similarity classification.
+ * @returns Matching rules with their locations, the reported site's closest first.
  */
 export function searchRules(
     query: SearchQuery,
@@ -267,8 +236,7 @@ export function searchRules(
             ) {
                 return;
             }
-            const classification = classifyMatch(query, normalized);
-            if (classification === 'none') {
+            if (!matchesQuery(query, normalized)) {
                 return;
             }
             preliminary.push({
@@ -277,47 +245,21 @@ export function searchRules(
                 line: lineNo,
                 filter: file.filter,
                 section: sectionForLine(file.sections, lineNo),
-                classification,
-                key: targetKey(normalized),
                 normalized,
             });
         });
     }
 
-    // Cross-filter pass. Per the issue, 'cross-filter' means
-    // "same-selector-cross-filter": a cosmetic selector that already lives in
-    // another filter file (a placement ambiguity). It applies ONLY to cosmetic
-    // matches, never to network or scriptlet. To keep the strongest signals,
-    // exact matches and exception conflicts keep their classification; only the
-    // partial-duplicate classes (semantic / subsumed) are promoted to
-    // 'cross-filter' when the selector spans 2+ distinct filters.
-    const selectorFilters = new Map<string, Set<string>>();
-    for (const m of preliminary) {
-        if (m.normalized.kind !== RuleKind.Cosmetic || !m.key) {
-            continue;
-        }
-        const set = selectorFilters.get(m.key) ?? new Set();
-        set.add(m.filter);
-        selectorFilters.set(m.key, set);
-    }
-    const rankedResults = preliminary.map((m) => {
-        const promoteToCrossFilter =
-            m.normalized.kind === RuleKind.Cosmetic &&
-            m.key !== undefined &&
-            (selectorFilters.get(m.key)?.size ?? 0) > 1 &&
-            (m.classification === 'semantic' || m.classification === 'subsumed');
-        return {
-            preliminary: m,
-            match: {
-                rule: m.rule,
-                filePath: m.filePath,
-                line: m.line,
-                filter: m.filter,
-                section: m.section,
-                classification: promoteToCrossFilter ? 'cross-filter' : m.classification,
-            } satisfies RuleMatch,
-        };
-    });
+    const rankedResults = preliminary.map((m) => ({
+        preliminary: m,
+        match: {
+            rule: m.rule,
+            filePath: m.filePath,
+            line: m.line,
+            filter: m.filter,
+            section: m.section,
+        } satisfies RuleMatch,
+    }));
 
     rankedResults.sort(
         (a, b) =>
