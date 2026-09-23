@@ -5,8 +5,8 @@ import * as v from 'valibot';
  *
  * It lives in the shared vocabulary because both ends of the placement question need it and neither
  * owns it: a run instruction declares a placement per rule kind (`src/knowledge/`), and the
- * deterministic resolver routes by rule kind (`src/repo/`). Keeping it here is what lets the
- * instruction layer name a kind without importing the resolver.
+ * repository side matches a candidate to that declaration by its kind (`src/repo/`). Keeping it
+ * here is what lets the instruction layer name a kind without importing the repository code.
  */
 export const PlacementRuleType = {
     /**

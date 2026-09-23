@@ -91,13 +91,7 @@ export const TOOL_GUIDANCE: Readonly<Record<string, string>> = {
         'reaches the run result and the log; it changes nothing about the current turn, so continue ' +
         'the investigation afterwards. Do not use it to report ads, evidence, or terminal decisions.',
     [ToolName.SearchRules]:
-        'Searches AdguardFilters by domain, selector, URL pattern, or scriptlet. A domain-only query is a compact grouped inventory: follow it with a focused selector, URL pattern, or scriptlet query for exact matches. Search the stable base of a compound modifier selector and validate an exact existing base element-hiding rule as a domain-scoped ## candidate before the modifier. A reported domain absent from a matching shared rule is an expected extend_domains candidate, not a reason to ignore it.',
-    [ToolName.ResolvePlacement]:
-        'Determines which list file a candidate rule belongs in and the exact line it would be ' +
-        'inserted at, from the repository itself: the run instruction if it declares a placement ' +
-        "for this rule's kind, otherwise where the reported site's rules already are, where " +
-        'similar rules are, or where rules of this shape are kept. A file whose rules are sorted ' +
-        'gets a sorted insert. Answers with no plan when the repository holds nothing to go on.',
+        'Searches AdguardFilters by domain, selector, URL pattern, or scriptlet. A domain-only query is a compact grouped inventory: follow it with a focused selector, URL pattern, or scriptlet query for exact matches. Search the stable base of a compound modifier selector and validate an exact existing base element-hiding rule as a domain-scoped ## candidate before the modifier. A reported domain absent from a matching shared rule is an expected extend_domains candidate, not a reason to ignore it. Every match carries the repository path of its list file: a draft names one of those paths as the file its rule goes into.',
     [ToolName.PolicyCheck]:
         'Checks whether filter policy allows rule generation (first-party ads, paywalls, German anti-adblock). Returns propose_close, needs_human_review, or allow_rule_generation with cited reasons.',
     [ToolName.ScoreRisk]:
@@ -161,7 +155,7 @@ export const TOOL_GUIDANCE: Readonly<Record<string, string>> = {
     [ToolName.GetDetail]:
         'Retrieves a byte-bounded filtered slice of a persisted artifact by ID. Use when a tool result says "Use get_detail() to inspect slices" — pass the artifact ID and optional filter (key path, limit) to inspect large results like DOM, HAR, ad-slot facts, or evaluate_js results.',
     [ToolName.FinishFix]:
-        'Finishes a fix run with one typed FixOutcome: the typed decision the operator publishes, or the analysis-only report of what blocked a rule. An analysis-only outcome carries `candidateForReview` when a rule passed lint and risk scoring and `apply_rule` did not reject it but no review confirmed it — the rule, its placement when resolved, and why it stayed unverified. This is the only terminal channel of a fix run. Call exactly once, when the evidence verdict is established. A submission that fails validation is returned with the errors; correct and resubmit.',
+        'Finishes a fix run with one typed FixOutcome: the typed decision the operator publishes, or the analysis-only report of what blocked a rule. An analysis-only outcome carries `candidateForReview` when a rule passed lint and risk scoring and `apply_rule` did not reject it but no review confirmed it — the rule, the list file chosen for it, and why it stayed unverified. This is the only terminal channel of a fix run. Call exactly once, when the evidence verdict is established. A submission that fails validation is returned with the errors; correct and resubmit.',
     [ToolName.SubmitAnalysis]:
         'Submits the complete analysis of the issue. This is the only terminal channel of an analyze run. Call exactly once, when the investigation is finished and the report is final. A submission that fails validation is returned with the errors; correct and resubmit.',
     [ToolName.SubmitReplayVerdict]:
@@ -198,18 +192,6 @@ export const TOOL_PARAMETER_SCHEMAS: Readonly<
         selector: v.optional(v.string()),
         urlPattern: v.optional(v.string()),
         scriptlet: v.optional(v.string()),
-    }),
-    [ToolName.ResolvePlacement]: v.object({
-        candidateRule: v.string(),
-        targetDomain: v.string(),
-        siteLanguage: v.string(),
-        siteRegion: v.string(),
-        ruleType: v.string(),
-        issueLabels: v.array(v.string()),
-        existingSimilarRules: v.array(v.object({ rule: v.string(), filePath: v.string() })),
-        requestDomain: v.optional(v.string()),
-        product: v.optional(v.string()),
-        cyrillicBoth: v.optional(v.boolean()),
     }),
 
     // ── Browser session present ─────────────────────────────────────────────

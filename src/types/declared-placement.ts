@@ -5,9 +5,9 @@ import type { PlacementRuleType } from './placement-rule-type';
  *
  * The instruction owns the declaration ({@link InstructionPlacement} in
  * `src/knowledge/instruction-placement.ts`); this is what it renders to for this run — the exact
- * file the rule goes into and the exact comment line that precedes it. Both the placement resolver
- * and the repository-edit planner read it, so it lives in the shared vocabulary rather than in
- * either of them.
+ * file the rule goes into and the exact comment line that precedes it. Both the terminal placement
+ * check and the repository-edit planner read it, so it lives in the shared vocabulary rather than
+ * in either of them.
  */
 
 /**

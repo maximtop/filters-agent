@@ -1,15 +1,12 @@
 /**
  * The path-free candidate vocabulary the {@link AgentRuntime} shares with the modules split out of
- * it: the per-run budgets, the candidate ledger key, prompt-safe target-URL binding, and the
- * placement comparison a terminal proposal is judged against.
+ * it: the per-run budgets, the candidate ledger key, and prompt-safe target-URL binding.
  *
  * It holds no runtime state and imports nothing from the runtime, so the split modules never import
  * the runtime back.
  */
 import { CandidateOperation } from '../environment/filtering-environment';
 import { FixOutcomeKind, type FixOutcome } from '../pr/fix-outcome';
-import type { PlacementResolution } from '../repo/placement-resolver';
-import type { PlacementRuleType } from '../types/placement-rule-type';
 
 /**
  * Maximum browser-bound executions of one semantic candidate after transient vision failures.
@@ -36,31 +33,6 @@ export function candidateLedgerKey(operation: CandidateOperation, canonical: str
 }
 
 /**
- * One successful deterministic placement resolution retained for an exact candidate.
- */
-export interface CandidatePlacementResolution {
-    /**
-     * Canonical candidate rule supplied to the resolver.
-     */
-    candidateCanonical: string;
-
-    /**
-     * Normalized domain whose repository placement was resolved.
-     */
-    targetDomain: string;
-
-    /**
-     * Concrete placement category inferred from the candidate syntax.
-     */
-    ruleType: PlacementRuleType;
-
-    /**
-     * Schema-validated mechanical repository placement returned by the resolver.
-     */
-    resolution: PlacementResolution;
-}
-
-/**
  * Discriminator used to narrow a terminal outcome to its draft variant.
  */
 interface DraftOutcomeDiscriminator {
@@ -74,11 +46,6 @@ interface DraftOutcomeDiscriminator {
  * Draft outcome narrowed from the terminal decision union.
  */
 export type DraftFixOutcome = Extract<FixOutcome, DraftOutcomeDiscriminator>;
-
-/**
- * Placement payload carried by one draft rule proposal.
- */
-export type DraftRulePlacement = DraftFixOutcome['ruleProposal']['placement'];
 
 /**
  * Normalize one HTTP(S) URL for exact prompt-safe target binding.
@@ -165,58 +132,6 @@ export function reportedDomainFromAllowedTargets(values: readonly string[]): str
         }
     }
     return undefined;
-}
-
-/**
- * Normalize a placement hostname for conservative issue-domain equality.
- *
- * @param value - Candidate bare hostname.
- * @returns Lowercase hostname without a leading `www.` or root dot, or undefined when invalid.
- */
-export function normalizePlacementDomain(value: string): string | undefined {
-    const normalized = value.trim().toLowerCase().replace(/\.$/u, '');
-    if (normalized.length === 0) {
-        return undefined;
-    }
-    try {
-        const parsed = new URL(`https://${normalized}`);
-        if (
-            parsed.username.length > 0 ||
-            parsed.password.length > 0 ||
-            parsed.port.length > 0 ||
-            parsed.pathname !== '/' ||
-            parsed.search.length > 0 ||
-            parsed.hash.length > 0 ||
-            parsed.hostname !== normalized
-        ) {
-            return undefined;
-        }
-        return parsed.hostname.replace(/^www\./u, '').replace(/\.$/u, '');
-    } catch {
-        return undefined;
-    }
-}
-
-/**
- * Compare model-carried placement fields with the exact deterministic resolver result.
- *
- * @param actual - Placement copied into the model's terminal proposal.
- * @param expected - Most recent applicable resolver result.
- * @returns Whether every typed placement field matches exactly.
- */
-export function placementMatches(
-    actual: DraftRulePlacement,
-    expected: PlacementResolution,
-): boolean {
-    return (
-        actual.filter === expected.filter &&
-        actual.filePath === expected.filePath &&
-        actual.confidence === expected.confidence &&
-        actual.alternatives.length === expected.alternatives.length &&
-        actual.alternatives.every(
-            (alternative, index) => alternative === expected.alternatives[index],
-        )
-    );
 }
 
 /**

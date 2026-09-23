@@ -126,9 +126,9 @@ The run loads its filter guidance at start from these role documents:
 - [AdGuard filter policy](https://github.com/AdguardTeam/KnowledgeBase/blob/master/docs/general/ad-filtering/filter-policy.md)
 - [AdguardFilters contributing guide](https://github.com/AdguardTeam/AdguardFilters/blob/master/CONTRIBUTING.md)
 
-Rule placement is deliberately not declared: the deterministic routing already mirrors this
-repository's `<Filter>/sections/*.txt` layout, which picks a file per language and per rule
-kind — more distinctions than a declaration can name.
+Rule placement is deliberately not declared: this repository files rules per language and per rule
+kind across `<Filter>/sections/*.txt` — more distinctions than a declaration can name — so the file
+is chosen from where the repository already keeps rules like the new one.
 ```
 
 The link labels are what bind the documents: a label containing `syntax`, `policy` or
@@ -138,29 +138,19 @@ answered by a notice saying so, which the run's report carries as missing inform
 
 ### Where an accepted rule goes
 
-You do not have to tell the action anything for this to work. It reads your repository and answers
-from what is already in it, in this order:
+You do not have to tell the action anything for this to work. The agent chooses the list from what
+your repository already holds: the list with the reported site's rules, otherwise the one that keeps
+rules like the new one. It names that list by the path the repository search shows, and the action
+only checks that the rule can go there — the file is one of your repository's own lists and it is in
+the checkout. When it cannot, the agent is told why and chooses again; the action never moves a rule
+to a file of its own choosing.
 
-1. **Where the reported site's rules already are.** When one of your lists already holds at least
-   two rules for that site of the same kind as the new one, that is where the new one goes.
-2. **Where the rules this one resembles are.** When the run found related rules and they all live
-   in one list, that list wins.
-3. **Where rules of this shape are kept.** The list holding the most rules of the candidate's
-   shape — site-scoped hiding, generic hiding, site-scoped blocking, unscoped host blocks,
-   exceptions, scriptlets — is where a rule of that shape belongs. Lines carrying no filter syntax
-   at all, such as a file of bare hostnames, are not rules and never win.
-
-When none of those finds anything the action says so instead of proposing a place: a report naming
-a file nobody files that kind of rule in is worse than a report that names none.
-
-The position inside the file is read the same way. When the list keeps its rules sorted — at least
-98% of adjacent lines in ascending order, in a run of at least 20 rules — the rule takes its sorted
-place, by the whole rule text or, for hiding rules, by the rule with its leading site list removed,
-the way EasyList's `FOP.py` sorts them. Otherwise the rule joins the site's existing rules when it
-has any, and goes at the end when it does not.
-
-An AdGuard filter repository keeps the routing it always had: the page's language picks the filter,
-the rule's kind picks the section.
+The position inside the file is read from the file itself. When the list keeps its rules sorted — at
+least 98% of adjacent lines in ascending order, in a run of at least 20 rules — the rule takes its
+sorted place, by the whole rule text or, for hiding rules, by the rule with its leading site list
+removed, the way EasyList's `FOP.py` sorts them. Otherwise the rule joins the site's existing rules
+when it has any, and goes at the end when it does not. When the chosen list already holds the same
+rule for other sites, the site is added to that rule instead of a new line.
 
 A repository that wants to say where its rules go declares it in its instruction, and may use one
 line per rule kind:
@@ -182,9 +172,9 @@ behind that comment — the way uAssets keeps its year files. Leave the comment 
 written and the position is read from the file exactly as above, so a sorted list gets a sorted
 insert.
 
-A declaration wins over everything above for the kind it governs. Keep the file in your
-repository — a declared file that is not in the checkout is still what the report names, but no edit
-can be proposed for it until it exists. Each kind is declared once: a kind repeated, a second line
+A declaration settles the file for the kind it governs: a rule of that kind placed anywhere else is
+returned to the agent. Keep the file in your repository — no edit can be proposed for a declared file
+that is not in the checkout. Each kind is declared once: a kind repeated, a second line
 naming no kind, an unknown kind, an absolute path, or a placeholder other than those two fails the
 run at start, naming the instruction.
 

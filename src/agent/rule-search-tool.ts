@@ -75,9 +75,10 @@ function ruleInventoryKind(rule: string): RuleInventoryKind {
 /**
  * Reduce one domain-inventory match to facts useful for choosing a focused follow-up query.
  *
- * Domain-only results are not an exact rule-edit instruction. The complete rule and absolute path
- * remain in the trace artifact, while this preview prevents one unusually long rule from consuming
- * the model's entire fixed response budget.
+ * Domain-only results are not an exact rule-edit instruction. The complete rule remains in the
+ * trace artifact, while this preview prevents one unusually long rule from consuming the model's
+ * entire fixed response budget. The file path stays whole: it is what a draft names to place a rule
+ * beside the site's existing ones.
  *
  * @param match - Full repository match.
  * @returns Compact representative inventory match.
@@ -89,6 +90,7 @@ function compactDomainInventoryMatch(
     return {
         rulePreview,
         rulePreviewTruncated: rulePreview !== match.rule,
+        filePath: match.filePath,
         filter: truncateUtf8(match.filter, MAX_INVENTORY_LABEL_BYTES),
         section:
             match.section === undefined

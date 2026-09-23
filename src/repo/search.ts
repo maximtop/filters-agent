@@ -24,7 +24,7 @@ interface PreliminaryMatch {
     rule: string;
 
     /**
-     * Absolute path to the filter file containing the rule.
+     * Repository-relative path of the list file containing the rule.
      */
     filePath: string;
 
@@ -273,7 +273,7 @@ export function searchRules(
             }
             preliminary.push({
                 rule: line,
-                filePath: absPath,
+                filePath: file.relativePath,
                 line: lineNo,
                 filter: file.filter,
                 section: sectionForLine(file.sections, lineNo),

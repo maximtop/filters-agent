@@ -12,12 +12,11 @@ import { unfencedInstructionLines } from './instruction-preparation';
  * The `placement:` declarations one run instruction may carry: which file an accepted rule of each
  * kind goes into, and the comment line that precedes it.
  *
- * The repository, not the agent, knows where its rules live. The deterministic placement resolver
- * routes by language and section the way the AdGuard repository is laid out, which is the wrong
- * shape for a uAssets-style repository that appends every rule to the current year's file behind a
- * comment naming the issue: in run 34996815226 it answered `filters/annoyances-cookies.txt` for an
- * ad-network rule because `TurkishFilter` was absent from the uAssets placement map. An instruction
- * that declares its placement takes that decision away from the routing.
+ * Without a declaration the agent chooses the file from where the repository already keeps rules
+ * like the candidate. A uAssets-style repository instead appends every rule to the current year's
+ * file behind a comment naming the issue, which nothing in the existing rules shows; an instruction
+ * that declares its placement says so, and a draft naming any other file for a declared kind is
+ * returned to the agent.
  *
  * Each declaration is one line, in the same shape as the `read:` and `launch:` declarations:
  * `placement: [<kind>] <path template> [comment: <comment template>]`. The optional leading kind is
@@ -87,8 +86,8 @@ const PLACEMENT_DECLARATION_GRAMMAR = 'placement: [<kind>] <path> [comment: <tex
  *
  * A checkout-relative list path is short — the shipped `filters/filters-{{year}}.txt` is 27
  * characters — so the cap is generous for a nested layout while keeping an unbounded declaration
- * out of every answer that quotes the rendered path: the resolver result, the insertion plan, and
- * the published report.
+ * out of every answer that quotes the rendered path: the terminal placement check, the insertion
+ * plan, and the published report.
  */
 export const MAX_PLACEMENT_PATH_TEMPLATE_CHARACTERS = 200;
 
@@ -324,7 +323,7 @@ function parseDeclarationLine(declarationLine: string): ParsedDeclarationLine {
  * most one naming no kind. A line that opens with the keyword but does not follow the grammar is a
  * named failure, never a skipped line, and so is a kind declared twice: a repository that names two
  * files for its cosmetic rules has not said where they go. An instruction that declares no
- * placement leaves the deterministic resolver in charge.
+ * placement leaves the choice of file to the agent.
  *
  * @param content - Instruction text as loaded.
  * @returns The declared placements, or undefined when the instruction declares none.
@@ -396,7 +395,7 @@ function renderDeclaredTemplate(
  *
  * @param target - One declaration as parsed at load.
  * @param values - Values available for the supported placeholders.
- * @returns The rendered placement the resolver answers with and the edit writes.
+ * @returns The rendered placement a draft must name and the edit writes.
  */
 function renderDeclaredTarget(
     target: InstructionPlacementTarget,
@@ -417,7 +416,7 @@ function renderDeclaredTarget(
  *
  * @param placement - The instruction's declarations as parsed at load.
  * @param context - Run facts filling the declarations' placeholders.
- * @returns The rendered placements the resolver answers with and the edit writes.
+ * @returns The rendered placements a draft must name and the edit writes.
  * @throws {PromptRenderError} When a declaration names a placeholder the run cannot fill — a
  *   comment declaring `{{issueUrl}}` in a run that holds no issue URL.
  */
@@ -450,7 +449,7 @@ export function renderInstructionPlacement(
  * Render the placements one run declares, as its whole run then uses them.
  *
  * The run renders its declarations exactly once, at start, and hands the rendered value to every
- * consumer — the `resolve_placement` tool, the candidate safety gate, and the patch the publication
+ * consumer — the terminal placement check, the candidate safety gate, and the patch the publication
  * builds. Rendering them again later would let a run that straddles a UTC new year answer with one
  * year's file and publish into another's.
  *

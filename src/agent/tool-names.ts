@@ -56,11 +56,6 @@ export const ToolName = {
     SearchRules: 'search_rules',
 
     /**
-     * Resolves the filter file, section, and insertion line for a candidate rule.
-     */
-    ResolvePlacement: 'resolve_placement',
-
-    /**
      * Decides whether filter policy allows generating a rule at all.
      */
     PolicyCheck: 'policy_check',

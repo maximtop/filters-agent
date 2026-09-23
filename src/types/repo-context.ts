@@ -100,7 +100,8 @@ export const RuleMatchSchema = v.object({
     rule: v.pipe(v.string(), v.minLength(1)),
 
     /**
-     * Absolute path to the filter file containing the rule.
+     * Repository-relative path of the list file containing the rule: the path a draft names to
+     * place its rule in that file.
      */
     filePath: v.pipe(v.string(), v.minLength(1)),
 

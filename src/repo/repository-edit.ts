@@ -21,6 +21,7 @@ import {
 } from 'node:path';
 import { describeCulpritRemoval } from './culprit-removal';
 import { describeCulpritReplacement } from './culprit-replacement';
+import { placementRuleTypeOfRule } from './candidate-rule-type';
 import { declaredPlacementForTarget } from './declared-placement';
 import { filterFileLines } from './filter-file-lines';
 import {
@@ -38,7 +39,11 @@ import {
 import { describeSharedRuleExtension } from './shared-rule-extension';
 import { findSortedInsertion } from './sorted-insertion';
 import { CandidateOperation } from '../environment/filtering-environment';
-import type { DeclaredPlacement, DeclaredPlacementSet } from '../types/declared-placement';
+import {
+    declaredPlacementFor,
+    type DeclaredPlacement,
+    type DeclaredPlacementSet,
+} from '../types/declared-placement';
 import type { PreparedFiltersCheckout } from '../local/filters-preparer';
 import type { LocalRunRecord } from '../local/run-output';
 import type { CandidatePatch } from '../types/fix-run-result';
@@ -325,7 +330,7 @@ export interface InsertRepositoryEdit {
     kind: typeof RepositoryEditKind.Insert;
 
     /**
-     * Optional zero-based line index selected by a trusted placement resolver.
+     * Optional zero-based line index the edit planner chose inside the target file.
      */
     insertionPoint?: number;
 
@@ -531,17 +536,15 @@ function collectSectionFiles(directory: string, insideSections: boolean, paths: 
 }
 
 /**
- * Discover tracked filter section files that may already own a shared cosmetic rule.
+ * Discover the tracked filter section files a published rule can live in.
  *
- * Only top-level `*Filter/sections` trees are scanned. The model-selected file is included even
- * when it uses a legacy layout so a valid insertion target remains usable.
+ * Only top-level `*Filter/sections` trees are scanned.
  *
  * @param checkoutRoot - Canonical checkout root.
- * @param suggestedTarget - Canonical model-selected target file, when it exists.
  * @returns Canonical regular text files in deterministic repository order.
  */
-function relevantFilterFiles(checkoutRoot: string, suggestedTarget: string | undefined): string[] {
-    const paths = new Set<string>(suggestedTarget ? [suggestedTarget] : []);
+function filterSectionFiles(checkoutRoot: string): string[] {
+    const paths = new Set<string>();
     for (const filterEntry of readdirSync(checkoutRoot, { withFileTypes: true })) {
         if (
             !filterEntry.isDirectory() ||
@@ -587,23 +590,6 @@ export function filterScopeForPath(filePath: string): string | undefined {
         }
     }
     return undefined;
-}
-
-/**
- * Select one deterministic match or reject an ambiguous placement scope.
- *
- * @param matches - Matching shared rules inside the selected scope.
- * @returns The sole match, or undefined when the scope contains no match.
- */
-function selectUniqueMatch(matches: readonly ExtensionCandidate[]): ExtensionCandidate | undefined {
-    if (matches.length > 1) {
-        const locations = matches
-            .slice(0, 5)
-            .map((match) => `${match.filePath}:${match.line}`)
-            .join(', ');
-        throw new Error(`Ambiguous shared-rule placement for candidate selector: ${locations}`);
-    }
-    return matches[0];
 }
 
 /**
@@ -663,26 +649,24 @@ function selectEquivalentFileMatch(
 }
 
 /**
- * Select a unique shared rule whose exact syntax and selector match the candidate.
+ * Select the shared rule in the chosen file whose exact syntax and expression match the candidate.
  *
- * Multiple matching groups are deliberately rejected instead of silently modifying an arbitrary
- * rule. Domain suffixes are not used as a locale heuristic: the existing shared rule is the
- * placement fact, regardless of whether its domains use the same public suffix.
+ * Only the file the agent chose is read. Which file a rule belongs in is the agent's decision, and
+ * a shared rule of the same form in another file is no reason to move the edit there: the planner
+ * used to search every filter tree and retarget to a unique owner elsewhere, or refuse the
+ * candidate when several files held one — which lost a vision-verified consent-platform block
+ * (AdguardFilters #242174) whose agent had picked the right file. Inside the chosen file several
+ * equivalent expressions may carry the family; the reported domain's cohort picks one.
  *
- * @param checkoutRoot - Canonical checkout root.
- * @param files - Relevant filter section files to inspect.
- * @param suggestedFilePath - Model-selected repository-relative placement file.
+ * @param targetPath - Canonical chosen file.
+ * @param filePath - Repository-relative chosen file.
  * @param candidateRule - Locked issue-scoped candidate rule.
- * @param existingRuleHints - Exact rules previously returned by repository search and echoed by the
- *   agent; every hint is revalidated against the checkout before it can narrow placement.
- * @returns Unique extension target, or undefined when no safe target exists.
+ * @returns The extension target in the chosen file, or undefined when the file holds none.
  */
 function selectExtensionCandidate(
-    checkoutRoot: string,
-    files: string[],
-    suggestedFilePath: string,
+    targetPath: string,
+    filePath: string,
     candidateRule: string,
-    existingRuleHints: readonly string[],
 ): ExtensionCandidate | undefined {
     const candidate = normalizeRule(candidateRule);
     if (
@@ -710,54 +694,15 @@ function selectExtensionCandidate(
             ruleFamilySignature(rule) === candidateSignature
         );
     };
-
     const matches: ExtensionCandidate[] = [];
-    for (const file of files) {
-        const filePath = repositoryRelativePath(checkoutRoot, file);
-        readFileSync(file, 'utf8')
-            .split(/\r?\n/)
-            .forEach((rule, index) => {
-                if (!isFamilyMember(rule)) {
-                    return;
-                }
+    readFileSync(targetPath, 'utf8')
+        .split(/\r?\n/)
+        .forEach((rule, index) => {
+            if (isFamilyMember(rule)) {
                 matches.push({ filePath, line: index + 1, rule });
-            });
-    }
-    const hintCanonicals = new Set(
-        existingRuleHints.filter(isFamilyMember).map((rule) => normalizeRule(rule).canonical),
-    );
-    const hintedMatches = matches.filter((match) =>
-        hintCanonicals.has(normalizeRule(match.rule).canonical),
-    );
-
-    // One checkout-validated search result is stronger than a model file hint and preserves
-    // recovery when the model selected the wrong section. Broad inventory searches often return
-    // the same selector from several unrelated filters, so those results must still be scoped by
-    // the selected placement before they can make the edit ambiguous.
-    if (hintedMatches.length === 1) {
-        return hintedMatches[0];
-    }
-    const scopedMatches = hintedMatches.length > 1 ? hintedMatches : matches;
-    const exactFileMatch = selectEquivalentFileMatch(
-        scopedMatches.filter((match) => match.filePath === suggestedFilePath),
-        candidateDomain,
-    );
-    if (exactFileMatch) {
-        return exactFileMatch;
-    }
-    const filterScope = filterScopeForPath(suggestedFilePath);
-    if (filterScope) {
-        const filterMatch = selectUniqueMatch(
-            scopedMatches.filter(
-                (match) =>
-                    match.filePath === filterScope || match.filePath.startsWith(`${filterScope}/`),
-            ),
-        );
-        if (filterMatch) {
-            return filterMatch;
-        }
-    }
-    return selectUniqueMatch(scopedMatches);
+            }
+        });
+    return selectEquivalentFileMatch(matches, candidateDomain);
 }
 
 /**
@@ -980,57 +925,56 @@ function planDeclaredPlacement(
 }
 
 /**
- * Plan an exact repository edit for a locked candidate without modifying the checkout.
+ * Plan the exact edit a locked candidate makes to the file the agent chose, without modifying the
+ * checkout.
  *
- * A standard domain-scoped cosmetic rule extends a unique existing multi-domain rule found across
- * relevant filter sections when its selector and concrete syntax agree. The selected file is
- * runner-derived; an ambiguous shared target fails closed instead of trusting model placement.
+ * The agent decides the file; this answers whether the candidate can be inserted there and how. A
+ * rule of the candidate's form already shared by other sites in that file gets the reported domain
+ * added to it; otherwise the candidate is a new line at the position the file's own layout implies.
+ * A run instruction that declares where rules of the candidate's kind go makes that file the only
+ * one allowed, planned the way the declaration says.
  *
- * @param checkoutPath - Root of the pinned AdguardFilters checkout.
- * @param filePath - Repository-relative target filter file.
+ * @param checkoutPath - Root of the pinned filters checkout.
+ * @param filePath - Repository-relative file the agent chose.
  * @param candidateRule - Locked issue-scoped candidate rule.
- * @param existingRuleHints - Exact repository rules surfaced by the agent's normalized search.
- * @param declared - The run instruction's declared placements, rendered for this run; when one of
- *   them names the target file for this candidate's kind it decides the edit on its own.
+ * @param declared - The run instruction's declared placements, rendered for this run.
  * @returns Deterministic target file and insert or domain-extension edit.
+ * @throws When the candidate cannot be inserted into the chosen file, naming why.
  */
 export function planRepositoryEdit(
     checkoutPath: string,
     filePath: string,
     candidateRule: string,
-    existingRuleHints: readonly string[] = [],
     declared?: DeclaredPlacementSet,
 ): RepositoryEditPlan {
     const governing = declaredPlacementForTarget(filePath, candidateRule, declared);
     if (governing !== undefined) {
         return planDeclaredPlacement(checkoutPath, governing, candidateRule);
     }
+    const kindDeclaration = declaredPlacementFor(declared, placementRuleTypeOfRule(candidateRule));
+    if (kindDeclaration !== undefined) {
+        throw new Error(
+            `The run instruction declares ${kindDeclaration.filePath} for rules of this kind, ` +
+                `not ${filePath}.`,
+        );
+    }
     const targetPath = resolveFilterPath(checkoutPath, filePath);
-    const checkoutRoot = realpathSync(checkoutPath);
-    const extension = selectExtensionCandidate(
-        checkoutRoot,
-        relevantFilterFiles(checkoutRoot, targetPath),
-        filePath,
-        candidateRule,
-        existingRuleHints,
-    );
-    const candidate = normalizeRule(candidateRule);
+    if (!targetPath) {
+        throw new Error(
+            `The chosen file does not exist in the checkout: ${filePath}. Use a file path exactly ` +
+                'as search_rules reports it.',
+        );
+    }
+    const chosenPath = repositoryRelativePath(realpathSync(checkoutPath), targetPath);
+    const extension = selectExtensionCandidate(targetPath, chosenPath, candidateRule);
     const replacementRule = extension
-        ? extendRuleDomains(extension.rule, candidate.domains[0])
+        ? extendRuleDomains(extension.rule, normalizeRule(candidateRule).domains[0])
         : undefined;
     if (!extension || replacementRule === undefined) {
-        if (!targetPath) {
-            throw new Error(
-                `Candidate target does not exist and no shared-rule owner was found: ${filePath}`,
-            );
-        }
-        return {
-            filePath: repositoryRelativePath(checkoutRoot, targetPath),
-            edit: planInFilePosition(targetPath, candidateRule),
-        };
+        return { filePath: chosenPath, edit: planInFilePosition(targetPath, candidateRule) };
     }
     return {
-        filePath: extension.filePath,
+        filePath: chosenPath,
         edit: {
             kind: RepositoryEditKind.ExtendDomains,
             line: extension.line,
@@ -1238,7 +1182,7 @@ export function locateSourceRule(source: PreparedFiltersCheckout, rule: string):
         return { kind: 'failed', code: SourceRuleLookupFailureCode.Absent };
     }
     const matches: ExtensionCandidate[] = [];
-    for (const file of relevantFilterFiles(checkoutRoot, undefined)) {
+    for (const file of filterSectionFiles(checkoutRoot)) {
         const filePath = repositoryRelativePath(checkoutRoot, file);
         readFileSync(file, 'utf8')
             .split(/\r?\n/u)

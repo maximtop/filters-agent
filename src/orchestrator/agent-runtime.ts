@@ -2,7 +2,6 @@ import {
     applyRuleResultForModel,
     unsupportedCandidateOperationRefusal,
 } from './apply-rule-model-result';
-import { createToolEnumerationBackstop } from './tool-enumeration-backstop';
 import { createHash, randomUUID } from 'node:crypto';
 import * as v from 'valibot';
 import { withToolDeadline } from '../pi/session-tools';
@@ -170,6 +169,7 @@ import {
     validateTerminalOutcome as judgeTerminalOutcome,
 } from './terminal-outcome-validator';
 import type { TerminalValidationView } from './terminal-validation-view';
+import type { CandidatePlacementContext } from '../repo/candidate-placement-check';
 import {
     DECLARED_BASELINE_SETTINGS_PROFILE,
     launchBrowserAdvertisement,
@@ -186,7 +186,6 @@ import {
     canonicalTargetUrl,
     reportedDomainFromAllowedTargets,
     targetUrlMatchKey,
-    type CandidatePlacementResolution,
     type CandidateValidationOutcome,
 } from './agent-runtime-candidate-context';
 import {
@@ -448,9 +447,9 @@ export interface AgentRuntimeOptions {
     instruction?: LoadedInstruction;
 
     /**
-     * The placement this run's instruction declares, rendered once by the core at run start. It is
-     * the answer `resolve_placement` gives and the file the candidate's edit appends to; absent
-     * leaves the deterministic language-and-section routing in charge.
+     * The placement this run's instruction declares, rendered once by the core at run start. A
+     * draft must name the declared file for rules of a declared kind, and the candidate's edit
+     * appends to it; absent, the file the agent chooses is the one the edit goes to.
      */
     declaredPlacement?: DeclaredPlacementSet;
 
@@ -1090,29 +1089,6 @@ export class AgentRuntime {
     private guidanceConsulted = false;
 
     /**
-     * The run's one enumeration backstop, shared by every browser tool.
-     *
-     * A streak is consecutive calls of one tool with no other tool between them, so a single
-     * counter serves the whole surface: the tool that enumerates next is caught without anything
-     * here naming it. The `this.options` dereference is deferred to the moment a streak trips, so
-     * this initializer never depends on field-vs-parameter-property ordering.
-     */
-    private readonly toolEnumerationBackstop = createToolEnumerationBackstop({
-        onStreak: (streak) => {
-            createLogger({ verbose: this.options.verbose ?? false }).warn(
-                { tool: streak.tool, consecutiveCalls: streak.consecutiveCalls },
-                'consecutive same-tool streak reached the enumeration bound; the model was asked ' +
-                    'to batch its remaining probes into one evaluate_js call',
-            );
-            this.options.recorder.record(TraceEventType.Decision, {
-                phase: 'tool_enumeration_streak',
-                tool: streak.tool,
-                consecutiveCalls: streak.consecutiveCalls,
-            });
-        },
-    });
-
-    /**
      * Canonical candidate rules and their stable attempt numbers.
      */
     private readonly candidateAttempts = new Map<string, number>();
@@ -1147,11 +1123,6 @@ export class AgentRuntime {
      * Stable selectors whose repository search exposed an existing shared domain-rule family.
      */
     private readonly searchedDomainExtensionSelectors = new Set<string>();
-
-    /**
-     * Successful candidate-specific repository placements in dispatch order.
-     */
-    private readonly candidatePlacementResolutions: CandidatePlacementResolution[] = [];
 
     /**
      * Browser-bound candidate outcomes indexed by canonical rule.
@@ -1431,9 +1402,6 @@ export class AgentRuntime {
                 allowedIssueNumber: options.issue.number,
                 checkoutPath: options.filtersPath,
                 placementMap: listCatalog.placementMap ?? undefined,
-                ...(options.declaredPlacement === undefined
-                    ? {}
-                    : { declaredPlacement: options.declaredPlacement }),
                 visionTools: {
                     artifactsDir: options.artifactsDir,
                     recorder: options.recorder,
@@ -2017,6 +1985,30 @@ export class AgentRuntime {
     }
 
     /**
+     * The checkout facts a draft's placement is checked against: the pinned checkout, the list
+     * files the run's one placement-map walk found, and the run instruction's declared placements.
+     *
+     * Undefined only when that walk failed, and then the base registry's own walk of the same
+     * checkout has already failed the run before any session could reach `finish_fix`; a test that
+     * injects its own base registry is the one caller that gets this far without a checkout.
+     *
+     * @returns The placement context, or undefined without a walked checkout.
+     */
+    private placementContext(): CandidatePlacementContext | undefined {
+        const map = this.listCatalog.placementMap;
+        if (map === null) {
+            return undefined;
+        }
+        return {
+            checkoutPath: this.options.filtersPath,
+            ownedListPaths: new Set(map.files.map((entry) => entry.relativePath)),
+            ...(this.options.declaredPlacement === undefined
+                ? {}
+                : { declaredPlacement: this.options.declaredPlacement }),
+        };
+    }
+
+    /**
      * Project this runtime onto the read-only view the terminal judgement reads.
      *
      * Built fresh per judgement, so every field is the value at the moment finish_fix was submitted
@@ -2032,8 +2024,7 @@ export class AgentRuntime {
             fetchedIssueNumber: this.fetchedIssueNumber,
             activeSessionId: this.activeSessionId,
             sessionStates: this.sessionStates,
-            candidatePlacementResolutions: this.candidatePlacementResolutions,
-            baseToolNames: this.baseToolNames,
+            placementContext: this.placementContext(),
             cliEvidenceRoute: this.cliEvidenceRoute,
             environmentSelection: () => this.environmentHost.snapshot(),
             candidateValidationOutcome: (ledgerKey) =>
@@ -2421,7 +2412,6 @@ export class AgentRuntime {
         return {
             issue: this.options.issue,
             issueAttachmentArtifactIds: this.options.issueAttachmentArtifactIds,
-            allowedTargetUrls: this.options.allowedTargetUrls,
             baseRegistry: this.baseRegistry,
             launchBrowserAdvertisement: launchBrowserAdvertisement(this.preparedExtension),
             capabilities: () => this.environmentHost.capabilities(),
@@ -2437,9 +2427,6 @@ export class AgentRuntime {
             },
             recordGuidanceConsulted: () => {
                 this.guidanceConsulted = true;
-            },
-            recordPlacementResolution: (resolution) => {
-                this.candidatePlacementResolutions.push(resolution);
             },
             cachedReporterScreenshotResult: (artifactId) =>
                 this.reporterScreenshotResults.get(artifactId),
@@ -3313,9 +3300,6 @@ export class AgentRuntime {
             // The same walked map the base registry received: the run never walks the filter tree
             // a second time for the checkout tools.
             placementMap: this.listCatalog.placementMap ?? undefined,
-            ...(this.options.declaredPlacement === undefined
-                ? {}
-                : { declaredPlacement: this.options.declaredPlacement }),
             browserTools: {
                 session,
                 analyzer,
@@ -4652,11 +4636,7 @@ export class AgentRuntime {
                     // part the tool-result limit cuts away.
                     const forModel =
                         name === 'apply_rule' ? applyRuleResultForModel(result) : result;
-                    // Last, because the backstop counts what the model actually sees and adds to
-                    // it: below the bound this returns `forModel` untouched, and at or above it the
-                    // same result carries the notice asking the model to batch the rest of its
-                    // search. It never refuses the call or ends the run.
-                    return this.toolEnumerationBackstop.observe(name, forModel);
+                    return forModel;
                 },
             });
             this.activeBrowserToolNames.add(name);

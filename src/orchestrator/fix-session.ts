@@ -9,6 +9,8 @@
  * counts resubmissions at the same evidence progress (`terminal-rejection-fingerprint.ts`), the
  * retired loop's finish-retry identity.
  */
+import { TraceEventType } from '../types/trace';
+import { createToolEnumerationBackstop } from './tool-enumeration-backstop';
 import { ToolName } from '../agent/tool-names';
 import type { ToolRegistry } from '../agent/tool-registry';
 import type { LlmConfig } from '../config/config';
@@ -210,10 +212,25 @@ export async function runFixSession(options: FixSessionOptions): Promise<FixSess
     const environmentLocked = !options.runtime.registry
         .getToolNames()
         .includes(ToolName.SelectEnvironment);
+    const enumerationBackstop = createToolEnumerationBackstop({
+        onStreak: (streak) => {
+            logger.warn(
+                { tool: streak.tool, consecutiveCalls: streak.consecutiveCalls },
+                'consecutive same-tool streak reached the enumeration bound; the model was asked ' +
+                    'to stop repeating the call and act on the results it has',
+            );
+            options.recorder.record(TraceEventType.Decision, {
+                phase: 'tool_enumeration_streak',
+                tool: streak.tool,
+                consecutiveCalls: streak.consecutiveCalls,
+            });
+        },
+    });
     const tools = buildFixSessionTools(
         {
             registry: options.runtime.registry,
             routingCheck: options.routingCheck,
+            enumerationBackstop,
             descriptionOverrides: {
                 ...options.runtime.sessionToolDescriptions?.(),
                 ...launchBrowserSessionDescriptions(preparedExtension),

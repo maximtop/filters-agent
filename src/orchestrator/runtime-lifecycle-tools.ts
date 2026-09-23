@@ -1,8 +1,8 @@
 /**
  * The issue and browser lifecycle tools the agent runtime owns: `fetch_issue`, the runtime's own
- * wrappers over the base registry's search, placement, guidance and screenshot tools, full-page
- * capture inspection, and the `launch_browser` / `close_browser` session lifecycle. The run's
- * extension build is prepared host-side before the session, so no preparation tool exists here.
+ * wrappers over the base registry's search, guidance and screenshot tools, full-page capture
+ * inspection, and the `launch_browser` / `close_browser` session lifecycle. The run's extension
+ * build is prepared host-side before the session, so no preparation tool exists here.
  *
  * They register through {@link RuntimeLifecycleToolsHost} rather than against the runtime class, so
  * each handler's bookkeeping is one named seam instead of a reach into runtime state. The
@@ -27,15 +27,6 @@ import { registerReporterScreenshotTool } from '../agent/reporter-screenshot-too
 import type { FilteringEnvironmentDescriptor } from '../environment/environment-selection';
 import type { RawIssue } from '../github/fetch-issue';
 import { withToolDeadline } from '../pi/session-tools';
-import { placementRuleTypeForCandidate } from '../repo/candidate-rule-type';
-import { PlacementResolutionSchema } from '../repo/placement-resolver';
-import { effectiveRuleScopes, normalizeRule } from '../repo/rule-normalizer';
-import * as v from 'valibot';
-import {
-    normalizePlacementDomain,
-    reportedDomainFromAllowedTargets,
-    type CandidatePlacementResolution,
-} from './agent-runtime-candidate-context';
 import type { AgentRuntimeSessionState } from './agent-runtime-session-evidence';
 import { BROWSER_LAUNCH_DEADLINE_MS, BROWSER_TOOL_DEADLINE_MS } from './browser-tool-deadlines';
 import { VISION_TOOL_DEADLINE_MS } from '../agent/vision-tool-deadline';
@@ -54,11 +45,6 @@ export interface RuntimeLifecycleToolsHost {
      * Reporter screenshot artifact identities, in the one-based order `fetch_issue` advertises.
      */
     readonly issueAttachmentArtifactIds: readonly string[];
-
-    /**
-     * Exact prompt-safe browser targets bound outside the model loop.
-     */
-    readonly allowedTargetUrls: readonly string[];
 
     /**
      * What the model is shown for `launch_browser` on this run.
@@ -113,13 +99,6 @@ export interface RuntimeLifecycleToolsHost {
      * Record that the model consulted the rule guidance knowledge base.
      */
     recordGuidanceConsulted(): void;
-
-    /**
-     * Retain one successful deterministic placement resolution for terminal validation.
-     *
-     * @param resolution - Resolver result bound to its candidate and target domain.
-     */
-    recordPlacementResolution(resolution: CandidatePlacementResolution): void;
 
     /**
      * Read the cached analysis of one reporter screenshot.
@@ -273,110 +252,6 @@ export function registerLifecycleTools(
                 if (selector && hasDomainExtensionCandidate) {
                     host.recordDomainExtensionSelectorSearch(selector);
                 }
-                return result;
-            },
-        });
-    }
-
-    const placementDefinition = host.baseRegistry
-        .getDefinitions()
-        .find((definition) => definition.function.name === 'resolve_placement');
-    if (placementDefinition) {
-        registry.register({
-            definition: placementDefinition,
-            handler: async (args) => {
-                const result = await host.dispatchBaseTool('resolve_placement', args);
-                if (result.error !== undefined) {
-                    return result;
-                }
-                const resolution = v.safeParse(PlacementResolutionSchema, result);
-                if (!resolution.success) {
-                    return {
-                        error: 'The repository placement resolver returned an invalid result.',
-                        errorKind: 'placement_resolver_invalid_result',
-                        retryable: false,
-                    };
-                }
-                const candidateRule =
-                    typeof args.candidateRule === 'string' ? args.candidateRule : '';
-                const candidate = normalizeRule(candidateRule);
-                const ruleType = placementRuleTypeForCandidate(candidate);
-                const requestedRuleType =
-                    typeof args.ruleType === 'string' ? args.ruleType : undefined;
-                const targetDomain =
-                    typeof args.targetDomain === 'string'
-                        ? normalizePlacementDomain(args.targetDomain)
-                        : undefined;
-                const reportedDomainRaw = reportedDomainFromAllowedTargets(host.allowedTargetUrls);
-                const reportedDomain = reportedDomainRaw
-                    ? normalizePlacementDomain(reportedDomainRaw)
-                    : undefined;
-                const effectiveScopes = effectiveRuleScopes(candidate, reportedDomain);
-                const matchingEffectiveScopes = effectiveScopes
-                    .map(normalizePlacementDomain)
-                    .filter((scope): scope is string => scope === reportedDomain);
-                // Each failed check names the offending field, the expected value, and the
-                // received one: the previous single generic sentence sent one live run
-                // through all three placement retries guessing blind at which argument was
-                // wrong (proceedflow.info, 2026-08-18).
-                const rejections: string[] = [];
-                if (candidate.canonical.length === 0) {
-                    rejections.push('candidateRule does not parse as an actionable filter rule.');
-                } else if (ruleType === undefined) {
-                    rejections.push(
-                        "the candidate's syntax kind cannot request repository placement.",
-                    );
-                } else if (requestedRuleType !== ruleType) {
-                    rejections.push(
-                        `ruleType must be the syntax-derived '${ruleType}'; got ` +
-                            (requestedRuleType === undefined
-                                ? 'nothing.'
-                                : `'${requestedRuleType}'.`),
-                    );
-                }
-                if (reportedDomain === undefined) {
-                    rejections.push('the runner has no bound reported domain to scope placement.');
-                } else {
-                    if (targetDomain === undefined) {
-                        rejections.push(
-                            'targetDomain must be the runner-bound reported domain ' +
-                                `'${reportedDomain}'.`,
-                        );
-                    } else if (targetDomain !== reportedDomain) {
-                        rejections.push(
-                            'targetDomain must be the runner-bound reported domain ' +
-                                `'${reportedDomain}'; got '${targetDomain}'.`,
-                        );
-                    }
-                    if (matchingEffectiveScopes.length !== 1) {
-                        rejections.push(
-                            'exactly one effective scope of the candidate must equal ' +
-                                `'${reportedDomain}'; the candidate's effective scopes are ` +
-                                `[${effectiveScopes.join(', ') || 'none'}] — scope the rule ` +
-                                'to the reported domain (for a network rule, add ' +
-                                `$domain=${reportedDomain}).`,
-                        );
-                    }
-                }
-                // The extra undefined re-checks are redundant at runtime (each one already
-                // queued a rejection) but let the compiler carry the narrowing below.
-                if (rejections.length > 0 || targetDomain === undefined || ruleType === undefined) {
-                    return {
-                        error: `resolve_placement rejected the request: ${rejections.join(' ')}`,
-                        errorKind: 'candidate_placement_context_invalid',
-                        retryable: true,
-                        requiredAction: 'resolve_candidate_placement',
-                        expectedRuleType: ruleType ?? null,
-                        expectedTargetDomain: reportedDomain ?? null,
-                        effectiveScopes,
-                    };
-                }
-                host.recordPlacementResolution({
-                    candidateCanonical: candidate.canonical,
-                    targetDomain,
-                    ruleType,
-                    resolution: resolution.output,
-                });
                 return result;
             },
         });

@@ -189,6 +189,12 @@ export interface RegistryToolAdaptation {
      * Observer of one executed dispatch result, after the quarantine has seen it.
      */
     onDispatched?: (result: Record<string, unknown>) => void;
+
+    /**
+     * Last word on the result the model receives, after the quarantine and the dispatch observer
+     * have seen the executed one: the fix surface's enumeration backstop adds its notice here.
+     */
+    deliver?: (result: Record<string, unknown>) => Record<string, unknown>;
 }
 
 /**
@@ -216,7 +222,7 @@ export function adaptRegistryTool(
             const result = await registry.dispatch(name, args);
             quarantine.observe(name, result);
             adaptation.onDispatched?.(result);
-            return result;
+            return adaptation.deliver === undefined ? result : adaptation.deliver(result);
         },
     };
 }

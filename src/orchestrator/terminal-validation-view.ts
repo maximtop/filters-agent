@@ -10,10 +10,8 @@
 import { type EnvironmentSelectionSnapshot } from '../environment/environment-selection';
 import type { RawIssue } from '../github/fetch-issue';
 import type { EvidenceRouteHost } from '../local/evidence-route-contract';
-import type {
-    CandidatePlacementResolution,
-    CandidateValidationOutcome,
-} from './agent-runtime-candidate-context';
+import type { CandidatePlacementContext } from '../repo/candidate-placement-check';
+import type { CandidateValidationOutcome } from './agent-runtime-candidate-context';
 import type {
     AgentRuntimeEnvironmentEvidence,
     AgentRuntimeSessionState,
@@ -57,14 +55,10 @@ export interface TerminalValidationView {
     readonly sessionStates: ReadonlyMap<string, AgentRuntimeSessionState>;
 
     /**
-     * Deterministic placement resolutions the resolver returned during the run, in call order.
+     * The checkout facts a draft's placement is checked against, or undefined when the run has no
+     * walked filters checkout to insert into.
      */
-    readonly candidatePlacementResolutions: readonly CandidatePlacementResolution[];
-
-    /**
-     * Tool names the runtime registered itself, which separates a gated tool from a missing one.
-     */
-    readonly baseToolNames: ReadonlySet<string>;
+    readonly placementContext: CandidatePlacementContext | undefined;
 
     /**
      * Active CLI proxy evidence route when the run locked the CLI environment, else null.

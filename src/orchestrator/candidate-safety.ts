@@ -252,15 +252,12 @@ export function enforceCandidateSafety(
                 options.checkoutPath,
                 proposal.placement.filePath,
                 proposal.rule,
-                proposal.duplicateCheck.matches.map((match) => match.rule),
                 options.declaredPlacement,
             );
         } catch (error) {
             const detail = error instanceof Error ? error.message : String(error);
             throw new CandidateSafetyError(
-                /ambiguous/iu.test(detail)
-                    ? detail
-                    : `Candidate target or repository placement is unsafe: ${detail}`,
+                `Candidate target or repository placement is unsafe: ${detail}`,
             );
         }
         // The model's duplicate classification does not choose the edit. The planner above scans

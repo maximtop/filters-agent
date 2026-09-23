@@ -194,11 +194,6 @@ export interface AdditiveCandidateRequest {
      * Prepared clean source snapshot, immutable for this run.
      */
     source: PreparedFiltersCheckout;
-
-    /**
-     * Exact repository rules surfaced by search, revalidated before they narrow placement.
-     */
-    existingRuleHints?: readonly string[];
 }
 
 /**
@@ -402,12 +397,7 @@ export function gateAdditiveCandidate(
 
     let plan: RepositoryEditPlan;
     try {
-        plan = planRepositoryEdit(
-            request.source.checkoutPath,
-            request.filePath,
-            rule,
-            request.existingRuleHints ?? [],
-        );
+        plan = planRepositoryEdit(request.source.checkoutPath, request.filePath, rule);
         // The planner normalizes the model's path, so every later step uses `plan.filePath`:
         // locking a different path than the one that was planned is exactly the drift a verified
         // patch must never contain.
@@ -509,15 +499,11 @@ export function gateSharedRuleEditCandidate(
 
     let plan: RepositoryEditPlan;
     try {
-        plan = planRepositoryEdit(
-            request.source.checkoutPath,
-            request.filePath,
-            rule,
-            request.existingRuleHints ?? [],
-        );
+        plan = planRepositoryEdit(request.source.checkoutPath, request.filePath, rule);
         // This gate is not a general edit gate: a candidate no existing shared rule owns resolves
-        // to an insertion, which belongs to the additive sibling rather than here. An ambiguous
-        // shared target throws out of the planner and lands in the same refusal.
+        // to an insertion, which belongs to the additive sibling rather than here. A file the
+        // candidate cannot be inserted into throws out of the planner and lands in the same
+        // refusal.
         if (plan.edit.kind !== RepositoryEditKind.ExtendDomains) {
             return refuse(AdditiveCandidateGate.Placement);
         }

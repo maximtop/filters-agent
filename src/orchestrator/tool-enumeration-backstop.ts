@@ -23,16 +23,24 @@
  * this misuse, by saying what the target parameter is for and where batch selector tests belong.
  * This module is only the backstop for whatever enumerates next, which is why it names no tool and
  * treats every tool alike.
+ *
+ * "Every tool" has to mean every tool the session dispatches, so the fix session's tool adapter is
+ * where results pass through it. It used to sit on the runtime's browser-tool tail alone, and the
+ * next enumeration came from a repository tool: AdguardFilters #242193 (londonworld.com) spent its
+ * 35 minutes on 293 `search_rules` calls — 72 pattern variants for the one rule blocking
+ * `player.ex.co`, 234 of them answering nothing — with a 40-call streak the backstop never saw.
  */
 
 /**
  * Consecutive same-tool calls after which the notice rides along with the real result.
  *
- * Picked from the two bands the incident trace actually shows. The legitimate band reached 9 — nine
- * consecutive `evaluate_js` calls, each a genuinely different DOM probe that no earlier answer
- * could have supplied — while the pathological run was 37. Twelve clears the legitimate band with
- * margin, so an honest investigation never meets this notice, and it still leaves 25 of those 37
- * calls (roughly five minutes of model turns) for the model to change course and finish the run.
+ * Picked from the two bands the live traces actually show. Across 39 saved live runs of every tool,
+ * the longest legitimate same-tool streak is 10 (`search_rules`, then `launch_browser` and
+ * `evaluate_js` at 9 — each call a genuinely different question no earlier answer could have
+ * supplied), while the two runs that exhausted their budget reached 37 (`stabilize_page`) and 40
+ * (`search_rules`). Twelve clears the legitimate band with margin, so an honest investigation never
+ * meets this notice, and it still leaves most of such a streak's turns for the model to change
+ * course and finish the run.
  *
  * Deliberately not configurable: one mechanism with one bound, not a knob to tune per run.
  */
@@ -101,12 +109,13 @@ export interface ToolEnumerationBackstop {
 function enumerationNotice(toolName: string, consecutiveCalls: number): string {
     return (
         `You have now called ${toolName} ${consecutiveCalls} times in a row with no other tool in ` +
-        'between. Each of those calls costs a full model turn, so checking one candidate per call ' +
-        'is the slowest way to search and it is what exhausts the investigation budget before a ' +
-        'rule is ever validated. The result above is real — use it. For whatever you still have ' +
-        'to check, stop going one at a time: put every remaining candidate into a SINGLE ' +
-        'evaluate_js expression that returns the answer for all of them at once, and act on that ' +
-        'one result.'
+        'between. Each call costs a full model turn, and trying one variant per call is what ' +
+        'exhausts the investigation budget before a rule is ever validated. The result above is ' +
+        'real — use it. Stop repeating this call with new variants: act on what the results so ' +
+        'far already show, move on to the next step of the investigation, and if what you are ' +
+        'looking for has not turned up by now, record that it was not found instead of searching ' +
+        'further. When you still need many answers from the page, get them from one evaluate_js ' +
+        'expression that answers them all at once.'
     );
 }
 
@@ -117,7 +126,7 @@ function enumerationNotice(toolName: string, consecutiveCalls: number): string {
  * tool resets the count — the model that interleaves its probes with real work is not enumerating.
  *
  * @param options - The sink recording a tripped streak into the run's evidence.
- * @returns The backstop the dispatch tail passes every browser tool result through.
+ * @returns The backstop the session adapter passes every tool result through.
  */
 export function createToolEnumerationBackstop(
     options: ToolEnumerationBackstopOptions,

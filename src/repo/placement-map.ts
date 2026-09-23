@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, writeFileSync, existsSync, statSync } from 'node:fs';
+import { readdirSync, readFileSync, writeFileSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import * as v from 'valibot';
 import {
@@ -150,43 +150,6 @@ function extractTitle(lines: string[]): string | undefined {
 }
 
 /**
- * One list file as the checkout holds it.
- */
-export interface ListFileIdentity {
-    /**
-     * Whether the checkout holds the path as a readable regular file.
-     */
-    present: boolean;
-
-    /**
-     * The file's own `! Title:` value, when it carries one.
-     */
-    title?: string;
-}
-
-/**
- * Read how the checkout knows one list file: whether it is there, and what it calls itself.
- *
- * The title comes from the same `! Title:` comment the map scan reads, so a file named here and a
- * file named by the generated map are named identically.
- *
- * @param absolutePath - Absolute path of the list file.
- * @returns The file's presence and its own title, when it has one.
- */
-export function readListFileIdentity(absolutePath: string): ListFileIdentity {
-    let content: string;
-    try {
-        content = readFileSync(absolutePath, 'utf8');
-    } catch {
-        // Unreadable and absent are the same answer here: the declared file is not one this
-        // checkout can name, and the caller reports it as absent rather than guessing a title.
-        return { present: false };
-    }
-    const title = extractTitle(content.split(/\r?\n/));
-    return { present: true, ...(title === undefined ? {} : { title }) };
-}
-
-/**
  * Generate a placement map by scanning a filter-list checkout.
  *
  * Every `.txt` file the checkout holds is a list file, keyed by its checkout-relative path; how
@@ -229,18 +192,4 @@ export function generatePlacementMap(checkoutPath: string): PlacementMap {
 export function writePlacementMap(map: PlacementMap, outPath?: string): void {
     const target = outPath ?? join(map.checkoutPath, 'placement-map.json');
     writeFileSync(target, JSON.stringify(map, null, 2) + '\n', 'utf8');
-}
-
-/**
- * Load and validate a previously-written placement-map.json.
- *
- * @param jsonPath - Path to the JSON file.
- * @returns The validated placement map.
- */
-export function loadPlacementMap(jsonPath: string): PlacementMap {
-    if (!existsSync(jsonPath)) {
-        throw new Error(`Placement map not found: ${jsonPath}`);
-    }
-    const raw = readFileSync(jsonPath, 'utf8');
-    return v.parse(PlacementMapSchema, JSON.parse(raw));
 }

@@ -1,19 +1,16 @@
 /**
  * What a draft's candidate must satisfy before `finish_fix` may lock it, checked while the model
- * can still fix it: the rule is scoped to the reported domain alone, and its placement is the one
- * the deterministic resolver returned for exactly this rule.
+ * can still fix it: the rule is scoped to the reported domain alone, and it can be inserted into
+ * the file the draft names.
  *
  * Both are retryable prerequisites of the terminal judgement (`terminal-outcome-validator`), kept
  * here so that module stays inside the repo's ~500-line rule.
  */
-import { placementRuleTypeForCandidate } from '../repo/candidate-rule-type';
+import { candidatePlacementProblem } from '../repo/candidate-placement-check';
 import { normalizeRule } from '../repo/rule-normalizer';
 import type { FinishFixValidationRejection } from '../types/terminal-rejection';
 import {
-    normalizePlacementDomain,
-    placementMatches,
     reportedDomainFromAllowedTargets,
-    type CandidatePlacementResolution,
     type DraftFixOutcome,
 } from './agent-runtime-candidate-context';
 import { candidateScopeProblem, normalizeScopeDomain } from './candidate-scope';
@@ -61,70 +58,39 @@ export function validateCandidateScope(
 }
 
 /**
- * Bind a draft proposal to the latest successful candidate-specific placement resolution.
+ * Return a draft whose rule cannot be inserted into the file it names to the model, with the
+ * reason, while it can still choose another file.
  *
- * The model still chooses the candidate semantics. This check only prevents it from rewriting
- * deterministic filter, file, insertion, confidence, or alternative-placement facts after the
- * resolver has returned them.
+ * The agent decides where the rule goes. This only checks that the edit is possible — the file is
+ * one of the repository's own lists, it exists, and it is the file the run instruction declares for
+ * rules of this kind when it declares one — so the patch the run publishes lands in the file the
+ * agent chose.
  *
  * @param view - Read-only projection of the run the judgement reads.
  * @param outcome - Schema-valid draft decision proposed by the model.
- * @returns Retryable placement prerequisite, or undefined when the proposal is mechanically
- * bound.
+ * @returns Retryable placement prerequisite, or undefined when the rule can be inserted there.
  */
 export function validateCandidatePlacement(
     view: TerminalValidationView,
     outcome: DraftFixOutcome,
 ): FinishFixValidationRejection | undefined {
-    if (!view.baseToolNames.has('resolve_placement')) {
+    if (view.placementContext === undefined) {
         return undefined;
     }
-    const candidate = normalizeRule(outcome.ruleProposal.rule);
-    const ruleType = placementRuleTypeForCandidate(candidate);
-    const reportedHostRaw = reportedDomainFromAllowedTargets(view.allowedTargetUrls);
-    const reportedHost = reportedHostRaw ? normalizePlacementDomain(reportedHostRaw) : undefined;
-    let applicable: CandidatePlacementResolution | undefined;
-    for (let index = view.candidatePlacementResolutions.length - 1; index >= 0; index -= 1) {
-        const entry = view.candidatePlacementResolutions[index]!;
-        if (
-            entry.candidateCanonical === candidate.canonical &&
-            entry.ruleType === ruleType &&
-            (reportedHost === undefined || entry.targetDomain === reportedHost)
-        ) {
-            applicable = entry;
-            break;
-        }
-    }
-    if (!applicable) {
-        return {
-            error:
-                'Call resolve_placement with this exact candidateRule, targetDomain, and ' +
-                'syntax-derived ruleType before finish_fix.',
-            errorKind: 'candidate_placement_resolution_required',
-            retryable: true,
-            requiredAction: 'resolve_candidate_placement',
-            requiredTool: 'resolve_placement',
-            candidateRule: candidate.canonical,
-            expectedRuleType: ruleType ?? null,
-            expectedTargetDomain: reportedHost ?? null,
-        };
-    }
-    if (placementMatches(outcome.ruleProposal.placement, applicable.resolution)) {
+    const { rule, placement } = outcome.ruleProposal;
+    const problem = candidatePlacementProblem(view.placementContext, rule, placement.filePath);
+    if (problem === undefined) {
         return undefined;
     }
-    const { reasons: _reasons, ...expectedPlacement } = applicable.resolution;
     return {
         error:
-            'The draft placement does not match the latest deterministic resolver result for ' +
-            'this candidate. Copy the resolver placement fields exactly.',
-        errorKind: 'candidate_placement_mismatch',
+            `The rule cannot be inserted into the file the draft names: ${problem} Choose the ` +
+            'file from where search_rules shows the repository keeps rules like this one.',
+        errorKind: 'candidate_placement_not_insertable',
         retryable: true,
-        requiredAction: 'use_resolved_candidate_placement',
+        requiredAction: 'choose_insertable_placement',
         requiredTool: 'finish_fix',
-        candidateRule: candidate.canonical,
-        targetDomain: applicable.targetDomain,
-        ruleType: applicable.ruleType,
-        expectedPlacement,
-        actualPlacement: outcome.ruleProposal.placement,
+        candidateRule: normalizeRule(rule).canonical,
+        filePath: placement.filePath,
     };
 }

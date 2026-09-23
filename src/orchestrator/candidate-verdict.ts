@@ -47,9 +47,8 @@ import {
  *
  * A run whose instruction declares a placement for this candidate's kind plans against that
  * declaration: the patch keeps the declared file and takes the position the declaration implies —
- * the end behind the declared comment, or the inferred position when it declares none. Without the
- * declaration the planner may retarget the patch to a shared-rule owner in another file, which is
- * exactly what a repository that stated where its rules go did not ask for.
+ * the end behind the declared comment, or the inferred position when it declares none. Without a
+ * declaration the patch stays in the file the agent chose.
  *
  * @param outcome - Parsed LLM fix outcome.
  * @param checkoutPath - Optional pinned checkout used to plan a domain-list extension.
@@ -72,13 +71,7 @@ export function candidatePatchFromOutcome(
         throw new Error(`Candidate has no actionable AdGuard syntax: ${rule}`);
     }
     const repositoryPlan = checkoutPath
-        ? planRepositoryEdit(
-              checkoutPath,
-              filePath,
-              rule,
-              outcome.ruleProposal.duplicateCheck.matches.map((match) => match.rule),
-              declaredPlacement,
-          )
+        ? planRepositoryEdit(checkoutPath, filePath, rule, declaredPlacement)
         : { filePath, edit: { kind: RepositoryEditKind.Insert } };
     return {
         rule,

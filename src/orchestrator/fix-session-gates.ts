@@ -7,6 +7,7 @@
  * TOOL_GUIDANCE. `select_environment` is advertising-priced rather than lifecycle-priced: a
  * multi-executor run offers it from the first turn, a sole-executor run never does.
  */
+import type { ToolEnumerationBackstop } from './tool-enumeration-backstop';
 import type * as v from 'valibot';
 import type { ToolRegistry } from '../agent/tool-registry';
 import { adaptSessionTools, type AdaptedToolInput } from '../pi/session-tools';
@@ -45,7 +46,6 @@ const FIX_SESSION_SURFACE: readonly ToolName[] = [
     ToolName.LookupRuleGuidance,
     ToolName.ReportMissingInformation,
     ToolName.SearchRules,
-    ToolName.ResolvePlacement,
     ToolName.ScoreRisk,
     ToolName.LintRule,
     ToolName.AnalyzeScreenshot,
@@ -183,6 +183,13 @@ export interface FixSessionToolsOptions {
      * records stay the same shape rather than two that happen to agree.
      */
     parameterOverrides?: Readonly<Record<string, v.GenericSchema<Record<string, unknown>>>>;
+
+    /**
+     * The run's enumeration backstop. Every tool on the surface passes its result through it, so a
+     * same-tool streak is counted whatever registered the tool: a repository search, a browser
+     * probe or a lifecycle call.
+     */
+    enumerationBackstop?: ToolEnumerationBackstop;
 }
 
 /**
@@ -252,6 +259,12 @@ export function buildFixSessionTools(
             description: override ?? fixDescription,
             availability: () => availability.refusalFor(name),
             onResult: (redacted) => sink.collect(name, redacted),
+            ...(options.enumerationBackstop === undefined
+                ? {}
+                : {
+                      deliver: (result: Record<string, unknown>) =>
+                          options.enumerationBackstop!.observe(name, result),
+                  }),
             onDispatched: (result) => {
                 if (
                     options.routingCheck &&

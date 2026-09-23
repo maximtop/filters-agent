@@ -129,9 +129,9 @@ export const DuplicateCheckResultSchema = v.object({
     matches: v.array(v.object({ rule: v.string(), filePath: v.string() })),
 });
 
-// Deliberately no `insertionPoint`: the model copies the resolver fields exactly, the resolver
-// makes no positional claim, and the in-file position is host-planned at candidate build. Old
-// artifacts that still carry the field parse fine - v.object drops unknown keys.
+// Deliberately no `insertionPoint`: the agent names the file, and the in-file position is
+// host-planned at candidate build. Old artifacts that still carry the field parse fine - v.object
+// drops unknown keys.
 export const PlacementResultSchema = v.object({
     filter: v.string(),
     filePath: v.string(),

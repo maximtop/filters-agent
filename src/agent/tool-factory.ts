@@ -3,7 +3,6 @@ import { stripBenchmarkIssueMarker } from '../github/benchmark-issue-marker';
 import { ToolRegistry } from './tool-registry';
 import { ToolName } from './tool-names';
 import { registeredParameters } from './registered-parameters';
-import { createResolvePlacementTool } from './placement-tool';
 import { registerRuleSearchTool } from './rule-search-tool';
 import { registerAnalyzeScreenshotTool, type VisionToolOptions } from './analyze-screenshot-tool';
 import { registerBrowserTools, type BrowserToolOptions } from './browser-tool-bindings';
@@ -13,7 +12,6 @@ import { normalizeRule } from '../repo/rule-normalizer';
 import { LintConfigurationFallback } from '../rules/lint-fallback';
 import * as v from 'valibot';
 import { TraceArtifactStore, type IArtifactStore } from '../tracer/artifact-store';
-import type { DeclaredPlacementSet } from '../types/declared-placement';
 import { ProblemTypeSchema } from '../types/issue-facts';
 import type { PlacementMap } from '../types/repo-context';
 import {
@@ -54,7 +52,7 @@ export interface ToolRegistryOptions {
     allowedIssueNumber: number;
 
     /**
-     * Path to the AdguardFilters checkout; enables search_rules and resolve_placement.
+     * Path to the AdguardFilters checkout; enables search_rules.
      */
     checkoutPath?: string;
 
@@ -92,13 +90,6 @@ export interface ToolRegistryOptions {
      * checkout as before, keeping the single-walk rule under every caller.
      */
     placementMap?: PlacementMap;
-
-    /**
-     * The placement this run's instruction declares, rendered once at run start. Supplied, it is
-     * the answer `resolve_placement` gives and the file the candidate's edit appends to; omitted,
-     * the deterministic language-and-section routing stays in charge.
-     */
-    declaredPlacement?: DeclaredPlacementSet;
 }
 
 /**
@@ -214,9 +205,9 @@ const LINT_FALLBACK_MISSING_INFORMATION_SUBJECTS: Record<LintConfigurationFallba
  * Create a ToolRegistry pre-populated with all agent tools.
  *
  * Always registers four pure tools: `fetch_issue`, `policy_check`, `score_risk`, `lint_rule`. When
- * `checkoutPath` is provided, additionally registers `search_rules` and `resolve_placement` against
- * the checkout. When `browserTools` is provided, additionally registers browser evidence and
- * validation tools. If vision configuration is present, it also registers `analyze_screenshot`.
+ * `checkoutPath` is provided, additionally registers `search_rules` against the checkout. When
+ * `browserTools` is provided, additionally registers browser evidence and validation tools. If
+ * vision configuration is present, it also registers `analyze_screenshot`.
  *
  * This factory eliminates duplicated registration between `main.ts` (analyze handler) and
  * `replay-runner.ts` (Finding 2).
@@ -434,28 +425,15 @@ export async function createToolRegistry(options: ToolRegistryOptions): Promise<
 
     // ── Checkout-dependent tools ───────────────────────────────────────────
     if (checkoutPath) {
-        // One placement map serves both checkout tools; generating it a second time would re-read
-        // the whole filter tree for facts the first pass already has. The runtime's catalog walk
-        // supplies its map when one exists, so a run walks the tree exactly once.
+        // The runtime's catalog walk supplies its map when one exists, so a run walks the filter
+        // tree exactly once.
         const map = options.placementMap ?? generatePlacementMap(checkoutPath);
-        const ownedListPaths = new Set(map.files.map((entry) => entry.relativePath));
         registerRuleSearchTool(registry, {
             checkoutPath,
             map,
             trustedReportedDomain,
             artifactStore: resolvedArtifactStore,
         });
-        registry.register(
-            createResolvePlacementTool({
-                checkoutPath,
-                map,
-                ownedListPaths,
-                requireGuidance: requireGuidanceBeforeCandidate,
-                ...(options.declaredPlacement === undefined
-                    ? {}
-                    : { declaredPlacement: options.declaredPlacement }),
-            }),
-        );
     }
 
     if (browserTools) {
