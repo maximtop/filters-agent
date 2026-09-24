@@ -67,6 +67,7 @@ const ORIGIN_BY_REASON: Readonly<Record<BrowserFallbackReason, BrowserFallbackOr
         [BrowserFallbackReason.HttpBlocked]: BrowserFallbackOrigin.Site,
         [BrowserFallbackReason.BotChallenge]: BrowserFallbackOrigin.Site,
         [BrowserFallbackReason.GeoBlocked]: BrowserFallbackOrigin.Site,
+        [BrowserFallbackReason.SignInRequired]: BrowserFallbackOrigin.Site,
         [BrowserFallbackReason.EmptyDom]: BrowserFallbackOrigin.Site,
 
         [BrowserFallbackReason.NavigationOffOrigin]: BrowserFallbackOrigin.Agent,

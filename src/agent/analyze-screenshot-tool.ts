@@ -17,6 +17,7 @@ import { withToolDeadline } from '../pi/session-tools';
 import { SingleShotResultKind, type SingleShotClient } from '../pi/single-shot-types';
 import type { TraceRecorder } from '../tracer/trace-recorder';
 import { type SymptomKind } from '../validator/symptom-rubric';
+import { PAGE_OBSTRUCTION_INSTRUCTION, PageObstructionSchema } from '../types/page-obstruction';
 import { registeredParameters } from './registered-parameters';
 import { ToolName } from './tool-names';
 import type { ToolRegistry } from './tool-registry';
@@ -47,7 +48,7 @@ const VISION_SYSTEM_PROMPT = [
  */
 const ScreenshotObservationSchema = v.strictObject({
     analysis: v.pipe(v.string(), v.minLength(1)),
-    pageObstruction: v.picklist(['none', 'anti_bot_challenge', 'access_wall', 'error_or_blank']),
+    pageObstruction: PageObstructionSchema,
 });
 
 /**
@@ -197,13 +198,7 @@ export function registerAnalyzeScreenshotTool(
                         };
                     }
                     const screenshot = resolveVisionScreenshot(options, artifactId);
-                    const structuredPrompt =
-                        `${prompt}\n\nAdditionally classify what the capture fundamentally ` +
-                        `shows as pageObstruction: 'anti_bot_challenge' when a CAPTCHA or ` +
-                        `bot-verification interstitial replaces the site content; ` +
-                        `'access_wall' when a login, paywall, or geo wall does; ` +
-                        `'error_or_blank' for an error page or an essentially blank capture; ` +
-                        `otherwise 'none'.`;
+                    const structuredPrompt = `${prompt}\n\n${PAGE_OBSTRUCTION_INSTRUCTION}`;
                     const result = await options.vision.structured({
                         messages: [
                             { role: 'system', text: VISION_SYSTEM_PROMPT },

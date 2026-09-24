@@ -14,10 +14,7 @@
  */
 import { CandidateOperation } from '../environment/filtering-environment';
 import { EnvironmentSelectionState } from '../environment/environment-selection';
-import {
-    classifyObservedPageAccess,
-    type TargetAccessClassification,
-} from '../environment/target-access';
+import { classifyObservedPageAccess } from '../environment/target-access';
 import { FixOutcomeKind, type FixOutcome } from '../pr/fix-outcome';
 import { normalizeRule } from '../repo/rule-normalizer';
 import { ExtensionMode, type SymptomObservation } from '../types/fix-run-result';
@@ -47,27 +44,8 @@ import {
 } from './terminal-vision-requirements';
 
 /**
- * Environment key the no-patch access judgement expects for a classified page-access result.
- */
-const NoPatchAccessField = {
-    /**
-     * The unfiltered control environment.
-     */
-    Control: 'control',
-
-    /**
-     * The prepared-extension environment.
-     */
-    Prepared: 'prepared',
-} as const;
-
-/**
- * NoPatchAccessField value.
- */
-type NoPatchAccessField = (typeof NoPatchAccessField)[keyof typeof NoPatchAccessField];
-
-/**
- * Return the latest complete structured symptom presence for one browser environment.
+ * Return the latest complete structured symptom presence for one browser environment, with whether
+ * that same capture could show the reported content at all.
  *
  * @param view - Read-only projection of the run the judgement reads.
  * @param extensionMode - Unfiltered or prepared session kind to inspect.
@@ -103,10 +81,18 @@ function latestTerminalSymptomPresence(
                 capture.requiredArtifactIds.every((artifactId) =>
                     state.analyzedArtifactIds.has(artifactId),
                 );
-            if (complete && capture.reporterSymptomPresence !== null) {
+            if (
+                complete &&
+                capture.reporterSymptomPresence !== null &&
+                capture.pageObstruction !== null
+            ) {
                 return {
                     sessionId: state.sessionId,
                     presence: capture.reporterSymptomPresence,
+                    access: classifyObservedPageAccess(
+                        state.pageAccessFacts?.statusCode ?? 200,
+                        capture.pageObstruction,
+                    ),
                 };
             }
         }
@@ -160,39 +146,7 @@ function validateNoPatchSymptomMatrix(
         outcome,
         latestTerminalSymptomPresence(view, ExtensionMode.None),
         latestTerminalSymptomPresence(view, ExtensionMode.Prepared),
-        {
-            ...accessField(view, 'control', ExtensionMode.None),
-            ...accessField(view, 'prepared', ExtensionMode.Prepared),
-        },
     );
-}
-
-/**
- * Classify whether the latest navigated session of one environment could see the reported page, for
- * the environments a no-patch claim rests on.
- *
- * @param view - Read-only projection of the run the judgement reads.
- * @param field - Key the judgement expects for this environment.
- * @param extensionMode - Environment whose latest navigated session is classified.
- * @returns Single-key access field, or nothing when no session recorded page facts.
- */
-function accessField(
-    view: TerminalValidationView,
-    field: NoPatchAccessField,
-    extensionMode: AgentRuntimeEnvironmentEvidence['extensionMode'],
-): Partial<Record<NoPatchAccessField, TargetAccessClassification>> {
-    const states = [...view.sessionStates.values()];
-    for (let index = states.length - 1; index >= 0; index -= 1) {
-        const state = states[index];
-        if (state.extensionMode !== extensionMode || !state.navigationVerified) {
-            continue;
-        }
-        if (!state.pageAccessFacts) {
-            continue;
-        }
-        return { [field]: classifyObservedPageAccess(state.pageAccessFacts) };
-    }
-    return {};
 }
 
 /**
@@ -279,6 +233,17 @@ export function validateTerminalOutcome(
                 requiredAction: 'fetch_issue_and_run_browser',
                 requiredTools: ['fetch_issue', 'launch_browser', 'open_page'],
                 maximumTechnicalAttempts: MAX_TECHNICAL_BROWSER_FAILURES_PER_TARGET,
+                // A page that loads fine but shows a wall is neither a verified navigation nor a
+                // technical failure; only vision confirming the wall moves such a run forward
+                // (#242315 relaunched three times on this refusal and was sealed).
+                guidance: [
+                    'When open_page succeeds but a sign-in page, a regional block or a bot check ' +
+                        'stands in for the reported page, capture it with screenshot and classify ' +
+                        'it with analyze_screenshot.',
+                    'Every session vision confirms as walled spends one of the ' +
+                        `${MAX_TECHNICAL_BROWSER_FAILURES_PER_TARGET} technical attempts; once ` +
+                        'they are spent, finish_fix accepts analysis_only.',
+                ],
             };
         }
         const currentVisionRejection = validateCurrentFirstTerminalVision(view, outcome);

@@ -1,9 +1,4 @@
-import * as v from 'valibot';
-import {
-    classifyWithheldPageText,
-    type BrowserPreflightEvidence,
-} from '../analyzer/browser-first-run';
-import { BrowserFallbackReason } from '../types/browser-fallback-reason';
+import { PageObstruction } from '../types/page-obstruction';
 
 /**
  * Finite statement about whether a page can carry a reproduction claim.
@@ -13,11 +8,6 @@ export const TargetAccessClassification = {
      * The page loaded normally and carries no access obstruction.
      */
     Accessible: 'accessible',
-
-    /**
-     * The host did not resolve, accept a connection, or answer within the runner's budget.
-     */
-    Unreachable: 'unreachable',
 
     /**
      * The target withheld the page on regional grounds.
@@ -43,17 +33,7 @@ export const TargetAccessClassification = {
      * The target served no usable content for the reported page.
      */
     ContentAbsent: 'content_absent',
-
-    /**
-     * We declined to navigate; this records that we never looked, not a claim about the page.
-     */
-    AgentDeclined: 'agent_declined',
 } as const;
-
-/**
- * Every TargetAccessClassification value, for schemas and exhaustive listings.
- */
-export const TARGET_ACCESS_CLASSIFICATION_VALUES = Object.values(TargetAccessClassification);
 
 /**
  * TargetAccessClassification value.
@@ -61,79 +41,46 @@ export const TARGET_ACCESS_CLASSIFICATION_VALUES = Object.values(TargetAccessCla
 export type TargetAccessClassification =
     (typeof TargetAccessClassification)[keyof typeof TargetAccessClassification];
 
-export const TargetAccessClassificationSchema = v.picklist(TARGET_ACCESS_CLASSIFICATION_VALUES);
-
 /**
- * Access meaning of every technical fallback the shared preflight can report.
- *
- * `http_blocked` is deliberately absent: it collapses statuses whose access meanings differ, so it
- * is decided from the status itself rather than from the fallback name.
- *
- * `agent_declined` is not a claim about the page. It records that we never looked, which is what
- * every consumer here needs — none of them may treat such a session as a reproduction — without
- * asserting anything about the reporter's site.
+ * What each vision verdict about a capture means for access to the reported page.
  */
-const ACCESS_BY_FALLBACK: Readonly<
-    Record<
-        Exclude<BrowserFallbackReason, typeof BrowserFallbackReason.HttpBlocked>,
-        TargetAccessClassification
-    >
-> = Object.freeze({
-    [BrowserFallbackReason.GeoBlocked]: TargetAccessClassification.RegionRestricted,
-    [BrowserFallbackReason.BotChallenge]: TargetAccessClassification.BotChallenge,
-    [BrowserFallbackReason.EmptyDom]: TargetAccessClassification.ContentAbsent,
-    [BrowserFallbackReason.NotFound]: TargetAccessClassification.ContentAbsent,
-    [BrowserFallbackReason.TargetUnreachable]: TargetAccessClassification.Unreachable,
-    [BrowserFallbackReason.NavigationTimeout]: TargetAccessClassification.Unreachable,
-    [BrowserFallbackReason.TargetDnsUnresolved]: TargetAccessClassification.Unreachable,
-    [BrowserFallbackReason.NavigationOffOrigin]: TargetAccessClassification.AgentDeclined,
-    [BrowserFallbackReason.UnsafeTargetUrl]: TargetAccessClassification.AgentDeclined,
-    [BrowserFallbackReason.LaunchFailed]: TargetAccessClassification.Unreachable,
-    [BrowserFallbackReason.ArtifactCaptureFailed]: TargetAccessClassification.Unreachable,
-    [BrowserFallbackReason.ExtensionConfigurationFailed]: TargetAccessClassification.Unreachable,
-});
+const ACCESS_BY_OBSTRUCTION: Readonly<Record<PageObstruction, TargetAccessClassification>> =
+    Object.freeze({
+        [PageObstruction.None]: TargetAccessClassification.Accessible,
+        [PageObstruction.AntiBotChallenge]: TargetAccessClassification.BotChallenge,
+        [PageObstruction.SignInWall]: TargetAccessClassification.AuthenticationRequired,
+        [PageObstruction.RegionBlock]: TargetAccessClassification.RegionRestricted,
+        [PageObstruction.ErrorOrBlank]: TargetAccessClassification.ContentAbsent,
+    });
 
 /**
- * Text a page shows when it withholds the reported content behind an account.
+ * Decide whether one observed page could carry a reproduction claim.
  *
- * English-only on purpose, and it fails toward `accessible`: a missed login wall becomes an
- * ordinary observation whose reported symptom is then absent, which can never read as a
- * reproduction.
- */
-const AUTHENTICATION_WALL_RE =
-    /sign in to continue|log in to continue|please (?:sign|log) in|members? only|subscribers? only/i;
-
-/**
- * Decide whether one observed page could carry a reproduction claim, from navigation and text facts
- * alone.
+ * The main document's status is the browser's own fact. What the page showed in the reported
+ * content's place is the vision verdict on the capture the claim rests on: page-text patterns used
+ * to decide that half and missed every wording they did not list — pluto.tv's "not available in
+ * your location" passed as not reproduced (#241958, 2026-09-23) — while the model that reads the
+ * pixels names a sign-in wall or a regional block in any language.
  *
- * Deterministic on purpose: an access decision that a model can be argued out of is exactly the
- * failure mode that lets an unreachable, gated, or emptied page be reported as a reproduction.
- *
- * @param evidence - Status, title and visible text observed after navigation.
+ * @param statusCode - HTTP status of the main document the session's navigation loaded.
+ * @param obstruction - Vision verdict on what stood in place of the site's content.
  * @returns Exactly one finite access classification.
  */
 export function classifyObservedPageAccess(
-    evidence: Pick<BrowserPreflightEvidence, 'statusCode' | 'title' | 'visibleTextPreview'>,
+    statusCode: number,
+    obstruction: PageObstruction,
 ): TargetAccessClassification {
-    if (evidence.statusCode === 451) {
+    if (statusCode === 451) {
         return TargetAccessClassification.RegionRestricted;
     }
-    if (evidence.statusCode === 401 || evidence.statusCode === 403) {
+    if (statusCode === 401 || statusCode === 403) {
         return TargetAccessClassification.AuthenticationRequired;
     }
-    if (evidence.statusCode === 404 || evidence.statusCode === 410) {
+    if (statusCode === 404 || statusCode === 410) {
         return TargetAccessClassification.ContentAbsent;
     }
-    if (evidence.statusCode >= 400) {
+    if (statusCode >= 400) {
         return TargetAccessClassification.ServerError;
     }
-    const withheld = classifyWithheldPageText(evidence);
-    if (withheld !== null) {
-        return ACCESS_BY_FALLBACK[withheld];
-    }
-    if (AUTHENTICATION_WALL_RE.test(`${evidence.title}\n${evidence.visibleTextPreview}`)) {
-        return TargetAccessClassification.AuthenticationRequired;
-    }
-    return TargetAccessClassification.Accessible;
+    return ACCESS_BY_OBSTRUCTION[obstruction];
 }

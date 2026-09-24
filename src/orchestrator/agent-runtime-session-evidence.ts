@@ -15,11 +15,11 @@ import {
     DISABLE_STEALTH_SETTING,
     type AdGuardExtensionSettingsProfile,
 } from '../browser/adguard-extension-settings';
-import type { BrowserPreflightEvidence } from '../analyzer/browser-first-run';
 import type { CliAdapterProof } from '../environment/environment-proofs';
 import type { FilterListKey } from '../environment/filter-list-ref';
 import type { PreparedExtension } from '../local/prepared-extension';
 import type { CandidateVisualReview } from '../types/candidate-visual-review';
+import type { PageObstruction } from '../types/page-obstruction';
 import { ExtensionMode } from '../types/fix-run-result';
 import type { ReproProfile } from '../types/repro-profile';
 import { ReporterSymptomPresence } from '../types/reporter-symptom-presence';
@@ -252,16 +252,23 @@ export interface AgentPageVisionCapture extends AgentRuntimePageCaptureEvidence 
      * Exact runner screenshot result retained for bounded batch vision inspection.
      */
     rawCapture: Record<string, unknown>;
+
+    /**
+     * What vision saw in place of the site's content in this capture, once it inspected it.
+     */
+    pageObstruction: PageObstruction | null;
 }
 
 /**
- * Navigation and page-text facts one session observed, enough to decide whether that session could
- * see the reported content at all.
+ * The navigation fact one session observed about the page itself; what the page showed in its place
+ * is judged by vision on the session's captures.
  */
-export type PageAccessFacts = Pick<
-    BrowserPreflightEvidence,
-    'statusCode' | 'title' | 'htmlLength' | 'visibleTextPreview'
->;
+export interface PageAccessFacts {
+    /**
+     * HTTP status of the main document the latest navigation loaded.
+     */
+    statusCode: number;
+}
 
 /**
  * Mutable runtime state retained for one isolated browser session.

@@ -1,5 +1,4 @@
 import * as v from 'valibot';
-import { ReproProfileSchema } from './repro-profile';
 
 /**
  * The type of ad or tracker finding.
@@ -92,76 +91,6 @@ export const FindingSchema = v.object({
 });
 
 /**
- * A screenshot from the original issue matched against a live screenshot artifact.
- */
-export const MatchedIssueScreenshotSchema = v.object({
-    /**
-     * URL of the screenshot from the issue.
-     */
-    issueScreenshotUrl: v.string(),
-
-    /**
-     * Artifact ID of the live screenshot, if successfully captured.
-     */
-    liveArtifactId: v.optional(v.string()),
-
-    /**
-     * Description of the match or the failure reason.
-     */
-    description: v.string(),
-});
-
-/**
- * A full site analysis report produced after a live browser session.
- */
-export const SiteAnalysisReportSchema = v.object({
-    /**
-     * The URL that was analyzed.
-     */
-    url: v.string(),
-
-    /**
-     * The reproduction profile used for the session.
-     */
-    reproProfile: ReproProfileSchema,
-
-    /**
-     * Screenshot artifact IDs captured during the session.
-     */
-    screenshots: v.array(v.string()),
-
-    /**
-     * Artifact ID of the full DOM snapshot, if captured.
-     */
-    domSnapshotArtifactId: v.optional(v.string()),
-
-    /**
-     * Artifact ID of the redacted HAR (network log), if captured.
-     */
-    harArtifactId: v.optional(v.string()),
-
-    /**
-     * Findings reported by the LLM during the session.
-     */
-    findings: v.array(FindingSchema),
-
-    /**
-     * Issue screenshots matched against live captures.
-     */
-    matchedIssueScreenshots: v.array(MatchedIssueScreenshotSchema),
-
-    /**
-     * Whether the target site could not be reached.
-     */
-    unreachable: v.boolean(),
-
-    /**
-     * Error message explaining why the site was unreachable, when applicable.
-     */
-    unreachableError: v.optional(v.string()),
-});
-
-/**
  * FindingType value.
  */
 export type FindingType = (typeof FindingType)[keyof typeof FindingType];
@@ -177,11 +106,21 @@ export type FindingLocation = v.InferOutput<typeof FindingLocationSchema>;
 export type Finding = v.InferOutput<typeof FindingSchema>;
 
 /**
- * A matched issue screenshot reference.
+ * A screenshot from the original issue matched against a live screenshot artifact.
  */
-export type MatchedIssueScreenshot = v.InferOutput<typeof MatchedIssueScreenshotSchema>;
+export interface MatchedIssueScreenshot {
+    /**
+     * URL of the screenshot from the issue.
+     */
+    issueScreenshotUrl: string;
 
-/**
- * A full site analysis report.
- */
-export type SiteAnalysisReport = v.InferOutput<typeof SiteAnalysisReportSchema>;
+    /**
+     * Artifact ID of the live screenshot, if successfully captured.
+     */
+    liveArtifactId?: string;
+
+    /**
+     * Description of the match or the failure reason.
+     */
+    description: string;
+}

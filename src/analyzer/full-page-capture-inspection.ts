@@ -6,6 +6,7 @@ import * as v from 'valibot';
 import { visionOverviewRefusal } from '../pi/single-shot-input';
 import { TraceEventType } from '../types/trace';
 import {
+    aggregatePageObstruction,
     aggregateReporterSymptomPresence,
     imageBatches,
     inspectInventoryBatch,
@@ -236,6 +237,7 @@ export async function inspectFullPageVisualCapture(
             successfulOutputs,
             coverageComplete,
         ),
+        pageObstruction: aggregatePageObstruction(successfulOutputs),
         overviewArtifactId: overview.id,
         tileArtifactIds: tiles.map((tile) => tile.id),
         symptomScopes: [...new Set(successfulOutputs.map((output) => output.symptomScope))],

@@ -115,15 +115,7 @@ export async function bootstrapSessionBrowser(
             usageCollector: options.usageCollector,
         });
 
-        const { createBrowserToolHandlers } = await import('../browser/browser-tools');
-        const handlers = createBrowserToolHandlers({
-            session: browserSession,
-            recorder,
-            artifactsDir,
-            allowedOrigin: browserAllowedOrigin,
-            consentStrategy: profile.consentStrategy,
-        });
-        const siteAnalyzer = new SiteAnalyzer({ handlers, artifactsDir, recorder });
+        const siteAnalyzer = new SiteAnalyzer();
         const browserTools: BrowserToolOptions = {
             session: browserSession,
             analyzer: siteAnalyzer,

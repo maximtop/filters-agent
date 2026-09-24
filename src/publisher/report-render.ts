@@ -75,6 +75,7 @@ const FALLBACK_REASON_LABELS: Record<BrowserFallbackReason, string> = {
     [BrowserFallbackReason.HttpBlocked]: 'The page refused to load in the run browser',
     [BrowserFallbackReason.BotChallenge]: 'A bot challenge blocked the page',
     [BrowserFallbackReason.GeoBlocked]: 'Regional restriction blocked the page',
+    [BrowserFallbackReason.SignInRequired]: 'A sign-in wall blocked the page',
     [BrowserFallbackReason.EmptyDom]: 'The page returned no usable document',
     [BrowserFallbackReason.NavigationOffOrigin]: 'Navigation left the issue origin',
     [BrowserFallbackReason.UnsafeTargetUrl]: 'The target URL is not openable in the run',

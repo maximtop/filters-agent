@@ -45,6 +45,11 @@ export const BrowserFallbackReason = {
     GeoBlocked: 'geo_blocked',
 
     /**
+     * The target withheld the page behind a sign-in wall this runner cannot pass.
+     */
+    SignInRequired: 'sign_in_required',
+
+    /**
      * The target served no usable document.
      */
     EmptyDom: 'empty_dom',

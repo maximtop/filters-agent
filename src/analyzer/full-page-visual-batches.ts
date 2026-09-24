@@ -14,6 +14,12 @@ import {
     ReporterSymptomPresenceSchema,
 } from '../types/reporter-symptom-presence';
 import { FullPageTileCoverageSchema, type FullPageTileCoverage } from '../types/validation';
+import {
+    isWithheldPage,
+    PAGE_OBSTRUCTION_INSTRUCTION,
+    PageObstruction,
+    PageObstructionSchema,
+} from '../types/page-obstruction';
 
 /**
  * The shared full-page vision machinery: the runner capture contract, the canonical screenshot
@@ -52,6 +58,7 @@ export const PreCandidateVisualBatchOutputSchema = v.strictObject({
     symptomScope: v.pipe(v.string(), v.minLength(1), v.maxLength(2_000)),
     instances: v.pipe(v.array(CandidateVisualInstanceSchema), v.maxLength(20)),
     rationale: v.pipe(v.string(), v.minLength(1), v.maxLength(4_000)),
+    pageObstruction: PageObstructionSchema,
 });
 
 /**
@@ -137,6 +144,11 @@ export interface PreCandidateVisualInventory {
     reporterSymptomPresence: ReporterSymptomPresence;
 
     /**
+     * What vision saw in place of the site's content across the capture.
+     */
+    pageObstruction: PageObstruction;
+
+    /**
      * Full-page overview artifact inspected by vision.
      */
     overviewArtifactId: string;
@@ -201,6 +213,32 @@ export function aggregateReporterSymptomPresence(
     )
         ? 'absent'
         : 'indeterminate';
+}
+
+/**
+ * Aggregate what stands in place of the site's content across bounded vision batches.
+ *
+ * A wall anywhere on the page withholds it — a regional notice can sit in a player half-way down —
+ * so the first wall in document order decides. An error or blank verdict counts only when every
+ * batch returned it: one blank tile is a capture problem, not a withheld page.
+ *
+ * @param outputs - Schema-valid outputs for every successfully inspected image batch, in order.
+ * @returns Capture-level obstruction.
+ */
+export function aggregatePageObstruction(
+    outputs: readonly v.InferOutput<typeof PreCandidateVisualBatchOutputSchema>[],
+): PageObstruction {
+    const wall = outputs.map((output) => output.pageObstruction).find(isWithheldPage);
+    if (wall !== undefined) {
+        return wall;
+    }
+    if (
+        outputs.length > 0 &&
+        outputs.every((output) => output.pageObstruction === PageObstruction.ErrorOrBlank)
+    ) {
+        return PageObstruction.ErrorOrBlank;
+    }
+    return PageObstruction.None;
 }
 
 /**
@@ -314,6 +352,7 @@ export async function inspectInventoryBatch(
                           'the reporter named is never itself an instance.',
                       ]
                     : []),
+                PAGE_OBSTRUCTION_INSTRUCTION,
             ].join(' '),
         },
         {
@@ -379,6 +418,7 @@ export async function inspectInventoryBatch(
             model,
             coverageObserved: output.coverageObserved,
             reporterSymptomPresence: output.reporterSymptomPresence,
+            pageObstruction: output.pageObstruction,
             instanceCount: output.instances.length,
         },
     );

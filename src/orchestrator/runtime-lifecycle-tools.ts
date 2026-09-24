@@ -31,6 +31,7 @@ import type { AgentRuntimeSessionState } from './agent-runtime-session-evidence'
 import { BROWSER_LAUNCH_DEADLINE_MS, BROWSER_TOOL_DEADLINE_MS } from './browser-tool-deadlines';
 import { VISION_TOOL_DEADLINE_MS } from '../agent/vision-tool-deadline';
 import type { LaunchBrowserAdvertisement } from './launch-browser-arguments';
+import type { WithheldPageObstruction } from '../types/page-obstruction';
 
 /**
  * The runtime seam the lifecycle tools act through.
@@ -138,16 +139,18 @@ export interface RuntimeLifecycleToolsHost {
     sessionState(sessionId: string): AgentRuntimeSessionState | undefined;
 
     /**
-     * Spend one bounded technical attempt on an observed anti-bot challenge.
+     * Spend one bounded technical attempt on a page vision saw withheld behind a wall.
      *
      * @param targetUrl - Exact prompt-safe target selected for the run.
-     * @param sessionId - Session that observed the challenge.
-     * @param observation - Bounded prompt-safe description of the challenge evidence.
+     * @param sessionId - Session that observed the wall.
+     * @param obstruction - The wall vision saw in place of the page.
+     * @param observation - Bounded prompt-safe description of the wall evidence.
      * @param result - Successful tool result augmented with the budget state in place.
      */
-    countAntiBotChallenge(
+    countWithheldPage(
         targetUrl: string,
         sessionId: string,
+        obstruction: WithheldPageObstruction,
         observation: string,
         result: Record<string, unknown>,
     ): void;
@@ -250,14 +253,15 @@ export function registerLifecycleTools(
         recordReporterScreenshotAnalysis: (artifactId, analysis, result) =>
             host.recordReporterScreenshotAnalysis(artifactId, analysis, result),
         recordScreenshotAnalysis: (artifactId) => host.recordScreenshotAnalysis(artifactId),
-        noteAntiBotChallengeCapture: (artifactId, result) => {
+        noteWithheldPageCapture: (artifactId, obstruction, result) => {
             const captureSessionId = host.screenshotSessionId(artifactId);
             const captureState = captureSessionId ? host.sessionState(captureSessionId) : undefined;
             if (captureState && captureSessionId) {
-                host.countAntiBotChallenge(
+                host.countWithheldPage(
                     captureState.targetUrl,
                     captureSessionId,
-                    `vision classified capture ${artifactId} as a challenge interstitial`,
+                    obstruction,
+                    `vision classified capture ${artifactId} as ${obstruction}`,
                     result,
                 );
             }

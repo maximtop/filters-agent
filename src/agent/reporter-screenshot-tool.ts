@@ -10,12 +10,17 @@
  */
 import type { ToolDefinition, ToolRegistry } from './tool-registry';
 import { ToolName } from './tool-names';
+import {
+    isWithheldPage,
+    type PageObstruction,
+    type WithheldPageObstruction,
+} from '../types/page-obstruction';
 
 /**
  * The runtime seam the reporter-aware screenshot tool acts through.
  *
- * Deliberately narrower than the lifecycle host: the anti-bot bookkeeping is one call here because
- * resolving a capture to its browser session is the runtime's business, not this tool's.
+ * Deliberately narrower than the lifecycle host: the withheld-page bookkeeping is one call here
+ * because resolving a capture to its browser session is the runtime's business, not this tool's.
  */
 export interface ReporterScreenshotToolHost {
     /**
@@ -61,15 +66,20 @@ export interface ReporterScreenshotToolHost {
     recordScreenshotAnalysis(artifactId: string): void;
 
     /**
-     * Spend the session-bound anti-bot budget for a capture vision classified as a challenge.
+     * Spend the session-bound access budget for a capture vision classified as a withheld page.
      *
      * The vision model, not the reasoning model, made that call. A reporter attachment has no
      * session and must never be charged, which is why the host resolves the capture itself.
      *
-     * @param artifactId - Screenshot artifact vision classified as a challenge interstitial.
+     * @param artifactId - Screenshot artifact vision classified as a withheld page.
+     * @param obstruction - The wall vision saw in place of the page.
      * @param result - Successful tool result carrying the classification.
      */
-    noteAntiBotChallengeCapture(artifactId: string, result: Record<string, unknown>): void;
+    noteWithheldPageCapture(
+        artifactId: string,
+        obstruction: WithheldPageObstruction,
+        result: Record<string, unknown>,
+    ): void;
 }
 
 /**
@@ -225,12 +235,13 @@ export function registerReporterScreenshotTool(
                 }
                 if (hasAnalysis) {
                     host.recordScreenshotAnalysis(resolvedArtifactId);
-                    // The vision model, not the reasoning model, judged this capture to be
-                    // a challenge interstitial. Session-bound captures spend the bounded
-                    // per-target budget; reporter attachments have no session and never
-                    // count.
-                    if (result.pageObstruction === 'anti_bot_challenge') {
-                        host.noteAntiBotChallengeCapture(resolvedArtifactId, result);
+                    // The vision model, not the reasoning model, judged this capture to be a
+                    // withheld page. Session-bound captures spend the bounded per-target budget;
+                    // reporter attachments have no session and never count. The result is this
+                    // run's own analyze_screenshot answer, parsed by its schema.
+                    const obstruction = result.pageObstruction as PageObstruction;
+                    if (isWithheldPage(obstruction)) {
+                        host.noteWithheldPageCapture(resolvedArtifactId, obstruction, result);
                     }
                 }
                 if (resolvedIssueScreenshotIndex !== undefined) {

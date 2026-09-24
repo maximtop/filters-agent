@@ -17,6 +17,11 @@ export interface TerminalSymptomPresenceEvidence {
      * Vision-owned presence of the exact reporter-defined symptom.
      */
     presence: ReporterSymptomPresence;
+
+    /**
+     * Whether the same capture could show the reported content at all.
+     */
+    access: TargetAccessClassification;
 }
 
 /**
@@ -54,21 +59,6 @@ function noPatchClaims(outcome: FixOutcome): NoPatchClaims {
 }
 
 /**
- * Access classification of the sessions a no-patch claim rests on.
- */
-export interface NoPatchTargetAccess {
-    /**
-     * Access classification of the unfiltered control session, when one was observed.
-     */
-    control?: TargetAccessClassification;
-
-    /**
-     * Access classification of the prepared-extension session, when one was observed.
-     */
-    prepared?: TargetAccessClassification;
-}
-
-/**
  * The environment whose page withheld the reported content, and how.
  */
 interface WithheldEnvironmentAccess {
@@ -91,14 +81,18 @@ interface WithheldEnvironmentAccess {
  * for a Rutube pre-roll behind a regional block (#238615) and for an x.com popup behind a login
  * wall (#237706) on exactly this evidence.
  *
- * @param access - Access classification of both no-patch environments.
+ * @param control - Symptom evidence of the unfiltered control session, when one exists.
+ * @param prepared - Symptom evidence of the prepared-extension session, when one exists.
  * @returns The offending environment and its classification, or undefined when both could see the
  *   page.
  */
-function withheldAccess(access: NoPatchTargetAccess): WithheldEnvironmentAccess | undefined {
+function withheldAccess(
+    control: TerminalSymptomPresenceEvidence | undefined,
+    prepared: TerminalSymptomPresenceEvidence | undefined,
+): WithheldEnvironmentAccess | undefined {
     const environments = [
-        { environment: 'unfiltered control', classification: access.control },
-        { environment: 'prepared-extension', classification: access.prepared },
+        { environment: 'unfiltered control', classification: control?.access },
+        { environment: 'prepared-extension', classification: prepared?.access },
     ];
     for (const candidate of environments) {
         if (
@@ -124,14 +118,12 @@ function withheldAccess(access: NoPatchTargetAccess): WithheldEnvironmentAccess 
  * @param outcome - Schema-valid terminal decision proposed by the model.
  * @param control - Reporter-symptom presence proven without AdGuard, when one exists.
  * @param prepared - Reporter-symptom presence proven with the prepared extension, when one exists.
- * @param access - Access classification of both environments; either may be absent or unknown.
  * @returns Retryable rejection when the evidence does not support the claim, else undefined.
  */
 export function judgeNoPatchSymptomMatrix(
     outcome: FixOutcome,
     control: TerminalSymptomPresenceEvidence | undefined,
     prepared: TerminalSymptomPresenceEvidence | undefined,
-    access: NoPatchTargetAccess = {},
 ): FinishFixValidationRejection | undefined {
     const { alreadyFixed: claimsAlreadyFixed, notReproduced: claimsNotReproduced } =
         noPatchClaims(outcome);
@@ -139,7 +131,7 @@ export function judgeNoPatchSymptomMatrix(
         return undefined;
     }
 
-    const withheld = withheldAccess(access);
+    const withheld = withheldAccess(control, prepared);
     if (withheld) {
         return {
             error:
@@ -150,8 +142,8 @@ export function judgeNoPatchSymptomMatrix(
             retryable: true,
             requiredAction: 'finish_fix_analysis_only',
             targetAccess: {
-                unfilteredControl: access.control ?? 'unknown',
-                preparedExtension: access.prepared ?? 'unknown',
+                unfilteredControl: control?.access ?? 'unknown',
+                preparedExtension: prepared?.access ?? 'unknown',
             },
             guidance: [
                 'Finish with analysis_only and record what blocked observation.',

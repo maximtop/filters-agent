@@ -304,11 +304,10 @@ export async function runAgenticFixCore(
         const localScreenshotUrls = new Set(
             localIssueScreenshots.map((screenshot) => screenshot.issueScreenshotUrl),
         );
-        const downloadedIssueScreenshots = await captureIssueScreenshots(
+        await captureIssueScreenshots(
             facts.screenshots.filter((screenshot) => !localScreenshotUrls.has(screenshot.url)),
             { artifactsDir: options.artifactsDir, recorder, logger },
         );
-        const preloadedIssueScreenshots = [...localIssueScreenshots, ...downloadedIssueScreenshots];
         const issueAttachmentArtifactIds = recorder
             .getArtifacts()
             .filter((artifact) => artifact.type === 'issue-screenshot')
@@ -341,7 +340,6 @@ export async function runAgenticFixCore(
                 // Rendered once above and handed to every consumer: the placement tool answers
                 // with it, the safety gate plans against it, and the published patch writes it.
                 ...(declaredPlacement === undefined ? {} : { declaredPlacement }),
-                preloadedIssueScreenshots,
                 verbose: options.verbose,
                 diagnosticsDir: config.diagnosticsDir,
                 phaseReadinessBudgetMs: config.phaseReadinessBudgetMs,

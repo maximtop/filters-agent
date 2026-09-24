@@ -111,7 +111,6 @@ import {
     CandidateVisualReviewSchema,
     type CandidateVisualReview,
 } from '../types/candidate-visual-review';
-import type { MatchedIssueScreenshot } from '../types/site-analysis';
 import type { IssueFacts } from '../types/issue-facts';
 import { parseRuleApplication } from '../knowledge/instruction-application';
 import type { LoadedInstruction } from '../knowledge/instruction-loader';
@@ -140,6 +139,11 @@ import {
     isTargetEnvironmentFallbackReason,
 } from '../types/browser-fallback-origin';
 import { BrowserFallbackReason } from '../types/browser-fallback-reason';
+import {
+    isWithheldPage,
+    PageObstruction,
+    type WithheldPageObstruction,
+} from '../types/page-obstruction';
 import {
     registerEnvironmentSelectionTools,
     type EnvironmentSelectionToolsHost,
@@ -467,11 +471,6 @@ export interface AgentRuntimeOptions {
     usageCollector?: RunUsageCollector;
 
     /**
-     * Verified issue screenshot records supplied to SiteAnalyzer.
-     */
-    preloadedIssueScreenshots?: MatchedIssueScreenshot[];
-
-    /**
      * Whether verbose lifecycle logging is enabled.
      */
     verbose?: boolean;
@@ -685,6 +684,47 @@ interface TechnicalBrowserFailureState {
      */
     failFastExhausted: boolean;
 }
+
+/**
+ * How one kind of withheld page is recorded and explained to the model.
+ */
+interface WithheldPageReport {
+    /**
+     * Typed reason an exhausted target stayed unverifiable.
+     */
+    fallbackReason: BrowserFallbackReason;
+
+    /**
+     * The wall, named as the subject of the recorded detail and the guidance.
+     */
+    wall: string;
+
+    /**
+     * What another session can change about this wall.
+     */
+    nextSession: string;
+}
+
+/**
+ * The record and guidance for each wall vision can see in place of the reported page.
+ */
+const WITHHELD_PAGE_REPORT: Readonly<Record<WithheldPageObstruction, WithheldPageReport>> = {
+    [PageObstruction.AntiBotChallenge]: {
+        fallbackReason: BrowserFallbackReason.BotChallenge,
+        wall: 'An anti-bot challenge',
+        nextSession: 'a materially different session may still pass',
+    },
+    [PageObstruction.SignInWall]: {
+        fallbackReason: BrowserFallbackReason.SignInRequired,
+        wall: 'A sign-in wall',
+        nextSession: 'this runner cannot sign in, so another session rarely gets past it',
+    },
+    [PageObstruction.RegionBlock]: {
+        fallbackReason: BrowserFallbackReason.GeoBlocked,
+        wall: 'A regional block',
+        nextSession: "this runner's region is fixed, so another session rarely gets past it",
+    },
+};
 
 /**
  * Candidate metadata retained across the browser dispatch boundary.
@@ -1050,10 +1090,10 @@ export class AgentRuntime {
     private readonly technicalBrowserFailures = new Map<string, TechnicalBrowserFailureState>();
 
     /**
-     * Sessions whose anti-bot challenge already spent a technical attempt, so repeated landings or
+     * Sessions whose withheld page already spent a technical attempt, so repeated landings or
      * repeated capture analyses inside one session never double-charge the budget.
      */
-    private readonly antiBotChallengeCountedSessions = new Set<string>();
+    private readonly withheldPageCountedSessions = new Set<string>();
 
     /**
      * Browser environments that already produced a technical navigation failure in this run.
@@ -1802,76 +1842,77 @@ export class AgentRuntime {
     }
 
     /**
-     * Count one anti-bot challenge observation against the target's technical attempt budget.
+     * Count one withheld-page observation against the target's technical attempt budget.
      *
      * The tools themselves succeeded — the session is open and must stay usable, so the page can be
      * captured as evidence — but the reported page was withheld, and repeating the navigation from
-     * this runner cannot change that. Without this accounting a challenge-walled target made every
-     * terminal vision requirement unsatisfiable while never unlocking the bounded-exhaustion
-     * exemption: the model was told to capture a page the site refused to serve (run 237512,
-     * 2026-08-10, four Yandex SmartCaptcha landings across two sessions).
+     * this runner rarely changes that. Without this accounting a walled target made every terminal
+     * vision requirement unsatisfiable while never unlocking the bounded-exhaustion exemption: the
+     * model was told to capture a page the site refused to serve (run 237512, 2026-08-10, four
+     * Yandex SmartCaptcha landings across two sessions; #242315, 2026-09-23, a Yahoo Mail link that
+     * redirects to a sign-in page, sealed after three refused endings).
      *
-     * The only evidence source is the vision model classifying a session capture as a challenge
-     * interstitial — judged over the actual pixels, it covers redirect-style challenges and
-     * providers that keep the original URL alike, with no URL heuristics to miss or misfire. Each
-     * session spends at most one attempt, mirroring the hard-failure budget's
-     * one-attempt-per-profile semantics, and the reasoning model can never spend the budget by
-     * assertion alone.
+     * The only evidence source is the vision model classifying a session capture — judged over the
+     * actual pixels, it covers redirects to another origin and walls that keep the original URL
+     * alike, with no URL or page-text heuristics to miss or misfire. Each session spends at most
+     * one attempt, mirroring the hard-failure budget's one-attempt-per-profile semantics, and the
+     * reasoning model can never spend the budget by assertion alone.
      *
      * @param targetUrl - Exact prompt-safe target selected for the run.
-     * @param sessionId - Session that observed the challenge, deduplicating repeat counts.
-     * @param observation - Bounded prompt-safe description of the observed challenge evidence.
+     * @param sessionId - Session that observed the wall, deduplicating repeat counts.
+     * @param obstruction - The wall vision saw in place of the page.
+     * @param observation - Bounded prompt-safe description of the observed wall evidence.
      * @param result - Successful tool result augmented with the budget state in place.
      */
-    private countAntiBotChallenge(
+    private countWithheldPage(
         targetUrl: string,
         sessionId: string,
+        obstruction: WithheldPageObstruction,
         observation: string,
         result: Record<string, unknown>,
     ): void {
+        const report = WITHHELD_PAGE_REPORT[obstruction];
         const previous = this.technicalBrowserFailures.get(targetUrl);
-        const alreadyCounted = this.antiBotChallengeCountedSessions.has(sessionId);
+        const alreadyCounted = this.withheldPageCountedSessions.has(sessionId);
         const attempts = Math.min(
             (previous?.attempts ?? 0) + (alreadyCounted ? 0 : 1),
             MAX_TECHNICAL_BROWSER_FAILURES_PER_TARGET,
         );
         const exhausted = attempts >= MAX_TECHNICAL_BROWSER_FAILURES_PER_TARGET;
         if (!alreadyCounted) {
-            this.antiBotChallengeCountedSessions.add(sessionId);
+            this.withheldPageCountedSessions.add(sessionId);
             this.technicalBrowserFailures.set(targetUrl, {
                 attempts,
-                fallbackReason: BrowserFallbackReason.BotChallenge,
+                fallbackReason: report.fallbackReason,
                 detail:
-                    `Anti-bot challenge intercepted the reported page: ${observation} ` +
-                    `(${attempts}/${MAX_TECHNICAL_BROWSER_FAILURES_PER_TARGET} ` +
-                    `intercepted sessions).`,
+                    `${report.wall} withheld the reported page: ${observation} ` +
+                    `(${attempts}/${MAX_TECHNICAL_BROWSER_FAILURES_PER_TARGET} withheld sessions).`,
                 launchSignal: null,
                 failFastExhausted: false,
             });
             this.options.recorder.record(exhausted ? 'decision' : 'retry', {
-                phase: exhausted
-                    ? 'technical_attempt_budget_exhausted'
-                    : 'anti_bot_challenge_observed',
+                phase: exhausted ? 'technical_attempt_budget_exhausted' : 'withheld_page_observed',
                 targetUrl: sanitizeNavigationTarget(targetUrl),
+                obstruction,
                 observation,
                 attempts,
                 maximumAttempts: MAX_TECHNICAL_BROWSER_FAILURES_PER_TARGET,
             });
         }
-        result.antiBotChallenge = {
-            detected: true,
+        result.withheldPage = {
+            obstruction,
             observation,
             attempts,
             maximumAttempts: MAX_TECHNICAL_BROWSER_FAILURES_PER_TARGET,
             analysisOnlyAvailable: exhausted,
             guidance: exhausted
-                ? 'The challenge blocked every bounded attempt and browser access to this ' +
-                  'target is now exhausted. Finish with analysis_only: the reported page is ' +
-                  'not verifiable from this runner, and the recorded interception evidence ' +
-                  'already documents why.'
-                : 'An anti-bot interstitial replaced the reported page. Capture it as evidence; ' +
-                  'a materially different session may still pass, but each intercepted session ' +
-                  'spends one bounded technical attempt.',
+                ? `${report.wall} withheld the reported page in every bounded attempt and browser ` +
+                  'access to this target is now exhausted. Finish with analysis_only: the reported ' +
+                  'page is not verifiable from this runner, and the recorded evidence already ' +
+                  'documents why.'
+                : `${report.wall} stood in for the reported page. Keep the capture as evidence; ` +
+                  `${report.nextSession}, and each such session spends one bounded technical ` +
+                  'attempt.',
         };
     }
 
@@ -2353,8 +2394,8 @@ export class AgentRuntime {
             },
             screenshotSessionId: (artifactId) => this.screenshotSessionIds.get(artifactId),
             sessionState: (sessionId) => this.sessionStates.get(sessionId),
-            countAntiBotChallenge: (targetUrl, sessionId, observation, result) => {
-                this.countAntiBotChallenge(targetUrl, sessionId, observation, result);
+            countWithheldPage: (targetUrl, sessionId, obstruction, observation, result) => {
+                this.countWithheldPage(targetUrl, sessionId, obstruction, observation, result);
             },
             inspectLatestFullPageCapture: async (signal) =>
                 await this.inspectLatestFullPageCapture(signal),
@@ -2473,19 +2514,31 @@ export class AgentRuntime {
             state.analyzedArtifactIds.add(artifactId);
         }
         capture.reporterSymptomPresence = result.inventory.reporterSymptomPresence;
+        capture.pageObstruction = result.inventory.pageObstruction;
         this.refreshFullVisionEvidence(state);
-        const compactResult = {
+        const compactResult: Record<string, unknown> = {
             captureArtifactId: capture.captureArtifactId,
             coverageComplete: result.coverageComplete,
             inspectedArtifactIds: result.inspectedArtifactIds,
             missingArtifactIds: result.missingArtifactIds,
             symptomScopes: result.inventory.symptomScopes.slice(0, 8),
             reporterSymptomPresence: result.inventory.reporterSymptomPresence,
+            pageObstruction: result.inventory.pageObstruction,
             instanceCount: result.inventory.instances.length,
             instances: result.inventory.instances.slice(0, 20),
             model: result.inventory.model,
             evidenceArtifactId: result.artifactId,
         };
+        if (isWithheldPage(result.inventory.pageObstruction)) {
+            this.countWithheldPage(
+                state.targetUrl,
+                state.sessionId,
+                result.inventory.pageObstruction,
+                `vision classified full-page capture ${capture.captureArtifactId} as ` +
+                    result.inventory.pageObstruction,
+                compactResult,
+            );
+        }
         if (!result.coverageComplete) {
             return {
                 error:
@@ -3180,27 +3233,8 @@ export class AgentRuntime {
         targetUrl: string,
         consentStrategy: ReproProfile['consentStrategy'],
     ): Promise<ToolRegistry> {
-        const [{ SiteAnalyzer: SiteAnalyzerClass }, { createBrowserToolHandlers }] =
-            await Promise.all([
-                import('../analyzer/site-analyzer'),
-                import('../browser/browser-tools'),
-            ]);
-        const handlers = createBrowserToolHandlers({
-            session,
-            recorder: this.options.recorder,
-            artifactsDir: this.options.artifactsDir,
-            allowedOrigin: targetUrl,
-            openPageRetries: AGENT_RUNTIME_OPEN_PAGE_RETRIES,
-            consentStrategy,
-            diagnosticsDir: this.options.diagnosticsDir,
-            logger: createLogger({ verbose: this.options.verbose ?? false }),
-        });
-        const analyzer: SiteAnalyzer = new SiteAnalyzerClass({
-            handlers,
-            artifactsDir: this.options.artifactsDir,
-            recorder: this.options.recorder,
-            preloadedIssueScreenshots: this.options.preloadedIssueScreenshots ?? [],
-        });
+        const { SiteAnalyzer: SiteAnalyzerClass } = await import('../analyzer/site-analyzer');
+        const analyzer: SiteAnalyzer = new SiteAnalyzerClass();
         return await createToolRegistry({
             allowedIssueNumber: this.options.issue.number,
             checkoutPath: this.options.filtersPath,
@@ -4389,27 +4423,15 @@ export class AgentRuntime {
                 state.navigationVerified = true;
                 this.lastBrowserError = undefined;
             }
-            // A page that answers 200 can still withhold what was reported — a login wall, a
-            // regional block, a bot challenge. Those facts decide whether an absent symptom means
-            // anything, so they are retained per session rather than judged once at navigation.
+            // The main document's status is the browser's own fact about the page. What the page
+            // shows in its place — a sign-in wall, a regional block, a bot check — is judged by
+            // vision on the capture a claim rests on, not from this navigation.
             state.pageAccessFacts = {
                 statusCode: typeof result.statusCode === 'number' ? result.statusCode : 200,
-                title: typeof result.title === 'string' ? result.title : '',
-                htmlLength: state.pageAccessFacts?.htmlLength ?? 0,
-                visibleTextPreview: state.pageAccessFacts?.visibleTextPreview ?? '',
             };
         }
 
-        if (name === 'get_dom' && state.pageAccessFacts) {
-            state.pageAccessFacts = {
-                ...state.pageAccessFacts,
-                htmlLength: typeof result.htmlLength === 'number' ? result.htmlLength : 0,
-                visibleTextPreview:
-                    typeof result.visibleTextPreview === 'string' ? result.visibleTextPreview : '',
-            };
-        }
-
-        if (name === 'screenshot' && state.navigationVerified) {
+        if (name === 'screenshot') {
             const viewportArtifactId =
                 typeof result.artifactId === 'string' ? result.artifactId : undefined;
             const fullPageArtifactId =
@@ -4468,7 +4490,13 @@ export class AgentRuntime {
                 ...(fullPageArtifactId ? [fullPageArtifactId] : []),
                 ...tileArtifactIds,
             ];
-            if (allArtifactIds.length > 0) {
+            // A capture belongs to the session that took it whether or not its navigation was
+            // verified: a sign-in page on another origin is judged from exactly such a capture, and
+            // only that session can spend the access budget for it.
+            for (const artifactId of allArtifactIds) {
+                this.screenshotSessionIds.set(artifactId, state.sessionId);
+            }
+            if (state.navigationVerified && allArtifactIds.length > 0) {
                 state.pageCaptures.push({
                     visionVerified: false,
                     captureArtifactId:
@@ -4478,6 +4506,7 @@ export class AgentRuntime {
                     tiles: tileEvidence,
                     coverageComplete: Boolean(coverageComplete),
                     reporterSymptomPresence: null,
+                    pageObstruction: null,
                     requiredArtifactIds,
                     rawCapture: {
                         ...(viewportArtifactId ? { artifactId: viewportArtifactId } : {}),
@@ -4485,9 +4514,6 @@ export class AgentRuntime {
                         ...(tileCoverage ? { tileCoverage } : {}),
                     },
                 });
-                for (const artifactId of allArtifactIds) {
-                    this.screenshotSessionIds.set(artifactId, state.sessionId);
-                }
                 this.refreshFullVisionEvidence(state);
             }
         }
