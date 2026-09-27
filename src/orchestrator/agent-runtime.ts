@@ -42,6 +42,7 @@ import { allowUserScripts as allowUserScriptsDefault } from '../browser/chrome-u
 import { createLoopbackTextServer, type LoopbackTextServer } from '../local/loopback-text-server';
 import { CHROMIUM_USER_AGENT_PROFILE } from '../browser/prepared-extension-launch';
 import type { IBrowserSession } from '../browser/browser-interfaces';
+import { registrableDomain } from '../browser/request-party';
 import type { BrowserContext } from 'playwright-core';
 import {
     extractBrowserNetworkErrorCode,
@@ -4413,8 +4414,15 @@ export class AgentRuntime {
         }
 
         if (name === 'open_page' && typeof result.url === 'string') {
+            // A site's own redirect keeps the reported page: `google.com` lands on `www.google.com`,
+            // `http` on `https`. Comparing origins refused every such landing, and the run could
+            // neither inspect the page it had loaded nor finish (AdguardFilters#241312).
             const navigatedUrl = canonicalTargetUrl(result.url);
-            if (navigatedUrl && new URL(navigatedUrl).origin === new URL(state.targetUrl).origin) {
+            if (
+                navigatedUrl &&
+                registrableDomain(new URL(navigatedUrl).hostname) ===
+                    registrableDomain(new URL(state.targetUrl).hostname)
+            ) {
                 state.navigationVerified = true;
                 this.lastBrowserError = undefined;
             }
