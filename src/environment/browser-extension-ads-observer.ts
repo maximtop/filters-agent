@@ -669,9 +669,10 @@ export class BrowserExtensionAdsObserver {
             targetUrl: observed.result.url,
             targetObservation: {
                 symptomPresent,
-                pageUsable:
-                    observed.structure.probeSucceeded &&
-                    (visualReview === null || isCandidateVisualPageUsable(visualReview)),
+                // Page safety is the review's call. The structural probe measures the candidate's
+                // selector, and an extended-CSS selector (`:contains`) makes the page's
+                // querySelectorAll throw, so a failed probe says nothing about the page.
+                pageUsable: visualReview === null || isCandidateVisualPageUsable(visualReview),
             },
             navigationVerified: observed.result.error === undefined,
             artifacts: observed.artifacts,

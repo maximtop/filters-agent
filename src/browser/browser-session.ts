@@ -122,6 +122,16 @@ export interface BrowserSessionConfig {
      * disables certificate verification for the isolated per-run profile.
      */
     strictRouteAcceptProxyAuthority?: boolean;
+
+    /**
+     * The URLs the filtering engine stopped before they reached their host, read from the engine's
+     * own record.
+     *
+     * An extension stops a request inside the browser, so it arrives as a failed request. A
+     * filtering proxy answers it itself instead, with a stub response the browser records like any
+     * other; only the proxy's own log tells the two apart.
+     */
+    engineBlockedRequests?: () => ReadonlySet<string>;
 }
 
 /**
@@ -230,12 +240,18 @@ export class BrowserSession implements IBrowserSession {
      */
     private readonly browserProcessPid?: number;
 
+    /**
+     * The engine's own record of the requests it stopped, when the engine answers them itself.
+     */
+    private readonly engineBlockedRequests?: () => ReadonlySet<string>;
+
     private constructor(
         pieces: LaunchedSessionPieces,
         logger: Logger,
         artifactsDir: string,
         consoleCoverage: ConsoleCoverage,
         closeTimings?: BrowserCloseTimings,
+        engineBlockedRequests?: () => ReadonlySet<string>,
     ) {
         this.browser = pieces.browser;
         this.page = pieces.page;
@@ -248,6 +264,7 @@ export class BrowserSession implements IBrowserSession {
         this.closeTimings = closeTimings;
         this.extensionContext = pieces.extensionContext;
         this.browserProcessPid = pieces.browserProcessPid;
+        this.engineBlockedRequests = engineBlockedRequests;
         this.attachListeners();
     }
 
@@ -279,6 +296,7 @@ export class BrowserSession implements IBrowserSession {
             config.artifactsDir,
             config.engine.consoleCoverage,
             config.closeTimings,
+            config.engineBlockedRequests,
         );
     }
 
@@ -365,10 +383,19 @@ export class BrowserSession implements IBrowserSession {
     /**
      * Return the accumulated network request log.
      *
+     * A request the engine stopped reads as one that never received a response, whichever way the
+     * engine stopped it.
+     *
      * @returns Network request entries collected since session creation or the last reset.
      */
     getNetworkLog(): NetworkRequestEntry[] {
-        return this.networkLog;
+        const blocked = this.engineBlockedRequests?.();
+        if (blocked === undefined || blocked.size === 0) {
+            return this.networkLog;
+        }
+        return this.networkLog.map((entry) =>
+            blocked.has(entry.url) ? { ...entry, statusCode: 0, responseHeaders: {} } : entry,
+        );
     }
 
     /**

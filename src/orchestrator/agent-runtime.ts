@@ -144,6 +144,7 @@ import {
 } from '../validator/phase-orchestrator';
 import { extractBrowserLaunchSignal } from './browser-launch-signal';
 import { PhaseLabel } from '../types/validation';
+import { withCliExperimentVerdict } from './cli-candidate-experiment';
 import { SettingsProfileKind } from '../types/settings-profile-kind';
 import {
     isAgentRefusalFallback,
@@ -4030,7 +4031,7 @@ export class AgentRuntime {
         }
         const result = observer?.result();
         if (result) {
-            return result;
+            return this.cliEvidenceRoute ? withCliExperimentVerdict(result, experiment) : result;
         }
         if (experiment.inconclusiveReason === 'baseline_symptom_absent') {
             // Phases ran cleanly; what failed is the symptom description the observer judged.

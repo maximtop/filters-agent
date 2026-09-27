@@ -26,6 +26,7 @@ import {
     candidateLedgerKey,
 } from './agent-runtime-candidate-context';
 import type { AgentRuntimeEnvironmentEvidence } from './agent-runtime-session-evidence';
+import { cliCandidateUnverifiedRejection } from './cli-candidate-experiment';
 import {
     judgeNoPatchSymptomMatrix,
     type TerminalSymptomPresenceEvidence,
@@ -392,6 +393,9 @@ export function validateTerminalOutcome(
         };
     }
     const verifiedEnvironment = view.getVerifiedCandidateEnvironment(validationArtifactId!);
+    if (!verifiedEnvironment && view.cliEvidenceRoute) {
+        return cliCandidateUnverifiedRejection(canonical, validationArtifactId!);
+    }
     if (!verifiedEnvironment) {
         const validationEnvironment = view.getValidationEnvironment(validationArtifactId!);
         // The run's one host-prepared build is the current pinned build by construction, so the
