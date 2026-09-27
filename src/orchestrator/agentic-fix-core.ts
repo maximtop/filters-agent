@@ -874,6 +874,6 @@ export async function runAgenticFixCore(
         await runtime?.stopEvidenceRoute();
         // The run's host-state directory outlives every browser session — the blocker state the
         // phases read back lives in it — so only this terminal path may remove it.
-        runtime?.releaseHostState();
+        await runtime?.releaseHostState();
     }
 }

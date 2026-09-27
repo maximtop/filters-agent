@@ -1,6 +1,7 @@
 import type { Logger } from 'pino';
 import type { ReproProfile } from '../types/repro-profile';
 import type { BrowserSession } from '../browser/browser-session';
+import type { AppliedRulesLog } from '../environment/applied-rules';
 
 /**
  * The command and storage contract of one isolated filtering installation, pinned by the retired
@@ -237,6 +238,17 @@ export interface EvidenceRouteHost {
      * @returns Ports bound to this run's installation.
      */
     environmentPorts(): EvidenceRoutePorts;
+
+    /**
+     * Start the applied-rules log of the session launched last: what the route's filtering engine
+     * reports from this moment on, in its own logs and inside the session's pages. The runtime
+     * opens it right after the session launches, before the session navigates anywhere.
+     *
+     * @param session - The session launched last.
+     * @param logger - Run logger for whatever the log cannot read.
+     * @returns The session's applied-rules log.
+     */
+    openAppliedRulesLog(session: BrowserSession, logger: Logger): Promise<AppliedRulesLog>;
 
     /**
      * Stop whatever the route itself owns. Idempotent, and absent for routes that own nothing.

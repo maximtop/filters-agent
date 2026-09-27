@@ -116,7 +116,13 @@ export const ToolName = {
     GetNetworkLog: 'get_network_log',
 
     /**
-     * Returns the console messages collected since session start.
+     * Returns the rules the session's filtering engine reported applying to the page, with their
+     * lists.
+     */
+    GetAppliedRules: 'get_applied_rules',
+
+    /**
+     * Returns the console-event messages collected since session start and what they cover.
      */
     GetConsoleLog: 'get_console_log',
 

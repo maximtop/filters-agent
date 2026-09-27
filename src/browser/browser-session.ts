@@ -5,6 +5,7 @@ import type {
     IBrowserEngine,
     IBrowserSession,
     NetworkRequestEntry,
+    ConsoleCoverage,
     ConsoleMessageEntry,
 } from './browser-interfaces';
 import {
@@ -183,9 +184,14 @@ export class BrowserSession implements IBrowserSession {
     private readonly requestGenerations = new WeakMap<Request, number>();
 
     /**
-     * Accumulated console messages (populated by the console listener).
+     * Accumulated `console`-event messages, populated by the listener in {@link attachListeners}.
      */
     private readonly consoleLog: ConsoleMessageEntry[] = [];
+
+    /**
+     * What the engine delivers into the `console` event, and so into {@link consoleLog}.
+     */
+    readonly consoleCoverage: ConsoleCoverage;
 
     /**
      * Whether the session has been closed.
@@ -228,12 +234,14 @@ export class BrowserSession implements IBrowserSession {
         pieces: LaunchedSessionPieces,
         logger: Logger,
         artifactsDir: string,
+        consoleCoverage: ConsoleCoverage,
         closeTimings?: BrowserCloseTimings,
     ) {
         this.browser = pieces.browser;
         this.page = pieces.page;
         this.logger = logger;
         this.artifactsDir = artifactsDir;
+        this.consoleCoverage = consoleCoverage;
         this.profileDir = pieces.profileDir;
         this.strictRouteId = pieces.strictRouteId;
         this.strictRouteTempDir = pieces.strictRouteTempDir;
@@ -265,7 +273,13 @@ export class BrowserSession implements IBrowserSession {
         );
         rejectCrossFamilyExtensionChannels(config);
         const pieces = await launchSessionBrowser(config);
-        return new BrowserSession(pieces, logger, config.artifactsDir, config.closeTimings);
+        return new BrowserSession(
+            pieces,
+            logger,
+            config.artifactsDir,
+            config.engine.consoleCoverage,
+            config.closeTimings,
+        );
     }
 
     /**
@@ -327,6 +341,9 @@ export class BrowserSession implements IBrowserSession {
                 responseHeaders: {},
             });
         });
+        // What arrives here is the engine's consoleCoverage: the stealth Chromium binary delivers
+        // only the browser's own log entries, Firefox the page's console output too. See
+        // ConsoleCoverage.BrowserLogOnly for why no page-side hook may recover the rest.
         this.page.on('console', (msg) => {
             this.consoleLog.push({ type: msg.type(), text: msg.text() });
         });
@@ -368,9 +385,10 @@ export class BrowserSession implements IBrowserSession {
     }
 
     /**
-     * Return the accumulated console messages.
+     * Return the accumulated `console`-event messages.
      *
-     * @returns All console messages collected since session creation.
+     * @returns Every message collected since session creation; {@link consoleCoverage} says whether
+     *   the page's own output is among them.
      */
     getConsoleLog(): ConsoleMessageEntry[] {
         return this.consoleLog;

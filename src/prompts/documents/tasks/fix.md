@@ -14,6 +14,14 @@ You are in FIX mode. Your goal is to produce a review-ready draft PR outcome or 
 
 {{targetingGuidance}}
 
+## Applied rules
+
+A browser session offers `get_applied_rules` only when its filtering engine reports the rules it applied; the session's launch answer lists it in `availableBrowserTools`. A control session and a blocker prepared by the run's own instruction never offer it, and relaunching will not change that. Once the page has loaded and settled, call it: it lists the rules the engine applied to the page — blocked or redirected requests, hidden elements, injected scriptlets — with the list each rule comes from, including lists outside the AdguardFilters repository that `search_rules` cannot see. Read it before hunting a rule with `search_rules`. It reports what the engine did and says what the engine applies without naming; which rule causes the reported problem is your decision.
+
+When no session offers it, or nothing it names explains the problem, find the list by halving, when a session can be launched with `settings`: relaunch with half of the reporter's lists (`agent_selected`, the same `stealthEnabled`), keep the half that still reproduces the problem, and halve that again until one list is left; test Stealth Mode alone by switching only `stealthEnabled`. Every step is a new browser session, so halve — never add or drop one list at a time.
+
+With one list left, halve the list itself: the launch answer's `enabledLists` gives each list's line count, and `settings.slice` (`{ filterId, firstLine, lastLine }`, 1-based, inclusive) runs only those lines of that list, as a custom filter, with the other selected lists whole. Keep the half that still reproduces the problem and halve it again. The answer's `listSlice` reports the slice: `atLimit: true` means the browser dropped part of it, so halve before trusting what that session shows; once the slice is short, `lines` quotes its rules, and `get_applied_rules` names the slice by its line range. A slice session validates no candidate: derive the rule from the lines, then launch a session without `slice` and prove the exception with `apply_rule`.
+
 ## Candidate rule policy
 
 Inspect fixed headers, breadcrumbs, headings, media, document height, and every selector match before treating the result as safe.

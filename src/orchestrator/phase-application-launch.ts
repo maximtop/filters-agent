@@ -18,6 +18,7 @@ import {
 } from '../environment/browser-extension-environment';
 import { ExtensionLaunchFamily } from '../environment/extension-launch';
 import { adguardListKey, type FilterListKey } from '../environment/filter-list-ref';
+import type { ListSliceFacts } from '../environment/list-slice';
 import { normalizeRulesContent } from '../environment/rules-content';
 import {
     readPreparedExtensionManifest,
@@ -26,10 +27,12 @@ import {
 import { createLogger, type Logger } from '../logger/logger';
 import type { ApplicationInstructionGap } from '../environment/application-instruction-gap';
 import type { LoadedInstruction } from '../knowledge/instruction-loader';
+import { SettingsProfileKind } from '../types/settings-profile-kind';
 import { PhaseLabel } from '../types/validation';
 import { ApplicationGoalKind } from '../validator/phase-application-contract';
 import type { AgentRuntimeSessionState } from './agent-runtime-session-evidence';
 import { launchFirefoxDeclaredBaseline } from './firefox-launch-baseline';
+import { launchListSliceBaseline, ListSliceBaselineOutcomeKind } from './list-slice-baseline';
 import { runApplication } from './phase-application-flow';
 import {
     applicationInstructionContent,
@@ -40,13 +43,10 @@ import { expectedStealthEnabledFor, launchBaselineFilterIds } from './phase-appl
 /**
  * The launch-time Baseline application and the browser-extension environment adapter's production
  * options: what runs right after `launch_browser` establishes a prepared session, and what the
- * concrete Extension environment adapter is built with.
- *
- * Both build on `phase-application-flow.ts`'s `runApplication`, so the same procedure that credits
- * a between-phases application inside the validation environment also credits the launch's own
- * Baseline. Neither this module nor `phase-application-flow.ts` imports `agent-runtime.ts`; the
- * runtime privates this flow still needs (`createFilteringPhaseSession`, `phaseConfigurationFor`,
- * `extensionBaselineSettingsFor`, `recordExtensionFilterFidelity`) travel in as callbacks instead.
+ * concrete Extension environment adapter is built with. Both build on `phase-application-flow.ts`'s
+ * `runApplication`, so one procedure credits the launch's Baseline and every between-phases
+ * application; a launch with `settings.slice` delegates to `list-slice-baseline.ts` instead.
+ * Neither module imports `agent-runtime.ts`; the runtime privates travel in as callbacks.
  */
 
 /**
@@ -96,6 +96,11 @@ export type LaunchBaselineOutcome =
            * The complete host read-back the session's settings record is derived from.
            */
           readBack: AdGuardExtensionStateRead;
+
+          /**
+           * What the session reports about the list slice it runs, when its launch requested one.
+           */
+          listSlice?: ListSliceFacts;
       }
     | {
           /**
@@ -179,8 +184,7 @@ export function launchBaselineSettingsFields(
  * @param extensionPath - Unpacked root of the prepared extension build.
  * @param expectedFilterIds - Exact filter IDs the settings request expects enabled.
  * @param logger - Run logger for the degradation record.
- * @param recordFilterFidelity - Callback recording the run's filter-selection approximation, kept
- *   in the runtime because it reports through the run's own environment-selection host.
+ * @param recordFilterFidelity - Callback recording the run's filter-selection approximation.
  * @returns The convergent subset, or undefined when no requested filter remains.
  */
 async function convergeExpectedFilterIds(
@@ -243,10 +247,8 @@ async function convergeExpectedFilterIds(
  * @param targetUrl - Canonical target the session was created for.
  * @param settings - Model-selected extension settings profile of the launch request.
  * @param recordFilterFidelity - Callback recording the run's filter-selection approximation.
- * @param signal - Launch deadline signal: an abort before or during the Baseline stops the
- *   remaining steps and settles the outcome unverified.
- * @returns The typed outcome — the verified read-back, or the refusal/unverified detail the launch
- *   result carries to the model.
+ * @param signal - Launch deadline signal: an abort settles the outcome unverified.
+ * @returns The verified read-back, or the refusal/unverified detail the launch result carries.
  */
 export async function launchExtensionBaseline(
     host: PhaseApplicationFlowHost,
@@ -326,11 +328,18 @@ export async function launchExtensionBaseline(
         logger.warn({}, 'the launch Baseline application was aborted after its pre-read');
         return { kind: LaunchBaselineOutcomeKind.Unverified, detail };
     }
+    // A sliced list runs as a custom filter, so it leaves the built-in set the Baseline applies;
+    // the remaining common lists converge like any other request.
+    const slice = settings.kind === SettingsProfileKind.AgentSelected ? settings.slice : undefined;
+    const requestedFilterIds = launchBaselineFilterIds(
+        settings,
+        preRead.optionsEnabledFilterIds,
+    ) ?? [...preRead.optionsEnabledFilterIds];
     const baselineEnabledFilterIds = await convergeExpectedFilterIds(
         chromiumLaunch.extensionPath,
-        launchBaselineFilterIds(settings, preRead.optionsEnabledFilterIds) ?? [
-            ...preRead.optionsEnabledFilterIds,
-        ],
+        slice === undefined
+            ? requestedFilterIds
+            : requestedFilterIds.filter((filterId) => filterId !== slice.filterId),
         logger,
         recordFilterFidelity,
     );
@@ -341,6 +350,27 @@ export async function launchExtensionBaseline(
                 'The requested filter set has no convergent subset in the prepared build ' +
                 'catalog, so the launch Baseline could not be applied.',
         };
+    }
+    if (slice !== undefined) {
+        const outcome = await launchListSliceBaseline({
+            host,
+            state,
+            context,
+            extension: chromiumLaunch,
+            targetUrl,
+            settings,
+            slice,
+            preRead,
+            commonFilterIds: baselineEnabledFilterIds,
+            ...(signal === undefined ? {} : { signal }),
+        });
+        return outcome.kind === ListSliceBaselineOutcomeKind.Verified
+            ? {
+                  kind: LaunchBaselineOutcomeKind.Verified,
+                  readBack: outcome.readBack,
+                  listSlice: outcome.listSlice,
+              }
+            : { kind: LaunchBaselineOutcomeKind.Unverified, detail: outcome.detail };
     }
     const request: EnvironmentPhaseConfigurationRequest = {
         phase: PhaseLabel.B,

@@ -10,6 +10,7 @@
 import * as v from 'valibot';
 import type { Finding } from '../types/site-analysis';
 import { FindingSchema } from '../types/site-analysis';
+import { registerAppliedRulesTool } from './applied-rules-tool';
 import { registerInteractPageTool } from './interact-page-tool';
 import { registeredParameters } from './registered-parameters';
 import { ToolName } from './tool-names';
@@ -20,6 +21,8 @@ import type { TraceRecorder } from '../tracer/trace-recorder';
 import type { SingleShotClient } from '../pi/single-shot-types';
 import type { ReproProfile } from '../types/repro-profile';
 import type { SymptomKind } from '../validator/symptom-rubric';
+import type { AppliedRulesLog } from '../environment/applied-rules';
+import { TraceArtifactStore } from '../tracer/artifact-store';
 
 /**
  * Optional browser-enabled configuration for createToolRegistry.
@@ -80,6 +83,12 @@ export interface BrowserToolOptions {
      * Late-bound problem class driving the visual review rubric; ads semantics when omitted.
      */
     reporterSymptomKind?: () => SymptomKind | undefined;
+
+    /**
+     * The applied-rules log of the session's filtering engine. Only the fix runtime binds one, and
+     * `get_applied_rules` exists exactly when it does.
+     */
+    appliedRules?: AppliedRulesLog;
 }
 
 /**
@@ -183,7 +192,9 @@ export async function registerBrowserTools(
         },
         {
             name: ToolName.GetConsoleLog,
-            description: 'Return all console messages collected since session start.',
+            description:
+                'Return the console-event messages collected since session start and, in ' +
+                "consoleCoverage, whether the page's own output is among them.",
             handler: handlers.get_console_log,
         },
         {
@@ -274,4 +285,12 @@ export async function registerBrowserTools(
         artifactsDir: browserTools.artifactsDir,
         allowedOrigin: browserTools.allowedOrigin,
     });
+
+    if (browserTools.appliedRules) {
+        registerAppliedRulesTool(registry, {
+            session,
+            log: browserTools.appliedRules,
+            artifactStore: new TraceArtifactStore(artifactsDir, recorder),
+        });
+    }
 }

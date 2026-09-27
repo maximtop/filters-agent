@@ -6,10 +6,13 @@
  * message type that can drift, and the one that drifts silently is the worst kind — the extension
  * answers `undefined` and the step looks like it ran.
  *
- * Every member here was proven against the pinned build by the retired options-page driver (`git
- * show 1ea6e065^:src/browser/adguard-extension.ts`); nothing is invented. In particular the driver
- * had no _enable_ counterpart to `DisableFilter`, so the convergence the instruction performs only
- * ever turns filters off.
+ * Every member here was proven against the pinned build: the settings messages by the retired
+ * options-page driver (`git show 1ea6e065^:src/browser/adguard-extension.ts`), the filtering-log
+ * messages by a headless probe of v5.5.2.3 on 2026-09-24; nothing is invented. In particular the
+ * driver had no _enable_ counterpart to `DisableFilter`, so the convergence the instruction
+ * performs only ever turns filters off, and the log has no working open message:
+ * `onOpenFilteringLogPage` throws in the pinned build, so recording starts by opening the
+ * extension's own log page.
  */
 export const AdGuardExtensionMessageType = {
     /**
@@ -43,6 +46,22 @@ export const AdGuardExtensionMessageType = {
      * Turn one filter off by its `filterId`.
      */
     DisableFilter: 'disableFilter',
+
+    /**
+     * The filtering log's own metadata: every filter the build knows, with its `filterId` and
+     * `name`.
+     */
+    GetFilteringLogData: 'getFilteringLogData',
+
+    /**
+     * Make the filtering log track every open tab, including tabs created before it opened.
+     */
+    SynchronizeOpenTabs: 'synchronizeOpenTabs',
+
+    /**
+     * One tab's filtering log: the events the engine recorded for the tab's current page load.
+     */
+    GetFilteringInfoByTabId: 'getFilteringInfoByTabId',
 } as const;
 
 /**

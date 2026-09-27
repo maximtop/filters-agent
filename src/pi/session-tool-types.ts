@@ -97,6 +97,12 @@ export const ToolGateCause = {
      * tools of this short-lived phase refuse for the rest of the session.
      */
     StepFailed: 'step-failed',
+
+    /**
+     * No active browser session offers the tool: a session offers it only when what it runs can
+     * serve it, so relaunching the same kind of session does not help.
+     */
+    NotOffered: 'not-offered',
 } as const;
 
 /**

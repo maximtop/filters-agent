@@ -2,6 +2,10 @@ import type { Page } from 'playwright-core';
 import * as v from 'valibot';
 import { TOOL_GUIDANCE, TOOL_PARAMETER_SCHEMAS } from '../agent/tool-catalog';
 import { ToolName } from '../agent/tool-names';
+import {
+    CUSTOM_FILTERS_GROUP_ID,
+    type ExtensionCustomFilterEntry,
+} from '../browser/adguard-custom-filters';
 import { AdGuardExtensionMessageType } from '../browser/adguard-extension-message-types';
 import { DISABLE_STEALTH_SETTING } from '../browser/adguard-extension-settings';
 import { waitForAppInitialized } from '../browser/adguard-extension-state-read';
@@ -92,6 +96,12 @@ const ENABLED_FILTERS_KEY = 'enabled-filters';
 const ENABLED_GROUPS_KEY = 'enabled-groups';
 
 /**
+ * Key of the custom-filter array inside the filters section: the filters the import downloads from
+ * their own URLs and allocates ids to, as `adguard-custom-filters.ts` describes.
+ */
+const CUSTOM_FILTERS_KEY = 'custom-filters';
+
+/**
  * Section key of the extension's own configuration schema the Tracking-protection state lives
  * under.
  */
@@ -139,6 +149,13 @@ export interface ExtensionSettingsPayloadExpectation {
      * `enabled-groups` rather than replacing it.
      */
     requiredGroupIds: readonly number[];
+
+    /**
+     * Custom filters the import installs, replacing whatever the export's own custom-filters
+     * section carried. Omitted leaves that section untouched. A non-empty list also switches the
+     * custom filters group on, without which the build lists every custom filter and runs none.
+     */
+    customFilters?: readonly ExtensionCustomFilterEntry[];
 
     /**
      * Expected Tracking-protection state. Omitted leaves the stealth section untouched, so the
@@ -239,13 +256,23 @@ export async function buildExtensionSettingsPayload(
     const filters = filtersSection as Record<string, unknown>;
     filters[ENABLED_FILTERS_KEY] = [...expectation.enabledFilterIds];
     setAcceptableAds(root, expectation.enabledFilterIds);
+    const customFilters = expectation.customFilters;
+    if (customFilters !== undefined) {
+        filters[CUSTOM_FILTERS_KEY] = customFilters.map((entry) => ({ ...entry }));
+    }
     const existingGroups = Array.isArray(filters[ENABLED_GROUPS_KEY])
         ? (filters[ENABLED_GROUPS_KEY] as unknown[]).filter(
               (group): group is number => typeof group === 'number',
           )
         : [];
     filters[ENABLED_GROUPS_KEY] = [
-        ...new Set([...existingGroups, ...expectation.requiredGroupIds]),
+        ...new Set([
+            ...existingGroups,
+            ...expectation.requiredGroupIds,
+            ...(customFilters !== undefined && customFilters.length > 0
+                ? [CUSTOM_FILTERS_GROUP_ID]
+                : []),
+        ]),
     ];
     if (expectation.stealthEnabled !== undefined) {
         const stealthSection = root[STEALTH_SECTION_KEY];

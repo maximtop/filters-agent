@@ -59,6 +59,7 @@ const FIX_SESSION_SURFACE: readonly ToolName[] = [
     ToolName.GetDom,
     ToolName.InspectAdSlots,
     ToolName.GetNetworkLog,
+    ToolName.GetAppliedRules,
     ToolName.GetConsoleLog,
     ToolName.InspectPageState,
     ToolName.EvaluateJs,
@@ -100,6 +101,26 @@ function browserClosedRefusal(name: string): ToolGateState {
         remedy: 'Start a new browser session with launch_browser before using it.',
     };
 }
+
+/**
+ * Surface tools a browser session offers only when what it runs can serve them, each with the
+ * refusal its absence answers. The generic refusals would be wrong for them: an active session may
+ * simply not offer the tool, and relaunching the same kind of session would not offer it either.
+ */
+const SESSION_OPTIONAL_REFUSALS: Readonly<Partial<Record<ToolName, ToolGateState>>> = {
+    [ToolName.GetAppliedRules]: {
+        cause: ToolGateCause.NotOffered,
+        reason: [
+            'get_applied_rules exists only in a browser session whose filtering engine reports the',
+            'rules it applied, and no active session does.',
+        ].join(' '),
+        remedy: [
+            'launch_browser lists what a session offers in availableBrowserTools. When no session',
+            'of this run offered get_applied_rules, the run cannot report applied rules: do not',
+            'relaunch for it, and decide from get_network_log, get_console_log and list bisection.',
+        ].join(' '),
+    },
+};
 
 /**
  * Which refusal an unavailable surface tool answers with, decided from registry membership alone.
@@ -144,6 +165,10 @@ function createFixSurfaceAvailability(registry: ToolRegistry): FixSurfaceAvailab
         refusalFor: (name) => {
             if (readMembership().has(name)) {
                 return undefined;
+            }
+            const optional = SESSION_OPTIONAL_REFUSALS[name];
+            if (optional !== undefined) {
+                return optional;
             }
             return everRegistered.has(name)
                 ? browserClosedRefusal(name)

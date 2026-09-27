@@ -1,9 +1,10 @@
 import { launch, launchPersistentContext } from 'cloakbrowser';
 import type { Browser, BrowserContext } from 'playwright-core';
-import type {
-    IBrowserEngine,
-    BrowserEngineLaunchConfig,
-    BrowserEnginePersistentLaunchConfig,
+import {
+    ConsoleCoverage,
+    type IBrowserEngine,
+    type BrowserEngineLaunchConfig,
+    type BrowserEnginePersistentLaunchConfig,
 } from './browser-interfaces';
 import { BrowserConfigurationError } from './browser-session';
 
@@ -53,6 +54,15 @@ export class CloakBrowserEngine implements IBrowserEngine {
      * Engine identifier for logging and diagnostics.
      */
     readonly browserType = 'cloakbrowser';
+
+    /**
+     * The stealth binary passes no page console API message and no uncaught page error to
+     * Playwright, not even through a raw CDP `Runtime.enable` subscription: `page.on('console')`
+     * sees only the browser's own log entries. Verified 2026-09-25 with headless sessions on a
+     * `data:` URL and on a local page; live-run `browser-console.json` artifacts hold nothing
+     * else.
+     */
+    readonly consoleCoverage = ConsoleCoverage.BrowserLogOnly;
 
     /**
      * Launch a CloakBrowser instance.

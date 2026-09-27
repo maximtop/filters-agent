@@ -15,7 +15,11 @@ instead of dropping the configuration.
       enterprise policies carrying `ExtensionSettings` plus `3rdparty.Extensions` managed storage.
     - Chromium: unpacked extension directory path (`adguardExtensionPath`).
 - **Output**: a `BrowserSession` whose page tools — `get_dom`, `screenshot`, `inspect_page_state`,
-  `evaluate_js`, `get_console_log`, `stabilize_page` — work unchanged on top of either family.
+  `evaluate_js`, `get_console_log`, `stabilize_page` — work on top of either family.
+  `get_console_log` alone differs in what it returns, and says so in its `consoleCoverage`: Firefox
+  delivers the page's own console output, while the stealth Chromium binary passes only the
+  browser's own log entries (failed loads, `ERR_BLOCKED_BY_CLIENT`, browser warnings) and no page
+  console API output or page error.
 
 ### Failure modes
 

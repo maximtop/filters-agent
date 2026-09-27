@@ -2,6 +2,7 @@ import {
     canonicalAdGuardSettingsImportUrlSha256,
     TRUSTED_REPORT_SETTINGS_HOSTS,
 } from './adguard-settings-import-url';
+import type { ListSlice } from '../environment/list-slice';
 import { SettingsProfileKind } from '../types/settings-profile-kind';
 
 /**
@@ -95,6 +96,13 @@ export type AdGuardExtensionSettingsProfile =
            * Exact Tracking-protection state requested by the model.
            */
           stealthEnabled: boolean;
+
+          /**
+           * In-list bisection: the list named is replaced by lines `firstLine..lastLine` of the
+           * build's own text of it, run as a trusted custom filter while the built-in list stays
+           * off. The list must be one of `filterIds`.
+           */
+          slice?: ListSlice;
       };
 
 /**

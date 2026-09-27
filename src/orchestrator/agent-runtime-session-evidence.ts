@@ -17,6 +17,7 @@ import {
 } from '../browser/adguard-extension-settings';
 import type { CliAdapterProof } from '../environment/environment-proofs';
 import type { FilterListKey } from '../environment/filter-list-ref';
+import type { ListSliceFacts } from '../environment/list-slice';
 import type { PreparedExtension } from '../local/prepared-extension';
 import type { CandidateVisualReview } from '../types/candidate-visual-review';
 import type { PageObstruction } from '../types/page-obstruction';
@@ -304,6 +305,13 @@ export interface AgentRuntimeSessionState extends AgentRuntimeEnvironmentEvidenc
      * reported content at all.
      */
     pageAccessFacts?: PageAccessFacts;
+
+    /**
+     * The list slice this session runs as a custom filter, when its launch requested one and the
+     * Baseline verified it. A session carrying one validates no candidate: candidates are judged
+     * against whole lists only.
+     */
+    listSlice?: ListSliceFacts;
 }
 
 /**

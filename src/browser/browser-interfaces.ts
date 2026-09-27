@@ -104,6 +104,11 @@ export interface IBrowserEngine {
     readonly browserType: string;
 
     /**
+     * What this engine delivers into Playwright's `console` event.
+     */
+    readonly consoleCoverage: ConsoleCoverage;
+
+    /**
      * Launch a browser instance with the given configuration.
      *
      * @param config - Launch parameters (headless, locale, timezone, extra args).
@@ -156,7 +161,30 @@ export interface NetworkRequestEntry {
 }
 
 /**
- * A console message captured during a browser session.
+ * What an engine delivers into Playwright's `console` event, and so into a session's console log.
+ */
+export const ConsoleCoverage = {
+    /**
+     * Only the browser's own log entries arrive: failed loads, blocked requests
+     * (`net::ERR_BLOCKED_BY_CLIENT`), security, deprecation and rendering warnings. Nothing a page
+     * script writes to the console and no uncaught page error ever does. Stealth Chromium builds
+     * mute the CDP Runtime events those travel on, because anti-bot scripts detect an enabled
+     * Runtime; a page-side hook that recovers them — a wrapped console, an exposed binding — is
+     * just as detectable, so a session with this coverage stays without page output by design.
+     */
+    BrowserLogOnly: 'browser_log_only',
+
+    /**
+     * The page's own console output and uncaught errors arrive alongside the browser's entries.
+     */
+    PageConsole: 'page_console',
+} as const;
+export type ConsoleCoverage = (typeof ConsoleCoverage)[keyof typeof ConsoleCoverage];
+
+/**
+ * One message Playwright's `console` event delivered during a browser session. Whether the page's
+ * own console output is among these messages, or only the browser's own log entries are, is the
+ * engine's {@link ConsoleCoverage}.
  */
 export interface ConsoleMessageEntry {
     /**
@@ -203,9 +231,15 @@ export interface IBrowserSession {
     resetNetworkLog(): void;
 
     /**
-     * Return the accumulated console messages since session creation.
+     * Return the `console`-event messages accumulated since session creation;
+     * {@link consoleCoverage} says whether the page's own output is among them.
      */
     getConsoleLog(): ConsoleMessageEntry[];
+
+    /**
+     * What the engine delivers into the `console` event, and so into {@link getConsoleLog}.
+     */
+    readonly consoleCoverage: ConsoleCoverage;
 
     /**
      * The directory where artifacts (screenshots, HAR, DOM snapshots) are written.

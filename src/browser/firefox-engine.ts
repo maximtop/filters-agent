@@ -2,10 +2,11 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { firefox } from 'playwright-core';
 import type { Browser, BrowserContext } from 'playwright-core';
-import type {
-    IBrowserEngine,
-    BrowserEngineLaunchConfig,
-    BrowserEnginePersistentLaunchConfig,
+import {
+    ConsoleCoverage,
+    type IBrowserEngine,
+    type BrowserEngineLaunchConfig,
+    type BrowserEnginePersistentLaunchConfig,
 } from './browser-interfaces';
 import { BrowserConfigurationError } from './browser-session';
 import { FIREFOX_POLICIES_ENV_VAR } from './firefox-policies';
@@ -109,6 +110,12 @@ export class FirefoxEngine implements IBrowserEngine {
      * Engine identifier for logging and diagnostics.
      */
     readonly browserType = 'firefox';
+
+    /**
+     * Firefox delivers the page's own console output: the uBlock Origin session test reads the
+     * fixture page's marker line back through `get_console_log`.
+     */
+    readonly consoleCoverage = ConsoleCoverage.PageConsole;
 
     /**
      * The playwright-core handle this engine launches through.

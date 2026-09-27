@@ -8,7 +8,8 @@
  * minutes an application, two applications an experiment, and regularly overran the 30-minute
  * `apply_rule` deadline without even sealing a terminal payload. So the host sends the messages
  * itself, in the order `src/prompts/documents/instructions/adguard-extension.md` specifies — that
- * document remains the contract this module implements.
+ * document remains the contract this module implements. The read-and-disable rounds of the third
+ * step, custom filters included, live in `host-extension-filter-reconciliation.ts`.
  *
  * What does not move: the runner never decides whether the phase applied. It reports how far it got
  * and the trace of what it did; `phase-application-procedure.ts` reads the live extension state
@@ -24,12 +25,9 @@
  * abandoned stops instead of writing on behind it.
  */
 import type { BrowserContext, Page } from 'playwright-core';
+import type { EnabledCustomFilter } from '../browser/adguard-custom-filters';
 import { AdGuardExtensionMessageType } from '../browser/adguard-extension-message-types';
-import {
-    normalizeReadFilterIds,
-    waitForAppInitialized,
-    waitForOptionsData,
-} from '../browser/adguard-extension-state-read';
+import { waitForAppInitialized } from '../browser/adguard-extension-state-read';
 import {
     DEFAULT_READINESS_BUDGET_MS,
     sendExtensionMessage,
@@ -54,19 +52,9 @@ import {
     type PhaseApplicationRunner,
     type PhaseApplicationRunnerResult,
 } from '../validator/phase-application-contract';
+import { reconcileEnabledFilters } from './host-extension-filter-reconciliation';
 import { importSettingsOnceSettled, replyRefused } from './host-settings-import';
 import { overDedicatedSurfacePage } from './phase-application-extension-surface';
-
-/**
- * How many times the host may turn unexpected filters off and re-read the enabled set.
- *
- * Why this value: a successful `applySettingsJson` is not proof of the expected set — the extension
- * re-enables some filters from settings of its own after an import, and a live run read back `[2,
- * 3, 10]` against the prepared `[2, 3]`. One more read-and-disable pass settles that; three bounds
- * a build that keeps re-enabling from looping forever, and is the count the built-in instruction
- * document has always specified (the retired options-page driver used the same).
- */
-const FILTER_RECONCILIATION_ROUNDS = 3;
 
 /**
  * Everything one host-performed AdGuard application acts on beyond what the runner request carries.
@@ -83,6 +71,14 @@ export interface HostExtensionApplicationInput {
      * numbering. Every enabled filter outside this set is turned off; nothing is ever turned on.
      */
     expectedFilterIds: readonly number[];
+
+    /**
+     * Titles of the custom filters the imported document installs and the expectation keeps. The
+     * import allocates their ids, so they cannot be named in `expectedFilterIds`; an enabled custom
+     * filter carrying one of these names stays on, every other custom filter is turned off like a
+     * built-in filter the expectation does not name. Omitted or empty keeps no custom filter.
+     */
+    expectedCustomFilterTitles?: readonly string[];
 
     /**
      * The lease session's persistent extension context the dedicated surface page is opened on.
@@ -108,43 +104,6 @@ export interface HostExtensionApplicationInput {
 }
 
 /**
- * What the enabled-filter reconciliation observed.
- */
-interface FilterReconciliation {
-    /**
-     * How many read-and-disable rounds ran; zero when the import already landed on exactly the
-     * expected set.
-     */
-    rounds: number;
-
-    /**
-     * Filter IDs the host turned off, ascending and distinct.
-     */
-    disabledFilterIds: number[];
-
-    /**
-     * Filter IDs still enabled outside the expected set when the rounds ran out; empty when the
-     * enabled set converged.
-     */
-    unexpectedFilterIds: number[];
-}
-
-/**
- * One read of the extension's enabled filter set during reconciliation.
- */
-interface ObservedEnabledFilters {
-    /**
-     * Every filter the extension reports enabled, ascending and distinct.
-     */
-    enabled: number[];
-
-    /**
-     * The subset of those the prepared expectation does not name.
-     */
-    unexpected: number[];
-}
-
-/**
  * Maximum characters of an extension reply quoted into a step summary.
  *
  * A reply the protocol defines is a boolean or a small record; quoting more than this would push
@@ -163,91 +122,15 @@ function replyToken(reply: unknown): string {
 }
 
 /**
- * Read the enabled filter set and turn off everything outside the prepared expectation.
+ * Name the kept custom filters in a step summary, by id and title.
  *
- * Step 4 of the built-in instruction document, verbatim: a successful import is not proof of the
- * expected set, so the host reads `getOptionsData`, sends `disableFilter` for every enabled filter
- * whose ID the expectation does not name, and re-reads. Nothing is ever enabled here — the import
- * is the only step that turns filters on, and the protocol has no enable counterpart at all.
- *
- * @param page - The dedicated surface page the messages are sent from.
- * @param expectedFilterIds - Exact official filter IDs the prepared expectation names.
- * @param readinessDeadlineAt - Absolute deadline shared with every other read of this application.
- * @param logger - Run logger receiving each round.
- * @param signal - Caller cancellation, checked between rounds.
- * @returns What the reconciliation observed: rounds run, filters disabled, filters still
- *   unexpected.
- * @throws When an options read or a disable message fails, or the deadline aborts between rounds.
+ * @param kept - The enabled custom filters the expectation named.
+ * @returns A clause to append to the summary, or nothing when no custom filter was kept.
  */
-async function reconcileEnabledFilters(
-    page: Page,
-    expectedFilterIds: readonly number[],
-    readinessDeadlineAt: number,
-    logger: Logger,
-    signal: AbortSignal | undefined,
-): Promise<FilterReconciliation> {
-    const expected = new Set(expectedFilterIds);
-    const disabled = new Set<number>();
-
-    /**
-     * Read the options metadata and name the enabled filters the expectation does not.
-     *
-     * @returns The enabled set and the unexpected subset of it, both ascending and distinct.
-     */
-    const readUnexpected = async (): Promise<ObservedEnabledFilters> => {
-        const optionsData = await waitForOptionsData(page, readinessDeadlineAt);
-        const enabled = normalizeReadFilterIds(
-            optionsData.filtersMetadata.filters
-                .filter((filter) => filter.enabled)
-                .map((filter) => filter.filterId),
-        );
-        return { enabled, unexpected: enabled.filter((filterId) => !expected.has(filterId)) };
-    };
-
-    let observed = await readUnexpected();
-    let rounds = 0;
-    while (observed.unexpected.length > 0 && rounds < FILTER_RECONCILIATION_ROUNDS) {
-        if (signal?.aborted ?? false) {
-            throw new Error('the phase deadline aborted between two reconciliation rounds');
-        }
-        rounds += 1;
-        logger.warn(
-            {
-                round: rounds,
-                expectedFilterIds: [...expected],
-                enabledFilterIds: observed.enabled,
-                unexpectedFilterIds: observed.unexpected,
-            },
-            'the import left filters enabled the prepared expectation does not name; turning them off',
-        );
-        for (const filterId of observed.unexpected) {
-            await sendExtensionMessage(page, {
-                type: AdGuardExtensionMessageType.DisableFilter,
-                data: { filterId },
-            });
-            disabled.add(filterId);
-        }
-        observed = await readUnexpected();
-    }
-    const disabledFilterIds = normalizeReadFilterIds([...disabled]);
-    if (observed.unexpected.length === 0) {
-        logger.info(
-            { rounds, disabledFilterIds, enabledFilterIds: observed.enabled },
-            'the enabled filter set matches the prepared expectation',
-        );
-    } else {
-        logger.error(
-            {
-                rounds,
-                disabledFilterIds,
-                expectedFilterIds: [...expected],
-                enabledFilterIds: observed.enabled,
-                unexpectedFilterIds: observed.unexpected,
-            },
-            'the enabled filter set did not converge within the reconciliation rounds',
-        );
-    }
-    return { rounds, disabledFilterIds, unexpectedFilterIds: observed.unexpected };
+function keptCustomFiltersClause(kept: readonly EnabledCustomFilter[]): string {
+    return kept.length === 0
+        ? ''
+        : `; kept custom ${kept.map((filter) => `${filter.filterId} "${filter.name}"`).join(', ')}`;
 }
 
 /**
@@ -309,6 +192,7 @@ async function performExtensionApplication(
             await reconcileEnabledFilters(
                 page,
                 expectedFilterIds,
+                input.expectedCustomFilterTitles ?? [],
                 readinessDeadlineAt,
                 logger,
                 signal,
@@ -316,12 +200,12 @@ async function performExtensionApplication(
         (reconciliation) => ({
             ok: reconciliation.unexpectedFilterIds.length === 0,
             summary:
-                reconciliation.unexpectedFilterIds.length === 0
-                    ? `the enabled set matched after ${reconciliation.rounds} round(s); ` +
-                      `turned off [${reconciliation.disabledFilterIds.join(', ')}]`
+                (reconciliation.unexpectedFilterIds.length === 0
+                    ? `the enabled set matched after ${reconciliation.rounds} round(s)`
                     : `[${reconciliation.unexpectedFilterIds.join(', ')}] stayed enabled after ` +
-                      `${reconciliation.rounds} round(s); turned off ` +
-                      `[${reconciliation.disabledFilterIds.join(', ')}]`,
+                      `${reconciliation.rounds} round(s)`) +
+                `; turned off [${reconciliation.disabledFilterIds.join(', ')}]` +
+                keptCustomFiltersClause(reconciliation.keptCustomFilters),
         }),
     );
 
@@ -404,6 +288,7 @@ export function createHostExtensionApplicationRunner(
                     goal: input.goal.kind,
                     blockerSurfaceUrl,
                     expectedFilterIds: [...input.expectedFilterIds],
+                    expectedCustomFilterTitles: [...(input.expectedCustomFilterTitles ?? [])],
                     settingsPayloadBytes: settingsPayload.length,
                     readinessBudgetMs: input.readinessBudgetMs ?? DEFAULT_READINESS_BUDGET_MS,
                 },

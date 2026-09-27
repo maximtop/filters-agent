@@ -14,7 +14,6 @@ import {
     inspectFullPageVisualCapture,
 } from '../analyzer/full-page-capture-inspection';
 import { visionOverviewRefusal } from '../pi/single-shot-input';
-import type { SiteAnalyzer } from '../analyzer/site-analyzer';
 import {
     parseImportExpectations,
     type AdGuardExtensionSettingsProfile,
@@ -39,6 +38,8 @@ import {
     recordPreflightDiagnostic,
 } from '../local/preflight-diagnostic-log';
 import { CloakBrowserEngine } from '../browser/cloakbrowser-engine';
+import { allowUserScripts as allowUserScriptsDefault } from '../browser/chrome-user-scripts-toggle';
+import { createLoopbackTextServer, type LoopbackTextServer } from '../local/loopback-text-server';
 import { CHROMIUM_USER_AGENT_PROFILE } from '../browser/prepared-extension-launch';
 import type { IBrowserSession } from '../browser/browser-interfaces';
 import type { BrowserContext } from 'playwright-core';
@@ -53,7 +54,6 @@ import {
     EnvironmentSelectionReservedCase,
     type EnvironmentSelectionSnapshot,
 } from '../environment/environment-selection';
-import type { MissingCatalogFilterClassification } from '../environment/third-party-filter-catalog';
 import type { EvidenceRouteHost } from '../local/evidence-route-contract';
 import { readReporterFilterSelection } from '../local/reporter-filters';
 import { BrowserExtensionExecutorName } from '../environment/executor-name';
@@ -87,8 +87,19 @@ import {
     ValidatorPhaseCompletion,
 } from '../environment/filtering-environment';
 import type { CliAdapterProof } from '../environment/environment-proofs';
-import { INTERACT_PAGE_TOOL_NAME } from '../agent/interact-page-tool';
+import { BrowserToolBudgets } from './browser-tool-budgets';
 import { executorRequestedLists } from './executor-list-convergence';
+import {
+    recordEvidenceRouteFilterFidelity,
+    recordExtensionFilterFidelity,
+} from './filter-fidelity-records';
+import {
+    createListLineCounter,
+    launchListFields,
+    listSliceRefusal,
+    sliceSessionApplyRuleRefusal,
+    type ListLineCounter,
+} from './list-slice-launch';
 import { judgeableBlockedHost } from '../validator/candidate-network-verification';
 import {
     buildAgentRuntimeListCatalog,
@@ -208,9 +219,15 @@ import {
 import { runApplication } from './phase-application-flow';
 import {
     applicationInstructionContent,
+    hostPerformsApplication,
     type PhaseApplicationFlowHost,
     type PhaseApplicationModelRunnerFactory,
 } from './phase-application-flow-host';
+import {
+    createProductionBrowserRegistry,
+    openSessionAppliedRulesLog,
+} from './session-browser-registry';
+import type { AppliedRulesLog } from '../environment/applied-rules';
 import { createRunHostStateRoot, type RunHostStateRoot } from './host-state-root';
 import {
     buildFirefoxExtensionEnvironmentOptions,
@@ -349,27 +366,6 @@ const AGENT_RUNTIME_OPEN_PAGE_RETRIES = 1;
  * able to crowd the reporter's own words out of the context window.
  */
 const MAX_REPORTER_SCREENSHOT_OBSERVATION_LENGTH = 2_000;
-/**
- * Free-form page-script evaluations allowed per browser session.
- *
- * `evaluate_js` is meant for focused facts the structured inspectors do not expose. A live run
- * spent 102 of them re-deriving DOM structure by hand and never applied its candidate, so the
- * budget makes that dead end terminate instead of consuming the whole investigation.
- */
-const MAX_EVALUATE_JS_CALLS_PER_SESSION = 25;
-
-/**
- * Interaction rehearsals one browser session may spend.
- *
- * Each rehearsal is a bounded sequence of up to twelve steps, so this funds finding the control
- * that triggers a symptom without funding aimless clicking around the page.
- */
-const MAX_INTERACT_PAGE_CALLS_PER_SESSION = 8;
-
-/**
- * Navigation outcomes that represent browser or target-environment failures rather than malformed
- * model arguments.
- */
 
 /**
  * Inputs and immutable trust boundaries for one model-driven browser investigation.
@@ -579,6 +575,20 @@ export interface AgentRuntimeDependencies {
      * to drive the application read-back without a browser.
      */
     readAdGuardExtensionState?: typeof readAdGuardExtensionStateDefault;
+
+    /**
+     * Turn Chromium's "Allow User Scripts" on for the prepared extension before a list slice is
+     * imported as a custom filter. Defaults to the production toggle over `chrome://extensions`;
+     * tests inject one to prove the order without a browser.
+     */
+    allowUserScripts?: typeof allowUserScriptsDefault;
+
+    /**
+     * Start the run's loopback text server the list slices are served from. Defaults to the
+     * production server on a kernel-chosen port; tests inject one to prove that a listen failure is
+     * a slice-Baseline outcome the next slice launch retries, not a launch failure.
+     */
+    createLoopbackTextServer?: typeof createLoopbackTextServer;
 
     /**
      * Location of the prepared extension's background runtime inside one persistent context.
@@ -1224,14 +1234,20 @@ export class AgentRuntime {
     private readonly applicationReadContexts = new WeakMap<IBrowserSession, BrowserContext>();
 
     /**
-     * Free-form page evaluations spent in the active browser session.
+     * The active browser session's budgets for its open-ended tools.
      */
-    private evaluateJsCalls = 0;
+    private readonly browserToolBudgets = new BrowserToolBudgets();
 
     /**
-     * Interaction rehearsals spent in the active browser session.
+     * The run's loopback text server, started by the first list slice and living until the run
+     * releases its host state: the extension may re-download a custom filter after its import.
      */
-    private interactPageCalls = 0;
+    private loopbackTextServer?: Promise<LoopbackTextServer>;
+
+    /**
+     * Line counts of the prepared Chromium build's lists, read once per list for the run.
+     */
+    private listLineCounter?: ListLineCounter;
 
     /**
      * Official filter identifiers the run's activated selection executes, as its activation
@@ -2238,37 +2254,58 @@ export class AgentRuntime {
      * whenever the model closes or relaunches one: removing the directory there would delete the
      * blocker state the very next phase reads back.
      */
-    releaseHostState(): void {
+    async releaseHostState(): Promise<void> {
+        const server = this.loopbackTextServer;
+        this.loopbackTextServer = undefined;
+        if (server !== undefined) {
+            try {
+                await (await server).close();
+            } catch (error) {
+                createLogger({ verbose: this.options.verbose ?? false }).error(
+                    { err: error },
+                    'the loopback text server did not close cleanly',
+                );
+            }
+        }
         this.hostStateRoot.dispose();
     }
 
     /**
-     * Publish how closely the activated evidence route reproduced the reporter's filter selection.
+     * The run's loopback text server, started on first use. A start that fails is forgotten, so the
+     * next slice launch listens again instead of answering the same rejection for the whole run.
      *
-     * Without this the route's own snapshot stays private and the report would silently imply the
-     * reporter's exact configuration was executed.
+     * @returns The listening server.
      */
-    private recordEvidenceRouteFilterFidelity(): void {
-        const snapshot = this.cliEvidenceRoute?.snapshot();
-        const kind = this.environmentHost.snapshot()?.selectedKind;
-        if (
-            !snapshot ||
-            snapshot.unavailableFilterIds.length === 0 ||
-            !kind ||
-            kind === EnvironmentSelectionReservedCase.UnsupportedProductCase
-        ) {
-            return;
+    private textServer(): Promise<LoopbackTextServer> {
+        if (this.loopbackTextServer === undefined) {
+            const start = this.dependencies.createLoopbackTextServer ?? createLoopbackTextServer;
+            const started: Promise<LoopbackTextServer> = start().catch((error: unknown) => {
+                if (this.loopbackTextServer === started) {
+                    this.loopbackTextServer = undefined;
+                }
+                throw error;
+            });
+            this.loopbackTextServer = started;
         }
-        try {
-            this.environmentHost.recordFilterSelectionApproximation(
-                kind,
-                `The executor's catalog did not offer every filter the reporter had enabled. ` +
-                    `Reproduced official filters: ${[2, ...snapshot.reproducedFilterIds].join(', ')}. ` +
-                    `Unavailable: ${snapshot.unavailableFilterIds.join(', ')}.`,
-            );
-        } catch {
-            // A lock that moved on is not worth failing a live session over.
+        return this.loopbackTextServer;
+    }
+
+    /**
+     * The run's line counter over the prepared Chromium build, or undefined when the run prepared
+     * no such build: a Firefox-family build ships no unpacked list text.
+     *
+     * @returns The per-run counter.
+     */
+    private listLineCountOf(): ListLineCounter | undefined {
+        const prepared = this.preparedExtension;
+        if (prepared === undefined || prepared.launchFamily === ExtensionLaunchFamily.Firefox) {
+            return undefined;
         }
+        this.listLineCounter ??= createListLineCounter(
+            prepared.extensionPath,
+            createLogger({ verbose: this.options.verbose ?? false }),
+        );
+        return this.listLineCounter;
     }
 
     /**
@@ -2985,6 +3022,15 @@ export class AgentRuntime {
                 return settingsRejection;
             }
         }
+        // A slice is judged on the build alone, so a wrong range costs no browser launch.
+        const sliceRejection = listSliceRefusal({
+            settings: request.settings as AdGuardExtensionSettingsProfile | undefined,
+            hostPerformed: hostPerformsApplication(this.options.instruction),
+            lineCountOf: this.listLineCountOf(),
+        });
+        if (sliceRejection) {
+            return sliceRejection;
+        }
         await this.dispose();
         let createdSession: BrowserSession | undefined;
         try {
@@ -3011,7 +3057,10 @@ export class AgentRuntime {
                     noSandbox: this.options.noSandbox,
                     logger: createLogger({ verbose: this.options.verbose ?? false }),
                 });
-                this.recordEvidenceRouteFilterFidelity();
+                recordEvidenceRouteFilterFidelity(
+                    this.environmentHost,
+                    this.cliEvidenceRoute.snapshot(),
+                );
                 // Granted only now: the session exists, so the foreground started and the probe
                 // accepted this run's authority. Before that the environment has installation and
                 // activation only, exactly as its descriptor advertises. The route exists only
@@ -3043,22 +3092,6 @@ export class AgentRuntime {
                 };
                 createdSession = await createSession(config);
             }
-            let browserRegistry: ToolRegistry;
-            if (this.dependencies.createBrowserRegistry) {
-                browserRegistry = await this.dependencies.createBrowserRegistry({
-                    session: createdSession,
-                    recorder: this.options.recorder,
-                    reporterSymptom: () => this.reporterSymptom(),
-                    openPageRetries: AGENT_RUNTIME_OPEN_PAGE_RETRIES,
-                    consentStrategy: reproProfile.consentStrategy,
-                });
-            } else {
-                browserRegistry = await this.createProductionBrowserRegistry(
-                    createdSession,
-                    targetUrl,
-                    reproProfile.consentStrategy,
-                );
-            }
             const sessionId = randomUUID();
             const sessionState: AgentRuntimeSessionState = {
                 sessionId,
@@ -3085,12 +3118,20 @@ export class AgentRuntime {
             }
             // Reset per session: a materially different environment gets its own budget, while a
             // single session cannot keep re-deriving the page by hand.
-            this.evaluateJsCalls = 0;
-            this.interactPageCalls = 0;
+            this.browserToolBudgets.reset();
             this.browserSession = createdSession;
             this.activeSessionId = sessionId;
             this.latestSessionId = sessionId;
             this.sessionStates.set(sessionId, sessionState);
+            // Opened before the Baseline application: the extension reports the declarative rules
+            // Chrome fires only when its log is open while that application configures its engine.
+            const appliedRules = await openSessionAppliedRulesLog({
+                session: createdSession,
+                evidenceRoute: this.cliEvidenceRoute,
+                extension,
+                builtInAdGuardRoute: hostPerformsApplication(this.options.instruction),
+                logger: createLogger({ verbose: this.options.verbose ?? false }),
+            });
             // The Baseline application runs after session creation and before any phase gate: the
             // instruction's steps plus the host read-back are the one settings proof left after the
             // options-page driver's retirement, and settingsVerified is gated on their record.
@@ -3102,10 +3143,17 @@ export class AgentRuntime {
                           createdSession,
                           targetUrl,
                           request.settings as AdGuardExtensionSettingsProfile | undefined,
-                          (conflicts) => this.recordExtensionFilterFidelity(conflicts),
+                          (conflicts) =>
+                              recordExtensionFilterFidelity(this.environmentHost, conflicts),
                           signal,
                       )
                     : undefined;
+            const browserRegistry = await this.createSessionBrowserRegistry(
+                createdSession,
+                targetUrl,
+                reproProfile.consentStrategy,
+                appliedRules,
+            );
             // A launch that timed out already answered the model with its deadline result: its late
             // settle must neither publish a read-back nor merge tools for a session the model was
             // told had failed. The same holds for a settle a newer launch has superseded: the
@@ -3132,6 +3180,9 @@ export class AgentRuntime {
             }
             if (baselineOutcome?.kind === LaunchBaselineOutcomeKind.Verified) {
                 sessionState.extensionBaselineReadBack = baselineOutcome.readBack;
+                if (baselineOutcome.listSlice !== undefined) {
+                    sessionState.listSlice = baselineOutcome.listSlice;
+                }
                 if (extension) {
                     this.latestVerifiedSettingsSessionId = sessionId;
                 }
@@ -3159,6 +3210,7 @@ export class AgentRuntime {
                     baselineOutcome?.kind === LaunchBaselineOutcomeKind.Declared,
                 settingsEvidence: null,
                 ...launchBaselineSettingsFields(baselineOutcome),
+                ...launchListFields(sessionState, this.listLineCountOf()),
                 availableBrowserTools: browserRegistry
                     .getToolNames()
                     .filter((name) => !this.baseToolNames.has(name)),
@@ -3191,75 +3243,41 @@ export class AgentRuntime {
     }
 
     /**
-     * Publish how closely the extension route reproduced the reporter's filter selection.
+     * Create the browser-bound tools of one launched session: the injected test registry, or the
+     * production registry bound to the session's applied-rules log.
      *
-     * Without this the run report would silently imply the reporter's exact configuration was
-     * executed when the installed build catalog could not converge on every requested filter.
-     *
-     * @param conflicts - Requested filters dropped from the expected set during the degraded
-     *   import.
-     */
-    private recordExtensionFilterFidelity(
-        conflicts: readonly MissingCatalogFilterClassification[],
-    ): void {
-        const detail = conflicts
-            .map((conflict) =>
-                conflict.name === undefined
-                    ? String(conflict.filterId)
-                    : `${conflict.filterId} (${conflict.name})`,
-            )
-            .join(', ');
-        try {
-            this.environmentHost.recordFilterSelectionApproximation(
-                BrowserExtensionExecutorName,
-                'The installed extension build catalog does not list every filter the reporter ' +
-                    `had enabled. Skipped during import: ${detail}.`,
-            );
-        } catch {
-            // A lock that moved on is not worth failing a live session over.
-        }
-    }
-
-    /**
-     * Create browser-bound tools for the current production session.
-     *
-     * @param session - Active browser session.
+     * @param session - The launched session.
      * @param targetUrl - Exact prompt-safe URL selected for this session.
      * @param consentStrategy - Trusted bounded consent interaction selected for the session.
+     * @param appliedRules - The session's applied-rules log; absent when its engine cannot report.
      * @returns Registry containing browser and candidate validation tools.
      */
-    private async createProductionBrowserRegistry(
+    private async createSessionBrowserRegistry(
         session: BrowserSession,
         targetUrl: string,
         consentStrategy: ReproProfile['consentStrategy'],
+        appliedRules: AppliedRulesLog | undefined,
     ): Promise<ToolRegistry> {
-        const { SiteAnalyzer: SiteAnalyzerClass } = await import('../analyzer/site-analyzer');
-        const analyzer: SiteAnalyzer = new SiteAnalyzerClass();
-        return await createToolRegistry({
-            allowedIssueNumber: this.options.issue.number,
-            checkoutPath: this.options.filtersPath,
-            // The same walked map the base registry received: the run never walks the filter tree
-            // a second time for the checkout tools.
+        const context: AgentRuntimeBrowserContext = {
+            session,
+            recorder: this.options.recorder,
+            reporterSymptom: () => this.reporterSymptom(),
+            openPageRetries: AGENT_RUNTIME_OPEN_PAGE_RETRIES,
+            consentStrategy,
+        };
+        if (this.dependencies.createBrowserRegistry) {
+            return await this.dependencies.createBrowserRegistry(context);
+        }
+        return await createProductionBrowserRegistry({
+            ...context,
+            targetUrl,
+            issue: this.options.issue,
+            filtersPath: this.options.filtersPath,
             placementMap: this.listCatalog.placementMap ?? undefined,
-            browserTools: {
-                session,
-                analyzer,
-                artifactsDir: this.options.artifactsDir,
-                recorder: this.options.recorder,
-                allowedOrigin: targetUrl,
-                vision: this.options.vision,
-                reporterSymptom: () => this.reporterSymptom(),
-                openPageRetries: AGENT_RUNTIME_OPEN_PAGE_RETRIES,
-                consentStrategy,
-                diagnosticsDir: this.options.diagnosticsDir,
-            },
-            visionTools: {
-                artifactsDir: this.options.artifactsDir,
-                recorder: this.options.recorder,
-                vision: this.options.vision,
-                reporterSymptom: () => this.reporterSymptom(),
-            },
-            localIssueTools: { localIssue: this.options.issue },
+            artifactsDir: this.options.artifactsDir,
+            vision: this.options.vision,
+            diagnosticsDir: this.options.diagnosticsDir,
+            appliedRules,
         });
     }
 
@@ -3345,6 +3363,10 @@ export class AgentRuntime {
             createPhaseApplicationModelRunner: this.dependencies.createPhaseApplicationModelRunner,
             findExtensionRuntime: this.dependencies.findExtensionRuntime,
             readAdGuardExtensionState: this.dependencies.readAdGuardExtensionState,
+            listSlice: {
+                textServer: () => this.textServer(),
+                allowUserScripts: this.dependencies.allowUserScripts ?? allowUserScriptsDefault,
+            },
         };
     }
 
@@ -4133,9 +4155,10 @@ export class AgentRuntime {
             this.registry.register({
                 definition,
                 handler: async (args) => {
-                    const activeTargetUrl = this.activeSessionId
-                        ? this.sessionStates.get(this.activeSessionId)?.targetUrl
+                    const activeState = this.activeSessionId
+                        ? this.sessionStates.get(this.activeSessionId)
                         : undefined;
+                    const activeTargetUrl = activeState?.targetUrl;
                     if (activeTargetUrl) {
                         const exhaustedBudget =
                             this.technicalBrowserBudgetExhaustion(activeTargetUrl);
@@ -4143,45 +4166,19 @@ export class AgentRuntime {
                             return exhaustedBudget;
                         }
                     }
-                    if (name === INTERACT_PAGE_TOOL_NAME) {
-                        this.interactPageCalls += 1;
-                        if (this.interactPageCalls > MAX_INTERACT_PAGE_CALLS_PER_SESSION) {
-                            return {
-                                error:
-                                    `The ${MAX_INTERACT_PAGE_CALLS_PER_SESSION}-rehearsal budget ` +
-                                    'for page interaction is exhausted for this session.',
-                                errorKind: 'interact_page_budget_exhausted',
-                                retryable: false,
-                                requiredAction: 'decide_with_collected_evidence',
-                                guidance: [
-                                    'Decide from the rehearsal evidence already collected.',
-                                    'Validate the candidate with apply_rule, or finish with the',
-                                    'evidence in hand.',
-                                ],
-                            };
-                        }
-                    }
-                    if (name === 'evaluate_js') {
-                        this.evaluateJsCalls += 1;
-                        if (this.evaluateJsCalls > MAX_EVALUATE_JS_CALLS_PER_SESSION) {
-                            return {
-                                error:
-                                    `The ${MAX_EVALUATE_JS_CALLS_PER_SESSION}-call budget for ` +
-                                    'free-form page evaluation is exhausted for this session.',
-                                errorKind: 'evaluate_js_budget_exhausted',
-                                retryable: false,
-                                requiredAction: 'decide_with_collected_evidence',
-                                guidance: [
-                                    'Use the structured inspectors and captures already collected.',
-                                    'If a candidate selector is known, validate it with apply_rule.',
-                                    'Otherwise finish with the evidence in hand.',
-                                ],
-                            };
-                        }
+                    const spentBudget = this.browserToolBudgets.spend(name);
+                    if (spentBudget) {
+                        return spentBudget;
                     }
                     let pendingCandidate: PendingCandidateAttempt | undefined;
                     let freshLedgerKey: string | undefined;
                     if (name === 'apply_rule') {
+                        // A slice session judges no candidate, and the refusal spends no attempt:
+                        // it comes before every ledger entry below.
+                        const sliceRefusal = sliceSessionApplyRuleRefusal(activeState?.listSlice);
+                        if (sliceRefusal) {
+                            return sliceRefusal;
+                        }
                         // The guidance precondition holds only where guidance exists. A run
                         // without a rule-guidance session advertises lookup_rule_guidance as a
                         // gated stub, and demanding the call anyway blocked every candidate on
@@ -4362,9 +4359,6 @@ export class AgentRuntime {
                         }
                         const fallbackReason = technicalNavigationFallbackReason(result);
                         if (fallbackReason) {
-                            const activeState = this.activeSessionId
-                                ? this.sessionStates.get(this.activeSessionId)
-                                : undefined;
                             if (activeState) {
                                 this.retireFailedNavigationSession(activeState);
                             }

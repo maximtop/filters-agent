@@ -3,8 +3,8 @@
  * launch request against, the shapes the model is shown, and the two compatibility readers that run
  * before that validation.
  *
- * It is deliberately separate from the runtime class. Nothing here touches runtime state, so a
- * launch argument shape can be read and exercised without constructing a browser session.
+ * Nothing here touches runtime state, so a launch argument shape can be read and exercised without
+ * constructing a browser session.
  *
  * The shapes are per-run because the two blocker families answer the question "what settings does
  * this session launch with?" differently, and the first live uBO run met both answers at once: one
@@ -18,6 +18,7 @@ import * as v from 'valibot';
 import {
     DECLARED_BASELINE_LAUNCH_BROWSER_PARAMETERS,
     LAUNCH_BROWSER_PARAMETERS,
+    LIST_SLICE_PARAMETERS,
 } from '../agent/tool-catalog';
 import { ToolName } from '../agent/tool-names';
 import type { AdGuardExtensionSettingsProfile } from '../browser/adguard-extension-settings';
@@ -30,6 +31,7 @@ const AgentSelectedSettingsSchema = v.strictObject({
     kind: v.literal(SettingsProfileKind.AgentSelected),
     filterIds: v.array(v.pipe(v.number(), v.integer(), v.minValue(1))),
     stealthEnabled: v.boolean(),
+    slice: v.optional(LIST_SLICE_PARAMETERS),
 });
 
 const DefaultsSettingsSchema = v.strictObject({
@@ -147,10 +149,9 @@ export function launchBrowserSettingsPolicy(
 }
 
 /**
- * The strict request schema one run's `launch_browser` calls are validated against.
- *
- * Keyed off the prepared build rather than the policy value, so a caller wires one thing (the build
- * its run prepared) and never has to keep two derivations of the policy in step.
+ * The strict request schema one run's `launch_browser` calls are validated against. Keyed off the
+ * prepared build rather than the policy value, so a caller wires one thing and never keeps two
+ * derivations of the policy in step.
  *
  * @param prepared - The run's host-prepared extension build, when it prepared one.
  * @returns The Valibot schema for that run's request shape.
@@ -259,8 +260,10 @@ function launchBrowserDescription(policy: LaunchBrowserSettingsPolicy): string {
     }
     return (
         'Starts a fresh isolated headless Chromium session for live evidence: extension=none for ' +
-        'a control session, extension=prepared with model-selected settings. Returns the ' +
-        'readiness facts every browser tool then uses.'
+        'a control session, extension=prepared with model-selected settings. settings.slice runs ' +
+        'lines firstLine..lastLine of one of the selected lists instead of the whole list ' +
+        "(halving a list once it is found); the answer reports each enabled list's line count " +
+        'in enabledLists. Returns the readiness facts every browser tool then uses.'
     );
 }
 

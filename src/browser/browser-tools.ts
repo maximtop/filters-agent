@@ -811,12 +811,12 @@ export function createBrowserToolHandlers(config: BrowserToolConfig): BrowserToo
         },
 
         /**
-         * Return the accumulated console messages from the session.
+         * Return the accumulated `console`-event messages from the session, with what they cover.
          *
-         * @returns All console messages collected since session start.
+         * @returns The session's console coverage and every message collected since session start.
          */
         async get_console_log() {
-            return { messages: session.getConsoleLog() };
+            return { consoleCoverage: session.consoleCoverage, messages: session.getConsoleLog() };
         },
 
         /**

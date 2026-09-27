@@ -23,14 +23,18 @@ The host performs exactly these steps, in this order, and invents none:
    `{"type": "applySettingsJson", "data": {"json": "<the settings document the host built for this
    phase>"}}`, passing the document exactly as built, so the extension enables exactly the official
    filters the prepared expectation names and its Tracking-protection state. No other filter is
-   added, removed or edited.
+   added, removed or edited. A launch that runs a list slice carries it in the same document, as
+   one trusted custom filter served from the run's own loopback server, while the built-in list it
+   replaces stays off.
 4. Confirm the import landed on exactly the expected filters, and turn off any extra one. A
    successful `applySettingsJson` is not proof on its own: the extension re-enables some filters
    from settings of its own after the import.
     1. Send `{"type": "getOptionsData"}`. Its `filtersMetadata.filters` array carries one entry per
        filter, with a `filterId` and an `enabled` flag.
     2. For every entry whose `enabled` is `true` and whose `filterId` is **not** among the official
-       filter IDs the prepared expectation names, send
+       filter IDs the prepared expectation names — and, for a custom filter (`filterId` 1000 and
+       up, whose id the import allocates), whose `name` is **not** a custom filter title the
+       prepared expectation names — send
        `{"type": "disableFilter", "data": {"filterId": <that filterId>}}`.
     3. Read `getOptionsData` again and repeat step 4.2 while any unexpected filter is still
        enabled, for at most three rounds. No filter is ever switched on here: the import is the only
