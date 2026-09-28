@@ -23,10 +23,6 @@ import {
     requestedSettingsFilterIds,
 } from '../browser/extension-filter-catalog';
 import {
-    canonicalAdGuardSettingsImportUrlSha256,
-    TRUSTED_REPORT_SETTINGS_HOSTS,
-} from '../browser/adguard-settings-import-url';
-import {
     BrowserConfigurationError,
     BrowserLaunchError,
     BrowserSession,
@@ -146,6 +142,7 @@ import {
 import { extractBrowserLaunchSignal } from './browser-launch-signal';
 import { PhaseLabel } from '../types/validation';
 import { withCliExperimentVerdict } from './cli-candidate-experiment';
+import { reporterImportUrlRefusal, reporterSettingsImportUrls } from './reporter-import-url';
 import { SettingsProfileKind } from '../types/settings-profile-kind';
 import {
     isAgentRefusalFallback,
@@ -243,52 +240,6 @@ import {
     launchBaselineSettingsFields,
     launchExtensionBaseline,
 } from './phase-application-launch';
-
-/**
- * Bounded HTTPS URL candidates extracted only to detect explicit reporter settings provenance.
- */
-const REPORT_SETTINGS_URL_PATTERN =
-    /https:\/\/reports\.adguard\.(?:com|info|app)\/[^\s<>"'`)\]]+/giu;
-
-/**
- * Extract canonical digests for explicit AdGuard settings import URLs in prompt-safe issue text.
- *
- * This checks trusted URL provenance and required setting field names, then binds terminal browser
- * evidence to the exact canonical URL bytes. It does not parse or select the reporter's extension
- * version, filter IDs, or Stealth value; the typed browser tool still owns those postconditions.
- *
- * @param issue - Prompt-safe issue exposed to the reasoning model.
- * @returns SHA-256 digests of canonical trusted import URLs found in the issue.
- */
-function reporterSettingsImportUrlDigests(issue: RawIssue): ReadonlySet<string> {
-    const text = [
-        issue.title,
-        issue.body ?? '',
-        ...issue.comments.map((comment) => comment.body),
-    ].join('\n');
-    const digests = new Set<string>();
-    for (const match of text.matchAll(REPORT_SETTINGS_URL_PATTERN)) {
-        try {
-            const url = new URL(match[0].replace(/&amp;/giu, '&'));
-            if (
-                url.protocol === 'https:' &&
-                TRUSTED_REPORT_SETTINGS_HOSTS.has(url.hostname.toLowerCase()) &&
-                url.username.length === 0 &&
-                url.password.length === 0 &&
-                url.port.length === 0 &&
-                url.hash.length === 0 &&
-                url.searchParams.has('product_version') &&
-                url.searchParams.has('regular_filters') &&
-                url.searchParams.has('stealth.enabled')
-            ) {
-                digests.add(canonicalAdGuardSettingsImportUrlSha256(url.href));
-            }
-        } catch {
-            // A malformed reporter URL is model-visible evidence, but cannot require exact parity.
-        }
-    }
-    return digests;
-}
 
 /**
  * Maximum deterministic extension-settings failures allowed for one prompt-safe target.
@@ -2121,7 +2072,7 @@ export class AgentRuntime {
      * @returns Whether trusted prompt-safe reporter text supplies a complete settings import URL.
      */
     private requiresCurrentReporterSettings(): boolean {
-        return reporterSettingsImportUrlDigests(this.options.issue).size > 0;
+        return reporterSettingsImportUrls(this.options.issue).size > 0;
     }
 
     /**
@@ -2164,7 +2115,7 @@ export class AgentRuntime {
         if (!this.isCurrentPreparedState(state)) {
             return false;
         }
-        const expectedImportDigests = reporterSettingsImportUrlDigests(this.options.issue);
+        const expectedImportDigests = reporterSettingsImportUrls(this.options.issue);
         const requestImportDigest =
             state.selectedSettingsProfileKind === SettingsProfileKind.ReportedOnCurrent
                 ? this.reportedOnCurrentImportDigest(state)
@@ -2965,6 +2916,18 @@ export class AgentRuntime {
                 errorKind: 'extension_not_prepared',
                 retryable: true,
             };
+        }
+        if (
+            request.extension === 'prepared' &&
+            request.settings?.kind === SettingsProfileKind.ReportedOnCurrent
+        ) {
+            const importUrlRefusal = reporterImportUrlRefusal(
+                request.settings.importUrl,
+                reporterSettingsImportUrls(this.options.issue),
+            );
+            if (importUrlRefusal) {
+                return importUrlRefusal;
+            }
         }
         const exhaustedBudget = this.technicalBrowserBudgetExhaustion(targetUrl);
         if (exhaustedBudget) {
