@@ -49,6 +49,7 @@ import { BrowserDisplayName } from '../types/browser-display-name';
 import { PhaseLabel } from '../types/validation';
 import { normalizeRulesContent, observedRulesDigest, sha256OfContent } from './rules-content';
 import { type SettingsProfileKind } from '../types/settings-profile-kind';
+import type { SettingsLimitation } from './settings-limitation';
 
 export const MAX_EXTENSION_MANIFEST_BYTES = 2 * 1024 * 1024;
 export const MAX_EXTENSION_RULESET_RESOURCES = 128;
@@ -807,6 +808,12 @@ export type EnvironmentPhaseConfigurationResult =
            * Bounded detail naming the mismatch or the failure the read-back hit.
            */
           detail: string;
+
+          /**
+           * The browser limit that made the expectation unreachable, when the application's credit
+           * diagnosed one.
+           */
+          settingsLimitation?: SettingsLimitation;
 
           /**
            * The session that is live now, when the application replaced the one it was handed

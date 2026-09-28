@@ -21,6 +21,7 @@ import {
     LIST_SLICE_PARAMETERS,
 } from '../agent/tool-catalog';
 import { ToolName } from '../agent/tool-names';
+import { formatIssues } from '../pi/valibot-issues';
 import type { AdGuardExtensionSettingsProfile } from '../browser/adguard-extension-settings';
 import { ExtensionLaunchFamily } from '../environment/extension-launch';
 import type { PreparedExtension } from '../local/prepared-extension';
@@ -43,16 +44,15 @@ const DefaultsSettingsSchema = v.strictObject({
     issueLabels: v.optional(v.array(v.string())),
 });
 
-const ReportSettingsSchema = v.variant('kind', [
-    v.strictObject({
-        kind: v.literal(SettingsProfileKind.ReportExact),
-        importUrl: v.pipe(v.string(), v.url()),
-    }),
-    v.strictObject({
-        kind: v.literal(SettingsProfileKind.ReportedOnCurrent),
-        importUrl: v.pipe(v.string(), v.url()),
-    }),
-]);
+const ReportExactSettingsSchema = v.strictObject({
+    kind: v.literal(SettingsProfileKind.ReportExact),
+    importUrl: v.pipe(v.string(), v.url()),
+});
+
+const ReportedOnCurrentSettingsSchema = v.strictObject({
+    kind: v.literal(SettingsProfileKind.ReportedOnCurrent),
+    importUrl: v.pipe(v.string(), v.url()),
+});
 
 const AgentBrowserProfileSchema = v.strictObject({
     viewport: v.picklist(VIEWPORT_VALUES),
@@ -83,10 +83,14 @@ export const LaunchBrowserSchema = v.variant('extension', [
         extension: v.literal('prepared'),
         targetUrl: v.pipe(v.string(), v.url()),
         profile: AgentBrowserProfileSchema,
-        settings: v.union([
+        // A variant, not a union: Valibot's union reports a branch's own issues only when exactly
+        // one branch fits the type, so a missing required field came back as "Expected Object |
+        // Object". The variant picks the branch by `kind` and names the failing field.
+        settings: v.variant('kind', [
             AgentSelectedSettingsSchema,
             DefaultsSettingsSchema,
-            ReportSettingsSchema,
+            ReportExactSettingsSchema,
+            ReportedOnCurrentSettingsSchema,
         ]),
     }),
 ]);
@@ -268,37 +272,6 @@ function launchBrowserDescription(policy: LaunchBrowserSettingsPolicy): string {
 }
 
 /**
- * One step of a Valibot issue path: the property key the failing value sits under.
- */
-interface RequestValidationPathItem {
-    /**
-     * The property key, as Valibot reports it.
-     */
-    key: unknown;
-}
-
-/**
- * The parts of a Valibot issue the refusal reads.
- */
-interface RequestValidationIssue {
-    /**
-     * The issue's own message, as Valibot phrased it.
-     */
-    message: string;
-
-    /**
-     * What the schema expected at the failing path, as Valibot names it (`never` for a property the
-     * request shape declares absent; null when the action has no expectation to name).
-     */
-    expected?: string | null;
-
-    /**
-     * The path of the failing property, from the request root.
-     */
-    path?: readonly RequestValidationPathItem[];
-}
-
-/**
  * Whether the request paired an unfiltered control session with blocker settings.
  *
  * The control shape declares `settings` as `never`, so Valibot reports the pairing as "Expected
@@ -310,7 +283,7 @@ interface RequestValidationIssue {
  * @param issues - The Valibot issues the request failed with.
  * @returns Whether the failure is `settings` on a control session.
  */
-function pairsControlSessionWithSettings(issues: readonly RequestValidationIssue[]): boolean {
+function pairsControlSessionWithSettings(issues: readonly v.BaseIssue<unknown>[]): boolean {
     return issues.some(
         (issue) => issue.expected === 'never' && issue.path?.[0]?.key === 'settings',
     );
@@ -328,12 +301,11 @@ function pairsControlSessionWithSettings(issues: readonly RequestValidationIssue
  */
 export function launchBrowserRefusal(
     prepared: PreparedExtension | undefined,
-    issues: readonly RequestValidationIssue[],
+    issues: readonly v.BaseIssue<unknown>[],
 ): string {
-    const validationDetail = issues
-        .map((issue) => issue.message)
-        .join('; ')
-        .slice(0, MAX_BROWSER_VALIDATION_DETAIL_LENGTH);
+    // Path-prefixed, so a field that does not belong to the chosen kind is named
+    // (`settings.siteHostname: Invalid key`) rather than left for the model to guess.
+    const validationDetail = formatIssues(issues).slice(0, MAX_BROWSER_VALIDATION_DETAIL_LENGTH);
     if (launchBrowserSettingsPolicy(prepared) === LaunchBrowserSettingsPolicy.DeclaredBaseline) {
         return [
             'Invalid launch_browser request. This run accepts no "settings": the prepared',

@@ -66,6 +66,9 @@ export function projectApplicationResult(
     return {
         kind: EnvironmentPhaseConfigurationOutcome.Unverified,
         detail: result.detail,
+        ...(result.settingsLimitation === undefined
+            ? {}
+            : { settingsLimitation: result.settingsLimitation }),
         ...(session === undefined ? {} : { session }),
     };
 }

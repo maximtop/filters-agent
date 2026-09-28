@@ -22,7 +22,7 @@ import { RuleGuidanceQuerySchema, RuleGuidanceTopicSchema } from '../knowledge/r
 import { MissingInformationEntrySchema } from '../types/missing-information';
 import { ConsentStrategySchema, ViewportSchema } from '../types/repro-profile';
 import { ProblemTypeSchema } from '../types/issue-facts';
-import { SettingsProfileKind } from '../types/settings-profile-kind';
+import { SETTINGS_PROFILE_KIND_VALUES } from '../types/settings-profile-kind';
 import { EXTENSION_MODE_VALUES } from '../types/fix-run-result';
 import { FindingSchema } from '../types/site-analysis';
 import { ToolName } from './tool-names';
@@ -392,31 +392,37 @@ export const LAUNCH_BROWSER_PARAMETERS = v.strictObject({
     extension: v.picklist(EXTENSION_MODE_VALUES),
     targetUrl: v.string(),
     profile: ADVERTISED_BROWSER_PROFILE,
+    // One flat object, not a union of per-kind shapes: a provider validates the call against this
+    // advertisement before the runtime sees it, and a union failed with every branch's errors and no
+    // field named (AdguardFilters #242775). `launchBrowserRequestSchema` holds each kind to its own
+    // fields and names the one that does not belong.
     settings: v.optional(
-        v.union([
-            v.strictObject({
-                kind: v.literal(SettingsProfileKind.AgentSelected),
-                filterIds: v.array(POSITIVE_INTEGER),
-                stealthEnabled: v.boolean(),
-                slice: v.optional(LIST_SLICE_PARAMETERS),
-            }),
-            v.strictObject({
-                kind: v.literal(SettingsProfileKind.DefaultsPlusRequired),
-                requiredFilterIds: v.array(v.pipe(v.number(), v.integer(), v.minValue(1))),
-                reporterImportUrl: v.optional(v.string()),
-                siteHostname: v.optional(v.string()),
-                reportedFilterNames: v.optional(v.array(v.string())),
-                issueLabels: v.optional(v.array(v.string())),
-            }),
-            v.strictObject({
-                kind: v.literal(SettingsProfileKind.ReportExact),
-                importUrl: v.string(),
-            }),
-            v.strictObject({
-                kind: v.literal(SettingsProfileKind.ReportedOnCurrent),
-                importUrl: v.string(),
-            }),
-        ]),
+        v.strictObject({
+            kind: v.picklist(SETTINGS_PROFILE_KIND_VALUES),
+            filterIds: v.optional(
+                v.pipe(v.array(POSITIVE_INTEGER), v.description('agent_selected only.')),
+            ),
+            stealthEnabled: v.optional(v.pipe(v.boolean(), v.description('agent_selected only.'))),
+            slice: v.optional(v.pipe(LIST_SLICE_PARAMETERS, v.description('agent_selected only.'))),
+            requiredFilterIds: v.optional(
+                v.pipe(v.array(POSITIVE_INTEGER), v.description('defaults_plus_required only.')),
+            ),
+            reporterImportUrl: v.optional(
+                v.pipe(v.string(), v.description('defaults_plus_required only.')),
+            ),
+            siteHostname: v.optional(
+                v.pipe(v.string(), v.description('defaults_plus_required only.')),
+            ),
+            reportedFilterNames: v.optional(
+                v.pipe(v.array(v.string()), v.description('defaults_plus_required only.')),
+            ),
+            issueLabels: v.optional(
+                v.pipe(v.array(v.string()), v.description('defaults_plus_required only.')),
+            ),
+            importUrl: v.optional(
+                v.pipe(v.string(), v.description('report_exact and reported_on_current only.')),
+            ),
+        }),
     ),
 });
 

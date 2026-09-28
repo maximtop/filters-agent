@@ -15,8 +15,9 @@ import {
     sha256OfContent,
 } from '../environment/rules-content';
 import { sortListKeys, type FilterListKey } from '../environment/filter-list-ref';
+import { SettingsLimitation } from '../environment/settings-limitation';
 import type { Logger } from '../logger/logger';
-import type { BlockerStateRead } from './blocker-state-readers';
+import type { BlockerStateRead, Mv3RulesLimits } from './blocker-state-readers';
 import {
     ApplicationGoalKind,
     PhaseApplicationOutcomeKind,
@@ -98,6 +99,64 @@ export interface BlockerStateCreditInput {
 }
 
 /**
+ * Render the MV3 counters as `enabled/maximum` pairs for the unverified detail, when the reader
+ * carried them.
+ *
+ * @param limits - The counters the read-back carried, or undefined when it observed only the flag.
+ * @returns The bounded counters sentence, or an empty string without counters.
+ */
+function mv3LimitsCountersDetail(limits: Mv3RulesLimits | undefined): string {
+    if (limits === undefined) {
+        return '';
+    }
+    return (
+        ` Static rulesets enabled/maximum: ${limits.staticFiltersEnabledCount}/` +
+        `${limits.staticFiltersMaximumCount}; static rules enabled/maximum: ` +
+        `${limits.staticRulesEnabledCount}/${limits.staticRulesMaximumCount}.`
+    );
+}
+
+/**
+ * The unverified outcome of a read-back whose enabled set differs from the prepared one while the
+ * extension reports MV3 limits exceeded: the requested set does not fit Chrome's static ruleset
+ * limits, so the outcome names the limitation, how many filters were requested, which ones the
+ * extension kept, and the counters behind the verdict.
+ *
+ * @param input - The credit input carrying the logger and action log.
+ * @param prepared - The prepared enabled set the application was asked to reach.
+ * @param observed - The enabled set the read-back reports.
+ * @returns The unverified outcome marked `SettingsLimitation.Mv3LimitsExceeded`.
+ */
+function judgeMv3LimitsMismatch(
+    input: BlockerStateCreditInput,
+    prepared: readonly FilterListKey[],
+    observed: readonly FilterListKey[],
+): PhaseApplicationResult {
+    const { read, goal, actionLog, logger } = input;
+    const requestedCount = new Set(prepared).size;
+    const keptKeys = sortListKeys([...new Set(observed)]);
+    logger.warn(
+        {
+            goal: goal.kind,
+            requestedCount,
+            preparedKeys: sortListKeys([...prepared]),
+            keptKeys,
+            rulesLimits: read.rulesLimits,
+        },
+        'the requested filter set exceeds the MV3 limits: the extension kept only what Chrome enabled',
+    );
+    return {
+        kind: PhaseApplicationOutcomeKind.Unverified,
+        settingsLimitation: SettingsLimitation.Mv3LimitsExceeded,
+        detail:
+            `The requested filter set exceeds Chrome's MV3 limits: ${requestedCount} filter(s) ` +
+            `were requested and the extension kept only [${keptKeys.join(', ')}] after Chrome ` +
+            `refused the rest.${mv3LimitsCountersDetail(read.rulesLimits)}`,
+        actionLog,
+    };
+}
+
+/**
  * Judge the enabled filter set and Tracking-protection state a matching read-back reports against
  * the prepared expectation, the last step of both goals: the baseline plugs exactly that set back
  * in, and the candidate is applied on top of it. This is the only place the prepared state is
@@ -162,6 +221,14 @@ function judgeEnabledFilterSet(input: BlockerStateCreditInput): PhaseApplication
         };
     }
     if (!sameKeySet(prepared, observed)) {
+        // A mismatch the extension itself reports as MV3 limits exceeded is not an application
+        // that went wrong: Chrome refused the requested static rulesets as a whole, the extension
+        // kept what Chrome accepted and disabled the rest, and no re-application can reach the
+        // prepared set. AdguardFilters#242720 sealed on the bare mismatch detail because the cause
+        // was dropped here before the limits branch below was ever reached.
+        if (read.limitsExceeded === true) {
+            return judgeMv3LimitsMismatch(input, prepared, observed);
+        }
         logger.warn(
             {
                 goal: goal.kind,

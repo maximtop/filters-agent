@@ -6,11 +6,13 @@
  */
 import {
     EnvironmentSelectionReservedCase,
+    FidelityLimitationCode,
     type EnvironmentSelectionHost,
 } from '../environment/environment-selection';
 import { BrowserExtensionExecutorName } from '../environment/executor-name';
 import type { MissingCatalogFilterClassification } from '../environment/third-party-filter-catalog';
 import type { EvidenceRouteSnapshot } from '../local/evidence-route-contract';
+import type { Logger } from '../logger/logger';
 
 /**
  * The official Base filter (ID 2) every CLI evidence route enables, listed first among the
@@ -43,6 +45,37 @@ export function recordExtensionFilterFidelity(
         );
     } catch {
         // A lock that moved on is not worth failing a live session over.
+    }
+}
+
+/**
+ * Publish that the reporter's filter set exceeded the executing browser's MV3 limits, so the run
+ * executed it only in part and its terminal evidence comes from a smaller selection.
+ *
+ * @param environmentHost - The run's environment-selection host the record lands in.
+ * @param detail - The Baseline credit's own diagnosis, naming the requested count, the filters kept
+ *   and the limit counters.
+ * @param logger - The run's logger, so a refused record is visible instead of silent.
+ */
+export function recordMv3LimitsFidelity(
+    environmentHost: EnvironmentSelectionHost,
+    detail: string,
+    logger: Logger,
+): void {
+    try {
+        environmentHost.recordFilterSelectionApproximation(
+            BrowserExtensionExecutorName,
+            "The reporter's filter set does not fit Chrome's MV3 limits, so the run executed a " +
+                `smaller selection. ${detail}`,
+            FidelityLimitationCode.Mv3LimitsApproximation,
+        );
+    } catch (error) {
+        // A lock that moved on is not worth failing a live session over, but a swallowed refusal
+        // is a fidelity record the report will not carry, so it says so in the run log.
+        logger.warn(
+            { err: error, detail },
+            'the MV3-limits fidelity record was refused by the environment-selection host',
+        );
     }
 }
 

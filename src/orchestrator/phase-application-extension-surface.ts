@@ -15,6 +15,7 @@ import type { BrowserContext, Page } from 'playwright-core';
 import type {
     AdGuardExtensionOptionsData,
     AdGuardExtensionStateRead,
+    AdGuardMv3RulesLimitsEvidence,
 } from '../browser/adguard-extension-state-shapes';
 import { DISABLE_STEALTH_SETTING } from '../browser/adguard-extension-settings';
 import { readAdGuardExtensionState as readAdGuardExtensionStateDefault } from '../browser/adguard-extension-state-read';
@@ -27,6 +28,7 @@ import {
     buildExtensionSettingsPayload,
     type ExtensionSettingsPayloadExpectation,
 } from './application-write-channel';
+import type { Mv3RulesLimits } from '../validator/blocker-state-readers';
 import type { AgentRuntimeSessionState } from './agent-runtime-session-evidence';
 import { filterLimitsExceededFor } from './phase-application-wiring';
 import type {
@@ -135,6 +137,21 @@ export async function buildExtensionSettingsPayloadOverDedicatedPage(
 }
 
 /**
+ * The static-ruleset counters of one rules-limits read, for the credit's MV3 diagnosis.
+ *
+ * @param rulesLimits - The complete counters the extension's rules-limits service reported.
+ * @returns The four static counters the credit names in an MV3-limits outcome.
+ */
+function mv3RulesLimitsOf(rulesLimits: AdGuardMv3RulesLimitsEvidence): Mv3RulesLimits {
+    return {
+        staticFiltersEnabledCount: rulesLimits.staticFiltersEnabledCount,
+        staticFiltersMaximumCount: rulesLimits.staticFiltersMaximumCount,
+        staticRulesEnabledCount: rulesLimits.staticRulesEnabledCount,
+        staticRulesMaximumCount: rulesLimits.staticRulesMaximumCount,
+    };
+}
+
+/**
  * Read the prepared extension's complete observable state back over one session context.
  *
  * @param host - The runtime seam the application flow acts through.
@@ -170,6 +187,7 @@ export async function readExtensionBlockerState(
                 ? {
                       activeRulesetFilterIds:
                           stateRead.rulesLimits.actuallyEnabledFilters.map(adguardListKey),
+                      rulesLimits: mv3RulesLimitsOf(stateRead.rulesLimits),
                   }
                 : {}),
             // The requested/options credit alone proves a filter is switched on, never that its

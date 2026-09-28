@@ -1,5 +1,6 @@
 import type { ActionLogEntry } from '../environment/environment-proofs';
 import type { FilterListKey } from '../environment/filter-list-ref';
+import type { SettingsLimitation } from '../environment/settings-limitation';
 import type { Logger } from '../logger/logger';
 import type { ApplicationInstructionRefusal } from '../knowledge/instruction-application';
 import type { BlockerStateRead, BlockerStateReaderRegistry } from './blocker-state-readers';
@@ -348,6 +349,12 @@ export type PhaseApplicationResult =
            * Bounded detail naming the mismatch or the failure the verification hit.
            */
           detail: string;
+
+          /**
+           * The browser limit that made the expectation unreachable, when the credit diagnosed one:
+           * the detail says it in prose, this says it to code.
+           */
+          settingsLimitation?: SettingsLimitation;
 
           /**
            * Host-assembled tool trace of the application session.

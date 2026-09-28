@@ -376,6 +376,13 @@ export const FidelityLimitationCode = {
      * The reported filter selection could not be reproduced exactly.
      */
     FilterSelectionApproximation: 'filter_selection_approximation',
+
+    /**
+     * The reported filter selection exceeds the executing browser's MV3 limits, so the run could
+     * execute it only in part and the terminal evidence comes from a session that selects fewer
+     * filters (AdguardFilters#242720: 52 requested, Chrome allows 50 static rulesets).
+     */
+    Mv3LimitsApproximation: 'mv3_limits_approximation',
 } as const;
 
 /**
@@ -388,6 +395,14 @@ export const FIDELITY_LIMITATION_CODE_VALUES = Object.values(FidelityLimitationC
  */
 export type FidelityLimitationCode =
     (typeof FidelityLimitationCode)[keyof typeof FidelityLimitationCode];
+
+/**
+ * The fidelity codes an executor route reports about what it actually executed; the product and
+ * browser approximations are derived from the reported-versus-actual comparison instead.
+ */
+export type RouteFidelityLimitationCode =
+    | typeof FidelityLimitationCode.FilterSelectionApproximation
+    | typeof FidelityLimitationCode.Mv3LimitsApproximation;
 
 export const FidelityLimitationSchema = v.strictObject({
     code: v.picklist(FIDELITY_LIMITATION_CODE_VALUES),
@@ -1264,24 +1279,28 @@ export class EnvironmentSelectionHost {
      * catalog could not offer is weaker evidence, not a missing capability, and the terminal
      * decision stays available with the gap stated in the report.
      *
+     * One record per code: a relaunch reports the same catalog degradation again and must not
+     * repeat it, while a different limitation of the same run (the set fitting the catalog but not
+     * the browser's MV3 limits) is a second fact the report carries beside the first.
+     *
      * @param kind - Locked environment the approximation belongs to.
      * @param detail - Bounded human-readable description of the difference.
+     * @param code - Which approximation the route reports; the catalog one by default.
      */
-    recordFilterSelectionApproximation(kind: ExecutorName, detail: string): void {
+    recordFilterSelectionApproximation(
+        kind: ExecutorName,
+        detail: string,
+        code: RouteFidelityLimitationCode = FidelityLimitationCode.FilterSelectionApproximation,
+    ): void {
         if (!this.selected || this.selected.selectedKind !== kind) {
             throw new Error(
                 `Filter approximation must name the locked environment ${String(this.selected?.selectedKind)}.`,
             );
         }
-        if (this.routeFidelityLimitations.length > 0) {
+        if (this.routeFidelityLimitations.some((limitation) => limitation.code === code)) {
             return;
         }
-        this.routeFidelityLimitations.push(
-            v.parse(FidelityLimitationSchema, {
-                code: FidelityLimitationCode.FilterSelectionApproximation,
-                detail,
-            }),
-        );
+        this.routeFidelityLimitations.push(v.parse(FidelityLimitationSchema, { code, detail }));
         this.refreshFidelityLimitations();
         this.selected = v.parse(EnvironmentSelectionSnapshotSchema, this.selected);
     }

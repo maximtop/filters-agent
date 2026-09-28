@@ -5,10 +5,7 @@ import type { allowUserScripts as allowUserScriptsDefault } from '../browser/chr
 import type { findExtensionRuntime as findExtensionRuntimeDefault } from '../browser/extension-runtime-location';
 import type { IBrowserSession } from '../browser/browser-interfaces';
 import type { LoopbackTextServer } from '../local/loopback-text-server';
-import type {
-    EnvironmentPhaseConfigurationResult,
-    EnvironmentPhaseStateRead,
-} from '../environment/browser-extension-environment';
+import type { EnvironmentPhaseConfigurationResult } from '../environment/browser-extension-environment';
 import { PromptDocumentName, createPromptDocumentLoader } from '../prompts/prompt-documents';
 import { ApplicationRoute } from '../knowledge/instruction-application-route';
 import type { LoadedInstruction } from '../knowledge/instruction-loader';
@@ -16,6 +13,7 @@ import type { LlmConfig } from '../config/config';
 import type { PiRuntime } from '../pi/runtime';
 import type { RunUsageCollector } from '../pi/usage-collector';
 import type { Logger } from '../logger/logger';
+import type { BlockerStateRead } from '../validator/blocker-state-readers';
 import type { PhaseApplicationRunner } from '../validator/phase-application-contract';
 import type { TraceRecorder } from '../tracer/trace-recorder';
 import type { PolicySessionRelaunch } from '../browser/prepared-extension-launch';
@@ -304,7 +302,7 @@ export interface EnvironmentBlockerStateCapture {
     stateRead: AdGuardExtensionStateRead;
 
     /**
-     * The enriched read mapped onto the adapter's phase-credit shape.
+     * The enriched read mapped onto the phase-credit shape, MV3 counters included.
      */
-    enriched: EnvironmentPhaseStateRead;
+    enriched: BlockerStateRead;
 }

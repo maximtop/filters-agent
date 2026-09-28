@@ -1,6 +1,5 @@
 import { createHash } from 'node:crypto';
 import type { AdGuardExtensionSettingsProfile } from '../browser/adguard-extension-settings';
-import type { AdGuardExtensionStateRead } from '../browser/adguard-extension-state-shapes';
 import { readAdGuardExtensionState as readAdGuardExtensionStateDefault } from '../browser/adguard-extension-state-read';
 import { readBundledFilterCatalogIds } from '../browser/extension-filter-catalog';
 import type { BrowserSession } from '../browser/browser-session';
@@ -17,21 +16,20 @@ import {
     type ExtensionBaselineSettings,
 } from '../environment/browser-extension-environment';
 import { ExtensionLaunchFamily } from '../environment/extension-launch';
-import { adguardListKey, type FilterListKey } from '../environment/filter-list-ref';
-import type { ListSliceFacts } from '../environment/list-slice';
+import { adguardListKey } from '../environment/filter-list-ref';
 import { normalizeRulesContent } from '../environment/rules-content';
 import {
     readPreparedExtensionManifest,
     requireChromiumPreparedExtension,
 } from '../local/prepared-extension';
 import { createLogger, type Logger } from '../logger/logger';
-import type { ApplicationInstructionGap } from '../environment/application-instruction-gap';
 import type { LoadedInstruction } from '../knowledge/instruction-loader';
 import { SettingsProfileKind } from '../types/settings-profile-kind';
 import { PhaseLabel } from '../types/validation';
 import { ApplicationGoalKind } from '../validator/phase-application-contract';
 import type { AgentRuntimeSessionState } from './agent-runtime-session-evidence';
 import { launchFirefoxDeclaredBaseline } from './firefox-launch-baseline';
+import { LaunchBaselineOutcomeKind, type LaunchBaselineOutcome } from './launch-baseline-outcome';
 import { launchListSliceBaseline, ListSliceBaselineOutcomeKind } from './list-slice-baseline';
 import { runApplication } from './phase-application-flow';
 import {
@@ -46,130 +44,9 @@ import { expectedStealthEnabledFor, launchBaselineFilterIds } from './phase-appl
  * concrete Extension environment adapter is built with. Both build on `phase-application-flow.ts`'s
  * `runApplication`, so one procedure credits the launch's Baseline and every between-phases
  * application; a launch with `settings.slice` delegates to `list-slice-baseline.ts` instead.
- * Neither module imports `agent-runtime.ts`; the runtime privates travel in as callbacks.
+ * Neither module imports `agent-runtime.ts`; the runtime privates travel in as callbacks. The
+ * outcome vocabulary and its model-facing projection live in `launch-baseline-outcome.ts`.
  */
-
-/**
- * Kinds one launch Baseline application can end in.
- */
-export const LaunchBaselineOutcomeKind = {
-    /**
-     * The host read the prepared settings back and the Baseline state matched them.
-     */
-    Verified: 'verified',
-
-    /**
-     * The session's baseline is the run instruction's own declaration, credited without a live
-     * state read: the family has none the host can read (32-AFK Decision 3).
-     */
-    Declared: 'declared',
-
-    /**
-     * The instruction's application contract refused before any model turn.
-     */
-    Refused: 'refused',
-
-    /**
-     * The Baseline could not be verified: the steps ran without matching, or the launch could not
-     * run them at all (missing context, failed pre-read, non-convergent set, or an abort).
-     */
-    Unverified: 'unverified',
-} as const;
-
-/**
- * LaunchBaselineOutcomeKind value.
- */
-export type LaunchBaselineOutcomeKind =
-    (typeof LaunchBaselineOutcomeKind)[keyof typeof LaunchBaselineOutcomeKind];
-
-/**
- * Outcome of one prepared session's launch Baseline application.
- */
-export type LaunchBaselineOutcome =
-    | {
-          /**
-           * Discriminator: the host read-back verified the prepared settings.
-           */
-          kind: typeof LaunchBaselineOutcomeKind.Verified;
-
-          /**
-           * The complete host read-back the session's settings record is derived from.
-           */
-          readBack: AdGuardExtensionStateRead;
-
-          /**
-           * What the session reports about the list slice it runs, when its launch requested one.
-           */
-          listSlice?: ListSliceFacts;
-      }
-    | {
-          /**
-           * Discriminator: the baseline is the instruction's own declared list selection.
-           */
-          kind: typeof LaunchBaselineOutcomeKind.Declared;
-
-          /**
-           * The executable list keys the session launched with.
-           */
-          listKeys: readonly FilterListKey[];
-
-          /**
-           * Bounded detail naming what the declaration credited and what it could not observe.
-           */
-          detail: string;
-      }
-    | {
-          /**
-           * Discriminator: the application contract refused before any model turn.
-           */
-          kind: typeof LaunchBaselineOutcomeKind.Refused;
-
-          /**
-           * Stable refusal class recording what the instruction is missing.
-           */
-          gap: ApplicationInstructionGap;
-
-          /**
-           * Bounded detail naming what is missing.
-           */
-          detail: string;
-      }
-    | {
-          /**
-           * Discriminator: the Baseline did not verify.
-           */
-          kind: typeof LaunchBaselineOutcomeKind.Unverified;
-
-          /**
-           * Bounded detail naming the mismatch or the failure that prevented a verification.
-           */
-          detail: string;
-      };
-
-/**
- * Project one launch Baseline outcome's model-facing failure fields.
- *
- * A refused contract carries its stable gap beside the bounded detail; an unverified Baseline
- * carries the detail alone. The verified outcome contributes nothing, so the launch result only
- * names what did not verify.
- *
- * @param outcome - The Baseline outcome, or undefined when no Baseline ran (an unfiltered launch).
- * @returns The named fields to spread into the launch result.
- */
-export function launchBaselineSettingsFields(
-    outcome: LaunchBaselineOutcome | undefined,
-): Record<string, unknown> {
-    if (outcome === undefined || outcome.kind === LaunchBaselineOutcomeKind.Verified) {
-        return {};
-    }
-    return {
-        ...(outcome.kind === LaunchBaselineOutcomeKind.Refused ? { settingsGap: outcome.gap } : {}),
-        ...(outcome.kind === LaunchBaselineOutcomeKind.Declared
-            ? { settingsEnabledLists: [...outcome.listKeys] }
-            : {}),
-        settingsDetail: outcome.detail,
-    };
-}
 
 /**
  * Degrade one expected filter set onto the filter IDs the prepared build actually carries.
@@ -411,15 +288,22 @@ export async function launchExtensionBaseline(
     ) {
         // The baseline session must end with exactly the requested filter set and no user rule;
         // anything else leaves settingsVerified false, and the model learns the detail.
+        const unverified =
+            result.kind === EnvironmentPhaseConfigurationOutcome.Unverified ? result : undefined;
         const detail =
-            result.kind === EnvironmentPhaseConfigurationOutcome.Unverified
-                ? result.detail
-                : 'The launch Baseline application ran but left user rules in the baseline state.';
+            unverified?.detail ??
+            'The launch Baseline application ran but left user rules in the baseline state.';
         logger.warn(
-            { outcome: result.kind, detail },
+            { outcome: result.kind, detail, settingsLimitation: unverified?.settingsLimitation },
             'the launch Baseline application did not verify the prepared settings',
         );
-        return { kind: LaunchBaselineOutcomeKind.Unverified, detail };
+        return {
+            kind: LaunchBaselineOutcomeKind.Unverified,
+            detail,
+            ...(unverified?.settingsLimitation === undefined
+                ? {}
+                : { settingsLimitation: unverified.settingsLimitation }),
+        };
     }
     logger.info(
         {

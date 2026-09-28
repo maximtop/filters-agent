@@ -15,6 +15,37 @@ import type { BlockerVerificationDeclaration } from '../knowledge/instruction-ap
  */
 
 /**
+ * The MV3 static-ruleset counters the extension's rules-limits service reports, as the read-back
+ * carries them for the credit's diagnosis. Chrome bounds both the number of enabled static rulesets
+ * and their total rule count; the counters name what is enabled against each bound, so an
+ * unverified outcome can say how far the requested set overshoots.
+ *
+ * The extension produced these numbers and the host read them over its own message surface, so they
+ * are carried as read, never re-validated here.
+ */
+export interface Mv3RulesLimits {
+    /**
+     * Static rulesets (filters) Chrome currently has enabled.
+     */
+    staticFiltersEnabledCount: number;
+
+    /**
+     * Static rulesets Chrome allows enabled at once.
+     */
+    staticFiltersMaximumCount: number;
+
+    /**
+     * Static rules the enabled rulesets currently contribute.
+     */
+    staticRulesEnabledCount: number;
+
+    /**
+     * Static rules Chrome allows across the enabled rulesets.
+     */
+    staticRulesMaximumCount: number;
+}
+
+/**
  * The blocker state the host read back after the application steps.
  *
  * Arm fields are optional because the three verification methods observe different state families:
@@ -61,6 +92,12 @@ export interface BlockerStateRead {
      * runtime).
      */
     limitsExceeded?: boolean;
+
+    /**
+     * The MV3 static-ruleset counters behind `limitsExceeded`, when the reader can observe them, so
+     * an unverified credit names how far the requested set overshoots the limits.
+     */
+    rulesLimits?: Mv3RulesLimits;
 }
 
 /**

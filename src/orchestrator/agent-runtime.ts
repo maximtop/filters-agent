@@ -143,6 +143,7 @@ import { extractBrowserLaunchSignal } from './browser-launch-signal';
 import { PhaseLabel } from '../types/validation';
 import { withCliExperimentVerdict } from './cli-candidate-experiment';
 import { reporterImportUrlRefusal, reporterSettingsImportUrls } from './reporter-import-url';
+import { ReporterSettingsLimits } from './reporter-settings-limits';
 import { SettingsProfileKind } from '../types/settings-profile-kind';
 import {
     isAgentRefusalFallback,
@@ -235,11 +236,10 @@ import {
 } from './firefox-environment-wiring';
 import type { FirefoxExtensionEnvironmentOptions } from '../environment/firefox-extension-environment';
 import {
-    LaunchBaselineOutcomeKind,
     buildBrowserExtensionEnvironmentOptions,
-    launchBaselineSettingsFields,
     launchExtensionBaseline,
 } from './phase-application-launch';
+import { LaunchBaselineOutcomeKind, launchBaselineSettingsFields } from './launch-baseline-outcome';
 
 /**
  * Maximum deterministic extension-settings failures allowed for one prompt-safe target.
@@ -1121,6 +1121,12 @@ export class AgentRuntime {
     private latestVerifiedSettingsSessionId?: string;
 
     /**
+     * Whether a launch with the reporter's own settings proved that their filter set exceeds the
+     * MV3 limits, waiving reporter parity for the terminal decision.
+     */
+    private readonly reporterSettingsLimits: ReporterSettingsLimits;
+
+    /**
      * Most recent typed launch or configuration failure.
      */
     private lastBrowserError?: AgentBrowserError;
@@ -1259,6 +1265,11 @@ export class AgentRuntime {
         this.listCatalog = listCatalog;
         this.environmentHost = executorWiring.environmentHost;
         this.executors = executorWiring.executors;
+        this.reporterSettingsLimits = new ReporterSettingsLimits(
+            reporterSettingsImportUrls(options.issue),
+            this.environmentHost,
+            createLogger({ verbose: options.verbose ?? false }),
+        );
         this.hostStateRoot = createRunHostStateRoot();
         createLogger({ verbose: options.verbose ?? false }).info(
             { hostStateRoot: this.hostStateRoot.path, checkoutPath: options.filtersPath },
@@ -2069,10 +2080,14 @@ export class AgentRuntime {
     /**
      * Determine whether this run requires exact reporter settings at termination.
      *
-     * @returns Whether trusted prompt-safe reporter text supplies a complete settings import URL.
+     * @returns Whether trusted prompt-safe reporter text supplies a complete settings import URL
+     *   and no launch has yet proven that its filter set cannot run within the MV3 limits.
      */
     private requiresCurrentReporterSettings(): boolean {
-        return reporterSettingsImportUrls(this.options.issue).size > 0;
+        return (
+            reporterSettingsImportUrls(this.options.issue).size > 0 &&
+            !this.reporterSettingsLimits.parityProvenImpossible()
+        );
     }
 
     /**
@@ -2105,8 +2120,8 @@ export class AgentRuntime {
      *
      * Controlled profiles remain useful diagnostics. When the reporter supplied an explicit
      * settings import, only a prepared session whose request profile is `reported_on_current` with
-     * that same import provides reporter parity; without an import URL every verified prepared
-     * session qualifies.
+     * that same import provides reporter parity; without an import URL — or once a launch proved
+     * the reporter's set exceeds the MV3 limits — every verified prepared session qualifies.
      *
      * @param state - Prepared browser session being considered for terminal evidence.
      * @returns Whether the prepared extension and required settings provenance are both verified.
@@ -2122,6 +2137,7 @@ export class AgentRuntime {
                 : undefined;
         return (
             expectedImportDigests.size === 0 ||
+            this.reporterSettingsLimits.parityProvenImpossible() ||
             (requestImportDigest !== undefined && expectedImportDigests.has(requestImportDigest))
         );
     }
@@ -3113,6 +3129,10 @@ export class AgentRuntime {
                           signal,
                       )
                     : undefined;
+            this.reporterSettingsLimits.recordLaunchOutcome(
+                sessionState.settingsProfile,
+                baselineOutcome,
+            );
             const browserRegistry = await this.createSessionBrowserRegistry(
                 createdSession,
                 targetUrl,
