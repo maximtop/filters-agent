@@ -69,7 +69,7 @@ function buildResolveProbe(
     if (input.selector) {
         try {
             match = document.querySelector(input.selector);
-            if (match) matchedBy = TargetMatchedBy.Selector;
+            if (match) matchedBy = ${JSON.stringify(TargetMatchedBy.Selector)};
         } catch (_) {
             // An invalid selector is an unmatched hint, not a technical failure.
         }
@@ -87,7 +87,7 @@ function buildResolveProbe(
             return String(left.textContent || '').length - String(right.textContent || '').length;
         });
         match = candidates[0] || null;
-        if (match) matchedBy = TargetMatchedBy.TextHint;
+        if (match) matchedBy = ${JSON.stringify(TargetMatchedBy.TextHint)};
     }
     if (!match) {
         return {

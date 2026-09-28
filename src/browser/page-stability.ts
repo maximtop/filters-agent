@@ -460,7 +460,7 @@ function buildTargetScrollProbe(
     if (input.selector) {
         try {
             match = document.querySelector(input.selector);
-            if (match) matchedBy = TargetMatchedBy.Selector;
+            if (match) matchedBy = ${JSON.stringify(TargetMatchedBy.Selector)};
         } catch (_) {
             // Invalid selectors are unmatched hints, not technical failures.
         }
@@ -476,7 +476,7 @@ function buildTargetScrollProbe(
             return String(left.textContent || '').length - String(right.textContent || '').length;
         });
         match = candidates[0] || null;
-        if (match) matchedBy = TargetMatchedBy.TextHint;
+        if (match) matchedBy = ${JSON.stringify(TargetMatchedBy.TextHint)};
     }
     if (!match) {
         return { marker: marker, requested: true, found: false, scrolled: false };
