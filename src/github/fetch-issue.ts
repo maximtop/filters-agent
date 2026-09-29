@@ -75,13 +75,42 @@ interface GithubIssueCommentIdentity {
  * @returns True when the comment may enter the agent prompt.
  */
 function isPromptSafeIssueComment(comment: GithubIssueCommentIdentity): boolean {
-    const login = (comment.user?.login ?? '').trim().toLowerCase();
-    const isBot =
-        (comment.user?.type ?? '').toLowerCase() === 'bot' ||
-        login.endsWith('[bot]') ||
-        DEFAULT_BOT_LOGINS.has(login);
     const body = comment.body ?? '';
-    return !isBot && !PROMPT_EXCLUDED_COMMENT_MARKERS.some((marker) => body.includes(marker));
+    return (
+        !isGithubBotAccount(comment.user ?? {}) &&
+        !PROMPT_EXCLUDED_COMMENT_MARKERS.some((marker) => body.includes(marker))
+    );
+}
+
+/**
+ * Login and account type of one GitHub account, as GitHub reports them.
+ */
+export interface GithubAccountIdentity {
+    /**
+     * Stable GitHub login.
+     */
+    login?: string | null;
+
+    /**
+     * GitHub account classification (`User`, `Bot`).
+     */
+    type?: string | null;
+}
+
+/**
+ * Recognize an automation account: GitHub's `Bot` type, the conventional `[bot]` suffix, or one of
+ * the historical automation logins that carry neither.
+ *
+ * @param account - Login and account type as GitHub reports them.
+ * @returns True when the account is automation rather than a person.
+ */
+export function isGithubBotAccount(account: GithubAccountIdentity): boolean {
+    const login = (account.login ?? '').trim().toLowerCase();
+    return (
+        (account.type ?? '').toLowerCase() === 'bot' ||
+        login.endsWith('[bot]') ||
+        DEFAULT_BOT_LOGINS.has(login)
+    );
 }
 
 /**
