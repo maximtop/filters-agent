@@ -103,7 +103,8 @@ export interface NormalizeTrustedPngCaptureOptions {
     proofId: string;
 
     /**
-     * Pixel regions replaced before deterministic re-encoding.
+     * Pixel regions replaced before deterministic re-encoding. Empty when the capture is of the
+     * run's own clean browser on a public page and holds no reporter pixels.
      */
     regions: readonly PixelRedactionRegion[];
 }
@@ -277,8 +278,7 @@ function normalizePng(
         channels === 0 ||
         header[10] !== 0 ||
         header[11] !== 0 ||
-        header[12] !== 0 ||
-        regions.length === 0
+        header[12] !== 0
     ) {
         throw new LocalPublicationTrustError('invalid_image_proof');
     }

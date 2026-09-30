@@ -23,6 +23,7 @@ import {
     writeLocalPublicationSanitizationFailure,
     type LocalPublicationOutcome,
 } from './evidence-publication';
+import { buildCandidateScreenshotCaptures } from './candidate-screenshot-captures';
 import { LocalPublicationTrustError } from './local-publication-trust';
 import { verifyLocalPublication } from './local-publication-verifier';
 import type { PreparedFiltersCheckout } from './filters-preparer';
@@ -149,6 +150,11 @@ export function publishVerifiedLocalResult(
     publisher: typeof publishLocalRun,
 ): LocalRunOutputPaths {
     const candidateBinding = bindReviewCandidate(record.result.candidatePatch, source, record);
+    const collectionDir = join(collection.workDir, 'artifacts');
+    const trustedCaptures = buildCandidateScreenshotCaptures(
+        record.result.artifactPaths.verifiedCandidateScreenshots,
+        collectionDir,
+    );
     let publication: LocalPublicationOutcome;
     try {
         publication = publisher({
@@ -156,7 +162,8 @@ export function publishVerifiedLocalResult(
             record,
             source,
             candidateBinding,
-            collectionDir: join(collection.workDir, 'artifacts'),
+            collectionDir,
+            trustedCaptures,
             outputRoot: outputDir,
             agentRunArtifacts,
             llmUsage,
