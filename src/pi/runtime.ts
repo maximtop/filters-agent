@@ -2,6 +2,7 @@ import { InMemoryCredentialStore, type Api, type Model } from '@earendil-works/p
 import { ModelRuntime } from '@earendil-works/pi-coding-agent';
 import type { LlmConfig } from '../config/config';
 import type { ProviderRouting } from '../config/provider-routing';
+import { installHttpTransport } from './http-transport';
 
 /**
  * Pi runtime setup: turn application provider configuration into a ready pi model runtime — the
@@ -349,6 +350,8 @@ function resolveModel(
  * @returns The runtime with both model handles resolved.
  */
 export async function createPiRuntime(config: PiRuntimeConfig): Promise<PiRuntime> {
+    // Before any request: every mode reaches the network only through a runtime created here.
+    installHttpTransport();
     const modelRuntime = await ModelRuntime.create({
         modelsPath: null,
         credentials: new InMemoryCredentialStore(),
