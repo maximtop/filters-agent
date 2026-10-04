@@ -8,7 +8,7 @@
  * revision marker — stays exactly the public engine's own; only the investigation seam is wrapped.
  * The action and the lab CLI build their `runIssue` seam here, so the two never drift.
  */
-import { rmSync } from 'node:fs';
+import { mkdirSync, rmSync } from 'node:fs';
 import { runDefaultSingleIssue } from '../entry/single-issue-run';
 import type {
     DefaultSingleIssueRequest,
@@ -77,6 +77,10 @@ export function createAdguardCliRunIssue(
     const createEvidenceRoute = createProductionEvidenceRouteFactory(workspaceRoot, desktopEngine);
 
     return async (request: DefaultSingleIssueRequest): Promise<DefaultSingleIssueResult> => {
+        // The reservation resolves every forbidden root, and the action hands over an artifacts
+        // path the entry has not created yet; creating it here, with the entry's own mode, lets
+        // the overlap check see it.
+        mkdirSync(request.artifactsDir, { recursive: true, mode: 0o700 });
         const privateCycleRoot = reservePrivateRoot([workspaceRoot, request.artifactsDir]);
         const installationHost = createInstallationHost({
             privateCycleRoot,
