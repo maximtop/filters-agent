@@ -172,7 +172,8 @@ export async function runAgenticFixCore(
         runId: randomUUID(),
         issueNumber,
         mode: RunMode.Fix,
-        exactSecrets: [config.llm.apiKey],
+        // The base URL is a secret too where a gateway carries its credential in the address.
+        exactSecrets: [config.llm.apiKey, config.llm.baseUrl],
     });
     if (!reportedUrl || !config.repositoryPath || !options.agentRuntime) {
         const tracePath = persistTrace(recorder.end('failed'), options.artifactsDir);

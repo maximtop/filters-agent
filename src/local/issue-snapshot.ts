@@ -156,21 +156,6 @@ export interface LocalCommentIdentity {
 }
 
 /**
- * Trusted issue coordinates used when an upstream snapshot is attached to a lab mirror.
- */
-export interface LocalIssueIdentity {
-    /**
-     * Positive issue number in the destination repository.
-     */
-    number: number;
-
-    /**
-     * Canonical HTTPS URL of the destination issue.
-     */
-    url: string;
-}
-
-/**
  * Explicit exclusions supplied while converting raw issue history into reporter context.
  */
 export interface ReporterCommentFilterOptions {
@@ -767,39 +752,4 @@ export function loadLocalIssueSnapshot(snapshotPath: string): LocalIssueSnapshot
         }
     }
     return snapshot;
-}
-
-/**
- * Rebind a portable snapshot to a trusted destination issue without changing reporter evidence.
- *
- * This operates on the still-portable JSON representation before the loader expands attachment
- * paths to absolute paths. It therefore preserves attachment portability and every recorded SHA-256
- * while changing only the number and URL used by the fix runner and publisher.
- *
- * @param snapshotPath - Portable `issue.json` produced by the trusted exporter.
- * @param identity - Destination lab issue number and URL.
- */
-export function rebindLocalIssueSnapshotIdentity(
-    snapshotPath: string,
-    identity: LocalIssueIdentity,
-): void {
-    let source: unknown;
-    try {
-        source = JSON.parse(readFileSync(snapshotPath, 'utf8')) as unknown;
-    } catch (error) {
-        throw new Error(
-            `Unable to read local issue snapshot ${snapshotPath}: ${(error as Error).message}`,
-            { cause: error },
-        );
-    }
-    const snapshot = v.parse(LocalIssueSnapshotSchema, source);
-    const rebound = v.parse(LocalIssueSnapshotSchema, {
-        ...snapshot,
-        rawIssue: {
-            ...snapshot.rawIssue,
-            number: identity.number,
-            url: identity.url,
-        },
-    });
-    writeFileSync(snapshotPath, `${JSON.stringify(rebound, null, 2)}\n`, 'utf8');
 }

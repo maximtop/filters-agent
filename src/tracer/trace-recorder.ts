@@ -255,21 +255,4 @@ export class TraceRecorder {
         }
         return trace;
     }
-
-    /**
-     * Human-readable one-line summary of the run.
-     *
-     * Includes mode, issue number, event count, total tokens, and either the outcome (when ended)
-     * or an "(in progress)" marker.
-     *
-     * @returns A compact summary string.
-     */
-    getDetail(): string {
-        const eventCount = this.events.length;
-        const totalTokens = this.tokenTotals.totalTokens;
-        if (this.outcome !== undefined) {
-            return `[${this.mode} #${this.issueNumber}] ${eventCount} events, ${totalTokens} tokens — outcome: ${this.outcome}`;
-        }
-        return `[${this.mode} #${this.issueNumber}] ${eventCount} events, ${totalTokens} tokens (in progress)`;
-    }
 }

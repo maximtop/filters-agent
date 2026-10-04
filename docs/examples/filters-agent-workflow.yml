@@ -27,6 +27,13 @@ permissions:
     contents: read
     issues: write
 
+# Needed only with the AdGuard CLI executor (see `executors` below): each run activates the licence
+# on one device and resets it at the end, so one run at a time keeps the licence within its device
+# limit. Queued runs wait instead of being cancelled.
+# concurrency:
+#     group: filters-agent-adguard-cli
+#     cancel-in-progress: false
+
 jobs:
     analyze:
         # Manual dispatch always runs; an issue event runs only for the label this workflow owns.
@@ -63,6 +70,11 @@ jobs:
                   # OpenRouter-compatible gateway takes as the request's provider object, to route
                   # around an upstream provider that is faulting.
                   # llmProviderRouting: '{"ignore":["Together"]}'
+                  # Optional: which blockers verify the rule. Unset runs the browser extension alone;
+                  # adguard_cli adds AdGuard CLI as a filtering proxy and needs an AdGuard licence
+                  # key as a secret, plus the concurrency block above.
+                  # executors: browser_extension,adguard_cli
+                  # adguardLicenseKey: ${{ secrets.ADGUARD_LICENSE_KEY }}
                   # The label event carries the issue number directly; a manual dispatch carries it
                   # as the issueNumber input instead.
                   issueNumber: ${{ github.event.issue.number || inputs.issueNumber }}

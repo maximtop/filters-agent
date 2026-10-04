@@ -175,41 +175,6 @@ async function readUserRulesContent(
 }
 
 /**
- * Read the exact user-rule bundle the extension currently persists, with the MV3 counters.
- *
- * This is the user-rules read-back of Decision 1: the host reads the state itself over the
- * extension's message transport and returns the exact content, its digest, and the counters, so the
- * caller compares the state against the expected content byte for byte.
- *
- * @param context - Persistent Chromium context containing the prepared AdGuard extension.
- * @param expectedManifestVersion - Manifest generation verified from the extension build.
- * @param readiness - Optional wall-clock budget override for the bounded readiness waits.
- * @param hints - Profile and extension paths used for Preferences-based MV2 discovery.
- * @returns The observed user-rules state with the runtime counters.
- */
-export async function readAdGuardUserRules(
-    context: BrowserContext,
-    expectedManifestVersion: ExtensionManifestVersion = ExtensionManifestVersion.Mv3,
-    readiness?: ExtensionReadinessOptions,
-    hints?: ExtensionRuntimeHints,
-): Promise<AdGuardUserRulesStateRead> {
-    const readinessDeadlineAt = Date.now() + (readiness?.budgetMs ?? DEFAULT_READINESS_BUDGET_MS);
-    const { runtime, page } = await openOptionsPage(context, expectedManifestVersion, hints);
-
-    try {
-        await waitForAppInitialized(page, readinessDeadlineAt);
-        const userRules = await readUserRulesContent(page, readinessDeadlineAt);
-        const rulesLimits =
-            runtime.manifestVersion === ExtensionManifestVersion.Mv3
-                ? await readRulesLimits(page, readinessDeadlineAt)
-                : null;
-        return { ...userRules, manifestVersion: runtime.manifestVersion, rulesLimits };
-    } finally {
-        await page.close();
-    }
-}
-
-/**
  * Read the complete observable state of the prepared extension for the host read-back.
  *
  * This is the `extension-state` verification surface of Decision 1: the options settings, the exact

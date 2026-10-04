@@ -120,29 +120,3 @@ export const RuleMatchSchema = v.object({
     section: v.optional(v.string()),
 });
 export type RuleMatch = v.InferOutput<typeof RuleMatchSchema>;
-
-/**
- * The rules text of a requested filter section, returned by get_filter_section.
- */
-export const FilterSectionContentSchema = v.object({
-    /**
-     * Filter name of the resolved section.
-     */
-    filter: v.pipe(v.string(), v.minLength(1)),
-
-    /**
-     * Section name that was resolved.
-     */
-    section: v.pipe(v.string(), v.minLength(1)),
-
-    /**
-     * Absolute path to the file containing the section.
-     */
-    filePath: v.pipe(v.string(), v.minLength(1)),
-
-    /**
-     * The raw rule lines in the section (excluding comment headers).
-     */
-    rules: v.array(v.pipe(v.string(), v.minLength(1))),
-});
-export type FilterSectionContent = v.InferOutput<typeof FilterSectionContentSchema>;

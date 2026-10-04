@@ -29,6 +29,8 @@ import {
     REPOSITORY_PATH_VAR,
 } from '../config/repository-identity';
 import type { AgentRunInputSources } from '../entry/entry-inputs';
+import { BrowserExtensionExecutorName } from '../environment/executor-name';
+import { ADGUARD_LICENSE_KEY_ENV } from '../adguard-cli/adguard-cli-proxy';
 import { GITHUB_WORKSPACE_VAR, workspaceArtifactsDefault } from './container-context';
 
 /**
@@ -180,6 +182,12 @@ const AgentActionInputName = {
      * whose own limit is below the default, so a distinct vision model usually needs this one.
      */
     llmVisionMaxOutputTokens: 'llmVisionMaxOutputTokens',
+
+    /**
+     * The `adguardLicenseKey` input; lands in the `ADGUARD_LICENSE_KEY` environment variable the
+     * AdGuard CLI executor activates the CLI with. Only a run that enables that executor reads it.
+     */
+    adguardLicenseKey: 'adguardLicenseKey',
 } as const;
 
 /**
@@ -204,6 +212,7 @@ const AGENT_ACTION_INPUT_ENV_VAR: Partial<Record<AgentActionInputName, string>> 
     [AgentActionInputName.llmContextWindowTokens]: LLM_CONTEXT_WINDOW_TOKENS_VAR,
     [AgentActionInputName.llmMaxOutputTokens]: LLM_MAX_OUTPUT_TOKENS_VAR,
     [AgentActionInputName.llmVisionMaxOutputTokens]: LLM_VISION_MAX_OUTPUT_TOKENS_VAR,
+    [AgentActionInputName.adguardLicenseKey]: ADGUARD_LICENSE_KEY_ENV,
 };
 
 /**
@@ -388,7 +397,11 @@ export function mapAgentRunSources(
         backlogWallClockBudgetMs: numericActionInput(
             readActionInput(actionEnv, AgentActionInputName.backlogWallClockBudgetMs),
         ),
-        executors: readActionInput(actionEnv, AgentActionInputName.executors),
+        // The action registers executors a workflow opts into (the AdGuard CLI needs a licence),
+        // so an unset input locks the browser extension alone instead of every registration.
+        executors:
+            readActionInput(actionEnv, AgentActionInputName.executors) ??
+            BrowserExtensionExecutorName,
         instructionPath: readActionInput(actionEnv, AgentActionInputName.instructionPath),
         artifactsDir: artifactsDirSource(actionEnv, workspaceDir),
         model: readActionInput(actionEnv, AgentActionInputName.model),

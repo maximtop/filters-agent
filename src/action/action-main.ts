@@ -18,14 +18,22 @@ import {
     statSync,
     type Stats,
 } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { binaryInfo } from 'cloakbrowser';
+import { createAdguardCliRunIssue } from '../adguard-cli/adguard-cli-run-issue';
+import { AdguardCliExecutorName } from '../adguard-cli/executor-name';
+// Side-effect import: joins the AdGuard CLI executor to the registry the inputs are checked
+// against, so a workflow can name it; an unset `executors` input still locks the extension alone.
+import '../adguard-cli/filtering-executor';
 import { ConfigError } from '../config/config-error';
 import {
     AgentEntryExitCode,
     AgentEntryStatus,
     runFiltersAgentEntry,
+    type AgentEntryDependencies,
     type AgentEntryResult,
 } from '../entry/entry-run';
 import type { AgentRunInputs } from '../entry/entry-inputs';
@@ -133,6 +141,35 @@ export interface AgentActionDependencies {
      * appends to the file named by `GITHUB_OUTPUT` when the runner set it.
      */
     outputSink?: (line: string) => void;
+}
+
+/**
+ * Prefix of the temp directory a run enabling the AdGuard CLI executor uses as its workspace root:
+ * the filter cache lives there, outside the analyzed checkout.
+ */
+const CLI_RUN_WORKSPACE_PREFIX = 'filters-agent-cli-workspace-';
+
+/**
+ * Build the entry dependencies one action run needs. A run that enables the AdGuard CLI executor
+ * gets the per-issue seam that wires the CLI's installation host and evidence route into every
+ * investigation; any other run keeps the entry's own default seams.
+ *
+ * @param executors - Executor names the run locks.
+ * @param runEnv - Run environment with the action inputs merged in, carrying the CLI path and the
+ *   licence.
+ * @param createRunIssue - Factory of the AdGuard CLI-wired per-issue seam.
+ * @returns Entry dependencies for the run.
+ */
+export function actionEntryDependencies(
+    executors: readonly string[] | undefined,
+    runEnv: Readonly<Record<string, string | undefined>>,
+    createRunIssue: typeof createAdguardCliRunIssue = createAdguardCliRunIssue,
+): AgentEntryDependencies {
+    if (!executors?.includes(AdguardCliExecutorName)) {
+        return {};
+    }
+    const workspaceRoot = mkdtempSync(join(tmpdir(), CLI_RUN_WORKSPACE_PREFIX));
+    return { runIssue: createRunIssue(workspaceRoot, { ...runEnv }) };
 }
 
 /**
@@ -314,15 +351,17 @@ export async function runFiltersAgentAction(
     const env = dependencies.env ?? process.env;
     let inputs: AgentRunInputs;
     let workspaceDir: string;
+    let runEnv: Readonly<Record<string, string | undefined>>;
     try {
         // The binding requires the runner's workspace before anything else: the whole face anchors
         // its paths on it, so its absence fails named ahead of the resolver's combined problems.
         const binding = mapAgentRunSources(env);
         workspaceDir = binding.workspaceDir;
-        inputs = resolveAgentRunInputs(
-            { ...env, ...binding.envAdditions },
-            { ...binding.sources, knownExecutorNames: filteringExecutors.names() },
-        );
+        runEnv = { ...env, ...binding.envAdditions };
+        inputs = resolveAgentRunInputs(runEnv, {
+            ...binding.sources,
+            knownExecutorNames: filteringExecutors.names(),
+        });
     } catch (error) {
         if (error instanceof ConfigError) {
             reportActionFailure(error.message);
@@ -350,7 +389,14 @@ export async function runFiltersAgentAction(
     let entryThrew = false;
     let handoverFailed = false;
     try {
-        result = await (dependencies.runEntry ?? runFiltersAgentEntry)(inputs);
+        result = await (
+            dependencies.runEntry ??
+            ((runInputs: AgentRunInputs) =>
+                runFiltersAgentEntry(
+                    runInputs,
+                    actionEntryDependencies(runInputs.executors, runEnv),
+                ))
+        )(inputs);
     } catch (error) {
         // Recorded, not reported or published here: the `finally` still has to hand the partial
         // tree over, and the failure outputs must only point the upload step at a tree that came

@@ -1,11 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type {
-    PlacementMap,
-    SearchQuery,
-    RuleMatch,
-    FilterSectionContent,
-} from '../types/repo-context';
+import type { PlacementMap, SearchQuery, RuleMatch } from '../types/repo-context';
 import { RuleKind, normalizeRule, type NormalizedRule } from './rule-normalizer';
 import { matchesQuery } from './rule-matcher';
 import { domainScopeCovers, domainScopeSearchTerms, isEntityScope } from './domain-scope';
@@ -268,41 +263,4 @@ export function searchRules(
             a.match.line - b.match.line,
     );
     return rankedResults.map(({ match }) => match);
-}
-
-/**
- * Return the rule lines of a specific filter section.
- *
- * @param filter - The filter name to look up.
- * @param section - The section name to look up.
- * @param map - The placement map for the checkout.
- * @param checkoutPath - Absolute path to the checkout root.
- * @returns The section's rule lines (excluding comment headers).
- */
-export function getFilterSection(
-    filter: string,
-    section: string,
-    map: PlacementMap,
-    checkoutPath: string,
-): FilterSectionContent {
-    const file = map.files.find((f) => f.filter === filter);
-    if (!file) {
-        throw new Error(`Filter not found: ${filter}`);
-    }
-    const sect = file.sections.find((s) => s.name === section);
-    if (!sect) {
-        throw new Error(`Section not found: ${filter}/${section}`);
-    }
-    const absPath = join(checkoutPath, file.relativePath);
-    const lines = readFileSync(absPath, 'utf8').split(/\r?\n/);
-    const rules = lines
-        .slice(sect.startLine - 1, sect.endLine)
-        .map((l) => l.trim())
-        .filter((l) => l.length > 0 && !l.startsWith('!'));
-    return {
-        filter,
-        section,
-        filePath: absPath,
-        rules,
-    };
 }

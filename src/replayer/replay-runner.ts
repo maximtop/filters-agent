@@ -152,7 +152,8 @@ export async function runReplay(
             runId,
             issueNumber,
             mode: RunMode.Replay,
-            exactSecrets: [config.llm.apiKey],
+            // The base URL is a secret too where a gateway carries its credential in the address.
+            exactSecrets: [config.llm.apiKey, config.llm.baseUrl],
         });
 
         // One pi runtime per run: the bootstrap client and the replay session share this instance.

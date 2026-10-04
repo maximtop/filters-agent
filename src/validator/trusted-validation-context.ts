@@ -31,36 +31,6 @@ export interface TrustedValidationContext {
 }
 
 /**
- * Model-selected candidate data bound to immutable browser-validation inputs.
- */
-export interface TrustedValidationRequest {
-    /**
-     * Exact reported URL supplied by the trusted context.
-     */
-    url: string;
-
-    /**
-     * Candidate filter rule proposed by the model.
-     */
-    candidateRule: string;
-
-    /**
-     * Copy of the canonical repository rule baseline.
-     */
-    existingRules: string[];
-
-    /**
-     * SHA-256 hash identifying the canonical repository baseline.
-     */
-    baselineHash: string;
-
-    /**
-     * Optional candidate-bound selector proposed for a network-rule probe.
-     */
-    adElementSelector?: string;
-}
-
-/**
  * Check whether a hostname falls within a positive or excluded AdGuard domain scope.
  *
  * The scope itself and its subdomains match. A uBlock Origin entity scope (`shellshock.*`) matches
@@ -241,40 +211,4 @@ export function createTrustedValidationContext(
         existingRules: frozenRules,
         baselineHash: calculateTrustedBaselineHash(reportedUrl, existingRules),
     });
-}
-
-/**
- * Bind model-selected candidate data to immutable trusted validation inputs.
- *
- * Extra model fields such as `url`, `existingRules`, or `baselineHash` are intentionally ignored.
- *
- * @param context - Trusted issue URL and canonical repository baseline.
- * @param args - Untrusted model tool arguments.
- * @returns Validation request whose navigation and Phase B baseline cannot be model-controlled.
- */
-export function bindTrustedValidationRequest(
-    context: TrustedValidationContext,
-    args: Record<string, unknown>,
-): TrustedValidationRequest {
-    if (typeof args.candidateRule !== 'string' || args.candidateRule.trim().length === 0) {
-        throw new Error('apply_rule candidateRule must be a non-empty string.');
-    }
-    const calculatedBaselineHash = calculateTrustedBaselineHash(
-        context.reportedUrl,
-        context.existingRules,
-    );
-    if (context.baselineHash !== calculatedBaselineHash) {
-        throw new Error('Trusted validation baseline hash does not match its canonical rules.');
-    }
-
-    return {
-        url: context.reportedUrl,
-        candidateRule: args.candidateRule,
-        existingRules: [...context.existingRules],
-        baselineHash: context.baselineHash,
-        adElementSelector:
-            typeof args.adElementSelector === 'string' && args.adElementSelector.trim().length > 0
-                ? args.adElementSelector
-                : undefined,
-    };
 }

@@ -57,8 +57,9 @@ inputs:
         required: false
     executors:
         description: >-
-            Comma-separated executor names the analysis session may use; the public value is
-            'browser_extension'; empty means every registered executor.
+            Comma-separated executor names the analysis session may use: 'browser_extension' (an
+            ad-blocker extension in a real browser), 'adguard_cli' (AdGuard CLI as a filtering
+            proxy; needs adguardLicenseKey), or both; empty means 'browser_extension' alone.
         required: false
     instructionPath:
         description: >-
@@ -128,6 +129,14 @@ inputs:
             object on every request — for example {"ignore":["Together"]} to route around a faulting
             upstream provider. Plain configuration, not a secret; leave it unset for a gateway that
             does not understand the field.
+        required: false
+
+    adguardLicenseKey:
+        description: >-
+            AdGuard licence key the 'adguard_cli' executor activates the CLI with; pass it from a
+            repository secret. Each run activates the licence on one device and resets it when it
+            ends, so run one job at a time (a workflow concurrency group) to stay within the
+            licence's device limit.
         required: false
 
 outputs:
