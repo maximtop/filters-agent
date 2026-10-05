@@ -51,6 +51,8 @@ import {
     type ValidatorPhaseCompletion,
 } from './filtering-environment';
 import { ReporterSymptomPresence } from '../types/reporter-symptom-presence';
+import { InteractionReplay, type InteractionReplayProjection } from './interaction-replay';
+import type { NormalizedSafeInteractionPlan } from './safe-interaction';
 
 /**
  * Runtime-owned inputs shared by all phases of one Extension candidate experiment.
@@ -110,6 +112,11 @@ export interface BrowserExtensionAdsObserverOptions {
      * Whether Chromium requires the CI no-sandbox flag.
      */
     noSandbox: boolean;
+
+    /**
+     * Reveal steps the model passed to apply_rule, replayed identically in every phase.
+     */
+    interactionPlan?: NormalizedSafeInteractionPlan;
 
     /**
      * Optional bounded browser and vision seams used by behavioral fixtures.
@@ -392,11 +399,24 @@ export class BrowserExtensionAdsObserver {
      */
     private readonly blockedHost: string | undefined;
 
+    /**
+     * Coordinator replaying the reveal steps, or null when apply_rule received none.
+     */
+    private readonly interactionReplay: InteractionReplay | null;
+
     constructor(private readonly options: BrowserExtensionAdsObserverOptions) {
         this.blockedHost = judgeableBlockedHost(
             options.candidateRule,
             options.trustedValidationContext.reportedUrl,
         );
+        this.interactionReplay = options.interactionPlan
+            ? new InteractionReplay({
+                  plan: options.interactionPlan,
+                  allowedOrigin: options.trustedValidationContext.reportedUrl,
+                  artifactsDir: options.artifactsDir,
+                  recorder: options.recorder,
+              })
+            : null;
     }
 
     /**
@@ -433,6 +453,15 @@ export class BrowserExtensionAdsObserver {
                 : {}),
             captureVisualTiles: true,
             recorder: this.options.recorder,
+            ...(this.interactionReplay
+                ? {
+                      interact: this.interactionReplay.replayFor(
+                          input.phase,
+                          input.session,
+                          deriveCandidateArtifactExecutionSuffix(input.phaseTokenId),
+                      ),
+                  }
+                : {}),
         };
         const phaseResult = this.options.dependencies?.runPhase
             ? await this.options.dependencies.runPhase(input, phaseConfig)
@@ -504,6 +533,7 @@ export class BrowserExtensionAdsObserver {
         const har = environmentArtifact(this.options.recorder, phaseResult.harArtifactId, 'har');
         const dom = environmentArtifact(this.options.recorder, phaseResult.domArtifactId, 'dom');
         const network = this.blockedHost === undefined ? [] : this.readPhaseNetworkLog(input, har);
+        const interactionArtifact = this.interactionReplay?.artifactOf(input.phase);
         const viewport = screenshots.find(
             (artifact) => artifact.artifactId === phaseResult.screenshotArtifactId,
         );
@@ -521,7 +551,13 @@ export class BrowserExtensionAdsObserver {
             symptomPresence: visualInventory.inventory.reporterSymptomPresence,
             visionVerified: visualInventory.coverageComplete,
             inventoryArtifact,
-            artifacts: [...screenshots, har, dom, inventoryArtifact],
+            artifacts: [
+                ...screenshots,
+                har,
+                dom,
+                inventoryArtifact,
+                ...(interactionArtifact ? [interactionArtifact] : []),
+            ],
             network,
             capture: {
                 visionVerified: visualInventory.coverageComplete,
@@ -549,6 +585,18 @@ export class BrowserExtensionAdsObserver {
      */
     result(): Record<string, unknown> | null {
         return this.applyRuleResult ? structuredClone(this.applyRuleResult) : null;
+    }
+
+    /**
+     * Return what the reveal steps did in each phase that ran.
+     *
+     * Available before phase C, so an experiment that stopped early can still state whether its
+     * pages were ever put into the state the symptom needs.
+     *
+     * @returns Per-phase replay projection, or null when apply_rule received no reveal steps.
+     */
+    revealStepsProjection(): InteractionReplayProjection | null {
+        return this.interactionReplay?.projection() ?? null;
     }
 
     /**
@@ -817,7 +865,11 @@ export class BrowserExtensionAdsObserver {
             verified:
                 visual.review.verdict === CandidateVisualVerdict.Verified &&
                 !this.symptomPresentInPhase(candidatePhase) &&
-                isCandidateVisualPageUsable(visual.review),
+                isCandidateVisualPageUsable(visual.review) &&
+                // Reveal steps that diverged left the two phases in different states, so whatever
+                // the captures show is explained by that difference rather than by the candidate.
+                // The divergence stays in the evidence; only the claim of proof is withdrawn.
+                (this.interactionReplay?.preparedAlike() ?? true),
             screenshotArtifactIds: [
                 beforeViewport.artifactId,
                 afterViewport.artifactId,
@@ -842,6 +894,7 @@ export class BrowserExtensionAdsObserver {
             validationArtifactId: validationArtifact.artifactId,
             visualReview: visual.review,
             visualReviewArtifactId: visual.artifactId,
+            ...(this.interactionReplay ? { revealSteps: this.interactionReplay.projection() } : {}),
         };
         return this.phaseCompletion(input, candidatePhase, visual.review, candidateValidation);
     }

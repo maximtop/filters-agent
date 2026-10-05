@@ -5,6 +5,9 @@ import {
 import { createHash, randomUUID } from 'node:crypto';
 import * as v from 'valibot';
 import { withToolDeadline } from '../pi/session-tools';
+import { parseRevealSteps, symptomAbsenceLedgerKey } from './apply-rule-reveal-steps';
+import type { NormalizedSafeInteractionPlan } from '../environment/safe-interaction';
+import { revealStepsRepairGuidance } from '../environment/interaction-replay';
 import type { SingleShotClient } from '../pi/single-shot-types';
 import { ToolRegistry } from '../agent/tool-registry';
 import { createToolRegistry } from '../agent/tool-factory';
@@ -700,6 +703,11 @@ interface PendingCandidateAttempt {
      * Never normalized: baseline mutation receipts compare the exact published bytes.
      */
     originalRule?: string;
+
+    /**
+     * Reveal steps this call passed, replayed in every phase; absent when it passed none.
+     */
+    revealPlan?: NormalizedSafeInteractionPlan;
 }
 
 /**
@@ -1032,6 +1040,11 @@ export class AgentRuntime {
      * Browser-bound executions per canonical candidate, independent of semantic-attempt budget.
      */
     private readonly candidateValidationExecutionCounts = new Map<string, number>();
+
+    /**
+     * Reveal-step plan digests each canonical candidate was already judged under, empty for none.
+     */
+    private readonly candidateRevealPlanDigests = new Map<string, Set<string>>();
 
     /**
      * Technical browser-access failures accumulated by exact prompt-safe target URL.
@@ -3734,6 +3747,7 @@ export class AgentRuntime {
                 requiredAction: 'finish_fix_analysis_only',
             };
         }
+        const interactionPlan = candidate.revealPlan;
         // baselineSymptomAbsentCounts (written below, where an experiment concludes
         // baseline_symptom_absent) records a verdict per candidate ledger key and already asks
         // the model to stop after the second one via retryable: false; that ask went
@@ -3744,9 +3758,11 @@ export class AgentRuntime {
         // description named nothing the candidate could be judged against. This refusal makes the
         // stop hard instead of advisory, before any phase can open. A different candidate rule
         // keys separately and still gets its own two experiments.
-        const exhaustedLedgerKey = candidateLedgerKey(
-            candidate.operation,
-            candidate.normalized.canonical,
+        // Different reveal steps put the page into a different state, so they earn the candidate
+        // its own two experiments; the same steps again cannot change the verdict.
+        const exhaustedLedgerKey = symptomAbsenceLedgerKey(
+            candidateLedgerKey(candidate.operation, candidate.normalized.canonical),
+            interactionPlan,
         );
         if ((this.baselineSymptomAbsentCounts.get(exhaustedLedgerKey) ?? 0) >= 2) {
             return {
@@ -3855,6 +3871,7 @@ export class AgentRuntime {
             symptomKind: this.symptomKind(),
             attemptNumber: candidate.attemptNumber,
             noSandbox: this.options.noSandbox,
+            ...(interactionPlan ? { interactionPlan } : {}),
         };
         if (this.dependencies.browserExtensionAdsObserverDependencies) {
             observerOptions.dependencies =
@@ -4009,13 +4026,11 @@ export class AgentRuntime {
             // never spends the apply_rule retry budget that guards against broken tooling. The
             // count written here is read at the top of this method: once it reaches 2, a third
             // call for this exact candidate is refused before any phase can open.
-            const ledgerKey = candidateLedgerKey(
-                candidate.operation,
-                candidate.normalized.canonical,
-            );
+            const ledgerKey = exhaustedLedgerKey;
             const seen = (this.baselineSymptomAbsentCounts.get(ledgerKey) ?? 0) + 1;
             this.baselineSymptomAbsentCounts.set(ledgerKey, seen);
             const blockedHost = judgeableBlockedHost(candidateRule, state.targetUrl);
+            const revealStepsProjection = observer?.revealStepsProjection() ?? null;
             const restatement = [
                 'The phase sessions judge one symptom description. The description in force did not',
                 'name anything that differs between the unfiltered page and the filtered baseline, so',
@@ -4030,6 +4045,12 @@ export class AgentRuntime {
                 'element or content that filtering removes and where on the page it sits. Never describe',
                 'framing properties of the reporter screenshot such as cropping, window width, or text',
                 'cut off at an image edge — no phase session can reproduce those.',
+                ...(interactionPlan
+                    ? []
+                    : [
+                          'If the symptom appears only after the page waits or is touched, rehearse',
+                          'it with interact_page and pass that sequence as revealSteps.',
+                      ]),
             ];
             const exhausted = [
                 'The baseline still shows no symptom after a restated description, so this candidate',
@@ -4044,7 +4065,11 @@ export class AgentRuntime {
                 errorKind: 'baseline_symptom_absent',
                 retryable: seen === 1,
                 ...(seen === 1 ? {} : { requiredAction: 'finish_fix_analysis_only' }),
-                guidance: seen === 1 ? restatement : exhausted,
+                ...(revealStepsProjection ? { revealSteps: revealStepsProjection } : {}),
+                guidance: [
+                    ...revealStepsRepairGuidance(revealStepsProjection),
+                    ...(seen === 1 ? restatement : exhausted),
+                ],
             };
         }
         return {
@@ -4076,6 +4101,27 @@ export class AgentRuntime {
     }
 
     /**
+     * Determine whether one judged candidate may run again because its page is prepared
+     * differently.
+     *
+     * A verdict reached on a page that never showed the symptom says nothing about the rule, so new
+     * reveal steps buy one more experiment, bounded by the same execution count as a vision retry.
+     *
+     * @param ledgerKey - Composed operation-plus-canonical candidate ledger key.
+     * @param revealDigest - Digest of the reveal steps this call passes, empty for none.
+     * @returns Whether the candidate was never judged under these reveal steps.
+     */
+    private isUntriedRevealPlan(ledgerKey: string, revealDigest: string): boolean {
+        const tried = this.candidateRevealPlanDigests.get(ledgerKey);
+        return (
+            tried !== undefined &&
+            !tried.has(revealDigest) &&
+            (this.candidateValidationExecutionCounts.get(ledgerKey) ?? 0) <
+                MAX_CANDIDATE_VALIDATION_EXECUTIONS
+        );
+    }
+
+    /**
      * Record that one candidate reached the browser-bound validator and retain its vision verdict.
      *
      * Error results (for example a tool deadline) recorded no verdict, so they leave no outcome:
@@ -4095,6 +4141,9 @@ export class AgentRuntime {
         const validationAttemptCount =
             (this.candidateValidationExecutionCounts.get(ledgerKey) ?? 0) + 1;
         this.candidateValidationExecutionCounts.set(ledgerKey, validationAttemptCount);
+        const triedReveal = this.candidateRevealPlanDigests.get(ledgerKey) ?? new Set<string>();
+        triedReveal.add(candidate.revealPlan?.digest ?? '');
+        this.candidateRevealPlanDigests.set(ledgerKey, triedReveal);
         const review =
             typeof result.visualReview === 'object' && result.visualReview !== null
                 ? (result.visualReview as Record<string, unknown>)
@@ -4246,13 +4295,27 @@ export class AgentRuntime {
                         }
                         const existingAttempt = this.candidateAttempts.get(canonical);
                         const sessionId = this.activeSessionId;
+                        // Refused before the candidate is registered, so a malformed sequence never
+                        // spends one of the run's semantic candidate attempts.
+                        const revealRequest = parseRevealSteps(args.revealSteps);
+                        if (revealRequest.kind === 'rejected') {
+                            return {
+                                error: 'The revealSteps were not accepted.',
+                                errorKind: revealRequest.reason,
+                                detail: revealRequest.detail,
+                                retryable: true,
+                            };
+                        }
+                        const revealPlan =
+                            revealRequest.kind === 'normalized' ? revealRequest.plan : undefined;
                         const attemptedSessionIds =
                             this.candidateAttemptSessionIds.get(canonical) ?? new Set<string>();
                         if (
                             existingAttempt !== undefined &&
                             sessionId !== undefined &&
                             attemptedSessionIds.has(sessionId) &&
-                            !this.canRetryInconclusiveVisualReview(canonical)
+                            !this.canRetryInconclusiveVisualReview(canonical) &&
+                            !this.isUntriedRevealPlan(canonical, revealPlan?.digest ?? '')
                         ) {
                             return {
                                 validationSkipped: true,
@@ -4270,6 +4333,7 @@ export class AgentRuntime {
                                 attemptNumber: existingAttempt,
                                 operation,
                                 ...(originalRule === undefined ? {} : { originalRule }),
+                                ...(revealPlan === undefined ? {} : { revealPlan }),
                             };
                         } else {
                             if (this.candidateAttempts.size >= 3) {
@@ -4291,6 +4355,7 @@ export class AgentRuntime {
                                 attemptNumber,
                                 operation,
                                 ...(originalRule === undefined ? {} : { originalRule }),
+                                ...(revealPlan === undefined ? {} : { revealPlan }),
                             };
                         }
                     }

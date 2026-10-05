@@ -74,6 +74,11 @@ export const UnsafeUrlRefusal = {
      * The host produced no usable DNS answer from this runner.
      */
     DnsUnresolved: 'dns_unresolved',
+
+    /**
+     * The URL reads the filter repository whose maintainers fix the reports the agent works on.
+     */
+    WithheldRepository: 'withheld_repository',
 } as const;
 
 /**
@@ -117,6 +122,56 @@ const METADATA_HOSTNAMES = new Set([
     'metadata.azure.internal',
     'instance-data',
 ]);
+
+/**
+ * Owner and name of the filter repository the agent's browser must never read, lowercase.
+ *
+ * Test runs copy real reports from it, and its maintainers fix them there: in the commit, in the
+ * issue thread, in the published list file. A run that reached any of them could repeat the fix
+ * instead of finding one, which makes its answer worthless as a test. Top-level navigation is held
+ * to the reported origin anyway; this also stops a page's own request and a site's own redirect.
+ */
+const WITHHELD_REPOSITORY = 'adguardteam/adguardfilters';
+
+/**
+ * GitHub hosts that serve a repository's pages, API, raw files and archives.
+ */
+const REPOSITORY_HOSTNAMES = new Set([
+    'github.com',
+    'www.github.com',
+    'api.github.com',
+    'raw.githubusercontent.com',
+    'codeload.github.com',
+]);
+
+/**
+ * Decide whether a URL reads the withheld filter repository.
+ *
+ * The query counts as well as the path, so a GitHub search scoped to the repository
+ * (`?q=repo:AdguardTeam/AdguardFilters`) is refused like its issue pages are.
+ *
+ * @param url - Parsed URL with a normalized hostname.
+ * @returns Whether the URL reaches the withheld repository.
+ */
+function readsWithheldRepository(url: URL): boolean {
+    if (!REPOSITORY_HOSTNAMES.has(url.hostname)) {
+        return false;
+    }
+    let target: string;
+    try {
+        target = decodeURIComponent(`${url.pathname}${url.search}`).toLowerCase();
+    } catch {
+        target = `${url.pathname}${url.search}`.toLowerCase();
+    }
+    const index = target.indexOf(WITHHELD_REPOSITORY);
+    if (index === -1) {
+        return false;
+    }
+    // `AdguardTeam/AdguardFiltersExtra` is a different repository; `.git`, `/`, `?`, `&` and the end
+    // of the string all close the name.
+    const following = target.charAt(index + WITHHELD_REPOSITORY.length);
+    return following === '' || /[^a-z0-9_-]/u.test(following);
+}
 
 /**
  * Remove URL-only hostname syntax before address and allowlist checks.
@@ -361,6 +416,12 @@ export async function validatePublicHttpUrl(
 ): Promise<URL> {
     const url = parseHttpUrl(rawUrl, options.httpsOnly ?? false);
     const hostname = normalizeHostname(url.hostname);
+    if (readsWithheldRepository(url)) {
+        throw new UnsafeNetworkUrlError(
+            UnsafeUrlRefusal.WithheldRepository,
+            'URL reads the filter repository the reports come from, which this run must not see.',
+        );
+    }
     if (options.expectedOrigins) {
         const expectedOrigins = options.expectedOrigins.map(canonicalHttpOrigin);
         if (!expectedOrigins.includes(url.origin)) {

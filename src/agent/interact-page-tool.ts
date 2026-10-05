@@ -139,7 +139,8 @@ function rehearsalObservation(
  * Register the tool that rehearses an interaction on the live investigation page.
  *
  * Rehearsals are exploratory evidence: what a click provoked — new hosts, popups, dialogs, overlay
- * changes — is recorded and cited, but never re-performed inside a check session.
+ * changes — is recorded and cited. A check session re-performs a sequence only when the model
+ * passes it to apply_rule as `revealSteps`.
  *
  * @param registry - Registry receiving the tool.
  * @param options - Live session, artifact sink, and reported origin.

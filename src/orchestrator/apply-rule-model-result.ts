@@ -27,6 +27,7 @@ const DECISION_KEYS = [
     'visualReviewArtifactId',
     'validationArtifactId',
     'validationAttempt',
+    'revealSteps',
     'summary',
     'adElementStatus',
     'validatedSelector',

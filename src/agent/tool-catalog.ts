@@ -171,7 +171,8 @@ export const TOOL_GUIDANCE: Readonly<Record<string, string>> = {
     [ToolName.InteractPage]:
         'Performs a bounded sequence of actions (scroll, hover, click, type, wait, reload, back) on the page you are investigating and reports what each one provoked: requests to new hosts, tabs the site opened, dialogs it raised, overlays that appeared or disappeared, and whether an overlay swallowed the click. Use it to find the one interaction that makes the reported symptom appear. Unsafe controls (sign-in, payment, upload, publishing, device permissions) are refused, and text is never yours to supply.',
     [ToolName.ApplyRule]:
-        "Runs a collect-only A/B/C browser experiment against the trusted reported URL and repo baseline. It captures the exact applied rule, viewport and full-page screenshots, DOM, HAR and settings facts, then requests the dedicated vision model's typed semantic verdict. ",
+        "Runs a collect-only A/B/C browser experiment against the trusted reported URL and repo baseline. It captures the exact applied rule, viewport and full-page screenshots, DOM, HAR and settings facts, then requests the dedicated vision model's typed semantic verdict. " +
+        'When the symptom appears only after the page waits or is touched — a popup that opens seconds after load, content behind an age or consent dialog — pass `revealSteps` in the interact_page step grammar: the host performs them in every phase after the rules are applied and before any capture, and reports what each phase did under `revealSteps`. Rehearse the sequence with interact_page first. Act only on controls the candidate does not hide or remove (wait, scroll, dismiss a dialog), never on the symptom element itself: a step that finds its control in phase B but not in phase C withholds the verdict.',
     [ToolName.GetDetail]:
         'Retrieves a byte-bounded filtered slice of a persisted artifact by ID. Use when a tool result says "Use get_detail() to inspect slices" — pass the artifact ID and optional filter (key path, limit) to inspect large results like DOM, HAR, ad-slot facts, or evaluate_js results.',
     [ToolName.FinishFix]:
@@ -181,6 +182,24 @@ export const TOOL_GUIDANCE: Readonly<Record<string, string>> = {
     [ToolName.SubmitReplayVerdict]:
         'Submits the replay verdict of the closed issue: the closure class the agent backs, the rule lines it stands behind, and the target filter file. This is the only terminal channel of a replay run. Call exactly once, when the replay investigation is finished. A submission that fails validation is returned with the errors; correct and resubmit.',
 } satisfies Record<ToolName, string>;
+
+// The step bound belongs on the advertisement, not only in the executor: the normalizer refuses an
+// over-long plan with `step_limit_exceeded`, and a model that was never told the limit can only
+// discover it by wasting a call on it. `maxLength` projects to `maxItems`, so pi bounces the
+// over-long plan before dispatch and the model reads the bound in the schema. interact_page and
+// apply_rule share it because a rehearsed sequence is passed to apply_rule unchanged.
+const SafeInteractionStepsRequestSchema = v.pipe(
+    v.array(
+        v.object({
+            kind: SafeInteractionKindSchema,
+            selector: v.optional(v.string()),
+            textHint: v.optional(v.string()),
+            text: v.optional(SyntheticTextTokenSchema),
+            quietMs: v.optional(v.number()),
+        }),
+    ),
+    v.maxLength(DEFAULT_SAFE_INTERACTION_BOUNDS.maxSteps),
+);
 
 /**
  * The shape both advertisement maps are checked against: a partial map from a declared
@@ -247,24 +266,10 @@ export const TOOL_PARAMETER_SCHEMAS: Readonly<
         operation: v.optional(v.picklist(CANDIDATE_OPERATION_VALUES)),
         originalRule: v.optional(v.string()),
         symptomDescription: v.optional(v.string()),
+        revealSteps: v.optional(SafeInteractionStepsRequestSchema),
     }),
-    // The step bound belongs on the advertisement, not only in the executor: the normalizer
-    // refuses an over-long plan with `step_limit_exceeded`, and a model that was never told the
-    // limit can only discover it by wasting a call on it. `maxLength` projects to `maxItems`, so
-    // pi bounces the over-long plan before dispatch and the model reads the bound in the schema.
     [ToolName.InteractPage]: v.object({
-        steps: v.pipe(
-            v.array(
-                v.object({
-                    kind: SafeInteractionKindSchema,
-                    selector: v.optional(v.string()),
-                    textHint: v.optional(v.string()),
-                    text: v.optional(SyntheticTextTokenSchema),
-                    quietMs: v.optional(v.number()),
-                }),
-            ),
-            v.maxLength(DEFAULT_SAFE_INTERACTION_BOUNDS.maxSteps),
-        ),
+        steps: SafeInteractionStepsRequestSchema,
     }),
 
     // ── Vision / artifact store present ─────────────────────────────────────

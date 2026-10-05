@@ -622,6 +622,21 @@ export interface PhaseConfig {
     tileWindow?: FullPageTileWindow;
 
     /**
+     * Optional reveal steps the host replays identically in every phase.
+     *
+     * Some symptoms exist only once the page has waited or been touched: a popup that opens a few
+     * seconds after load, a player hidden behind an age dialog. A phase that never waits or
+     * interacts observes a page the report is not about. The replay runs after this phase's rules
+     * are applied and before any capture, which is the only point at which all three phases have
+     * reached the same state by the same route.
+     *
+     * Must record its own failures rather than reject: a page that died mid-interaction still has
+     * captures worth comparing, and rejecting here would discard them along with the evidence of
+     * what the interaction did.
+     */
+    interact?: () => Promise<void>;
+
+    /**
      * Optional cosmetic candidate applied after a full-page materialization capture.
      */
     deferredRule?: string;
@@ -2045,6 +2060,11 @@ export async function runPhase(config: PhaseConfig): Promise<PhaseResult> {
                 }
             }
         }
+    }
+
+    // ── Replay the reveal steps, after the rules and before every capture ──
+    if (config.interact) {
+        await config.interact();
     }
 
     let sameDocumentControlScreenshotArtifactId: string | undefined;
