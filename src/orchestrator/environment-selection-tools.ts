@@ -81,7 +81,8 @@ export interface EnvironmentSelectionToolsHost {
      * Adopt a prepared evidence route and expose its proxied browser tools.
      *
      * @param route - Route whose pinned configuration is already prepared.
-     * @param reporterFilterIds - Official filters the reporter had enabled, possibly empty.
+     * @param reporterFilterIds - Official filters the route runs, which apply_rule's baseline
+     *   prepares too.
      */
     activateEvidenceRoute(route: EvidenceRouteHost, reporterFilterIds: readonly number[]): void;
 

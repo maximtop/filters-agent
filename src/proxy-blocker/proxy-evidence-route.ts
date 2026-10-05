@@ -60,6 +60,26 @@ function stripCarriageReturn(line: string): string {
 }
 
 /**
+ * AdGuard Base filter, which every evidence route runs: an unfiltered baseline would make every
+ * phase meaningless.
+ */
+const ADGUARD_BASE_FILTER_ID = 2;
+
+/**
+ * The official filters an evidence route runs: AdGuard Base, with the reporter's own selection
+ * layered on top. The runtime prepares apply_rule's baseline from the same set, so a report without
+ * a settings link verifies against what the browser saw instead of an empty set.
+ *
+ * @param reporterFilterIds - Official filters the reporter had enabled, possibly empty.
+ * @returns The route's filter identifiers, ascending and without repeats.
+ */
+export function evidenceRouteFilterIds(reporterFilterIds: readonly number[]): number[] {
+    return [...new Set([ADGUARD_BASE_FILTER_ID, ...reporterFilterIds])].sort(
+        (left, right) => left - right,
+    );
+}
+
+/**
  * Construction input for one run-owned AdGuard CLI evidence route.
  */
 export interface CreateProxyBlockerEvidenceRouteInput {
@@ -283,11 +303,7 @@ export function createProxyBlockerEvidenceRoute(
                 await mkdir(input.workspaceDir, { recursive: true, mode: 0o700 });
                 await mkdir(baselineDataRoot, { recursive: true, mode: 0o700 });
                 description = await input.blocker.describe();
-                // Base is always present: an unfiltered baseline would make every phase
-                // meaningless, and the reporter's own selection is layered on top of it.
-                const requested = [...new Set([2, ...(input.reporterFilterIds ?? [])])].sort(
-                    (left, right) => left - right,
-                );
+                const requested = evidenceRouteFilterIds(input.reporterFilterIds ?? []);
                 const downloaded = await downloadFilters(requested, input.filterCacheDir);
                 filters = downloaded.filters;
                 unavailableFilterIds = downloaded.unavailableFilterIds;

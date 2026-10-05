@@ -32,7 +32,7 @@ var BlockerEventKind = {
 // src/blocker-contract/serve-blocker.ts
 import { createInterface } from "node:readline";
 
-// ../../../../../../../Volumes/dev/adguard-filters-agent/node_modules/.pnpm/valibot@1.4.1_typescript@5.9.3/node_modules/valibot/dist/index.mjs
+// node_modules/.pnpm/valibot@1.4.1_typescript@5.9.3/node_modules/valibot/dist/index.mjs
 var store$4;
 var DEFAULT_CONFIG = {
   lang: void 0,

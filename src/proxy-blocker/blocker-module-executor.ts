@@ -36,6 +36,7 @@ import {
 import { ProxyBlockerEnvironmentAdapter } from './proxy-environment-adapter';
 import {
     createProxyBlockerEvidenceRoute,
+    evidenceRouteFilterIds,
     type CreateProxyBlockerEvidenceRouteInput,
 } from './proxy-evidence-route';
 
@@ -241,7 +242,7 @@ export function createBlockerModuleExecutor(
                 'The evidence route over the blocker module could not be configured.',
             );
         }
-        context.runtime.activateEvidenceRoute(route, reporterFilterIds);
+        context.runtime.activateEvidenceRoute(route, evidenceRouteFilterIds(reporterFilterIds));
         return {
             ready: true,
             provenance: {
