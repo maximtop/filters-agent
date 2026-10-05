@@ -10,11 +10,6 @@ export const RepositoryEditKind = {
 } as const;
 
 /**
- * Every RepositoryEditKind value, for schemas and exhaustive listings.
- */
-export const REPOSITORY_EDIT_KIND_VALUES = Object.values(RepositoryEditKind);
-
-/**
  * RepositoryEditKind value.
  */
 export type RepositoryEditKind = (typeof RepositoryEditKind)[keyof typeof RepositoryEditKind];

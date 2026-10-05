@@ -274,20 +274,6 @@ function truncateDetail(detail: string, maxLength: number): string {
 }
 
 /**
- * Recognise a storage-exhaustion failure in a host command or filesystem diagnostic.
- *
- * Node reports it as `ENOSPC`, git and pnpm as their own wording, and BuildKit through the snapshot
- * path it could not create. All of them mean the same thing: the host is out of space and no
- * repetition of the work can change that.
- *
- * @param detail - Verbatim failure text captured from the host.
- * @returns True when the failure is storage exhaustion.
- */
-export function isOutOfSpaceFailure(detail: string): boolean {
-    return /ENOSPC|no space left on device/iu.test(detail);
-}
-
-/**
  * Typed facts about the last infrastructure-shaped phase-session bootstrap failure.
  */
 export interface PhaseBootstrapInfrastructureFailure {

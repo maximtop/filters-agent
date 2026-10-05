@@ -13,8 +13,6 @@ import { registeredParameters } from './registered-parameters';
 import { ToolName } from './tool-names';
 import type { ToolRegistry } from './tool-registry';
 
-export const INTERACT_PAGE_TOOL_NAME = ToolName.InteractPage;
-
 /**
  * Most third-party hosts named in one rehearsal observation.
  */

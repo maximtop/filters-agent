@@ -7,20 +7,16 @@
  * the pi runner, record every turn, every refused tool call and every context compaction into the
  * run trace, and attach the run's usage summary.
  *
- * The procedure is split in two so the fix path can share it without turning it into an options
- * bag: `launchModeSession` runs the session and hands back the sealed outcome plus the run's
- * compaction count, and `runModeSession` adds the one seal every mode but fix wants. The agentic
- * fix session calls the launch and maps the seal onto its own legacy-shaped result.
+ * `launchModeSession` runs the session and hands back the sealed outcome plus the run's compaction
+ * count; each session caller maps the seal onto its own result.
  */
-import type * as v from 'valibot';
-import { TOOL_GUIDANCE } from '../agent/tool-catalog';
 import type { ToolName } from '../agent/tool-names';
 import type { LlmConfig } from '../config/config';
 import type { Logger } from '../logger/logger';
-import { createPiRuntimeFromConfig, providerMaxRetries } from '../pi/llm-wiring';
+import { providerMaxRetries } from '../pi/llm-wiring';
 import type { PiRuntime } from '../pi/runtime';
 import { runAgentSession } from '../pi/session-runner';
-import { buildTerminalTool, type TerminalToolController } from '../pi/terminal-tool';
+import type { TerminalToolController } from '../pi/terminal-tool';
 import type { TerminalOutcome } from '../pi/seal-types';
 import type { TurnObserver } from '../pi/session-observations';
 import type { SessionToolSpec } from '../pi/session-tool-types';
@@ -33,12 +29,9 @@ import {
 import {
     recordSessionCompaction,
     recordSessionTurn,
-    recordTerminalTool,
     recordToolBounce,
-    sealSessionTrace,
 } from '../tracer/session-trace';
 import type { TraceRecorder } from '../tracer/trace-recorder';
-import type { RunTrace } from '../types/trace';
 
 /**
  * The three rendered documents one mode session runs on.
@@ -87,81 +80,6 @@ export function renderSessionPrompts(
         userTask: renderTask(prompts, terminalToolName),
         nudge: prompts.render(PromptDocumentName.Nudge, { terminalToolName }),
     };
-}
-
-/**
- * The options every mode session that accepts an injected runtime declares, so the six fields and
- * their contracts are written once instead of restated per mode.
- */
-export interface SharedModeSessionOptions {
-    /**
-     * Reasoning-model override; defaults to `config.llm.model`.
-     */
-    model?: string;
-
-    /**
-     * The run's trace recorder.
-     */
-    recorder: TraceRecorder;
-
-    /**
-     * Application logger, forwarded into the session so a `--verbose` run keeps one logger — and
-     * one level — for the whole run instead of letting the runner build a second one at info.
-     */
-    logger?: Logger;
-
-    /**
-     * The run's already-created pi runtime — the same instance the vision client binds; when absent
-     * the session creates its own.
-     */
-    runtime?: PiRuntime;
-
-    /**
-     * Caller cancellation; aborted runs seal as `aborted`.
-     */
-    signal?: AbortSignal;
-
-    /**
-     * Optional run-scoped usage collector threaded from the caller (mirroring `runtime`): session
-     * usage lands in it and the sealed trace carries the rendered summary block.
-     */
-    usageCollector?: RunUsageCollector;
-}
-
-/**
- * Resolve the pi runtime one mode session runs on: the caller's injected instance, or a fresh one
- * built from the configured provider slice.
- *
- * @param options - The mode's shared options (the injection seam and the model override).
- * @param llm - The validated LLM provider configuration.
- * @returns The runtime the session runs on.
- */
-export async function resolveSessionRuntime(
-    options: SharedModeSessionOptions,
-    llm: LlmConfig,
-): Promise<PiRuntime> {
-    return options.runtime ?? (await createPiRuntimeFromConfig(llm, options.model));
-}
-
-/**
- * Build one mode's terminal tool from the catalog: the name is a declared {@link ToolName}, the
- * model-facing text is that name's single `TOOL_GUIDANCE` entry, and every submission — accepted or
- * rejected — lands in the run trace.
- *
- * @param name - The mode's terminal tool name.
- * @param schema - The mode's terminal payload schema.
- * @param recorder - The run trace recorder.
- * @returns The recording terminal controller.
- */
-export function buildModeTerminal<T>(
-    name: ToolName,
-    schema: v.GenericSchema<T>,
-    recorder: TraceRecorder,
-): TerminalToolController<T> {
-    return recordTerminalTool(
-        buildTerminalTool<T>({ name, description: TOOL_GUIDANCE[name]!, schema }),
-        recorder,
-    );
 }
 
 /**
@@ -259,22 +177,6 @@ export interface ModeSessionLaunch<T> {
 }
 
 /**
- * What one mode session returns: the sealed pi outcome and the trace it sealed. Modes that continue
- * with a fallback payload derive it from the outcome themselves.
- */
-export interface ModeSessionResult<T> {
-    /**
-     * The sealed outcome (typed terminal payload or a failure seal).
-     */
-    outcome: TerminalOutcome<T>;
-
-    /**
-     * The run trace, sealed (run_end event written).
-     */
-    trace: RunTrace;
-}
-
-/**
  * Run one mode session on pi and attach the run's usage summary, leaving the trace unsealed.
  *
  * @param request - The launch request.
@@ -325,17 +227,4 @@ export async function launchModeSession<T>(
         recorder.setUsageSummary(usageCollector.summary());
     }
     return { outcome, compactions: compaction.count() };
-}
-
-/**
- * Run one mode session on pi and seal its trace.
- *
- * @param request - The launch request.
- * @returns The sealed outcome and the sealed run trace.
- */
-export async function runModeSession<T>(
-    request: ModeSessionRequest<T>,
-): Promise<ModeSessionResult<T>> {
-    const { outcome, compactions } = await launchModeSession<T>(request);
-    return { outcome, trace: sealSessionTrace(request.recorder, outcome, compactions) };
 }

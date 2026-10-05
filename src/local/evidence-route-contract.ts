@@ -71,6 +71,37 @@ export interface CandidateReceipt {
 }
 
 /**
+ * Receipt proving one exact published line was replaced or deleted inside the locked baseline and
+ * nothing else.
+ */
+export interface BaselineEditReceipt {
+    /**
+     * Official catalog ID whose attributed baseline resource carried the line.
+     */
+    filterId: number;
+
+    /**
+     * SHA-256 of that resource before the mutation, which must be the digest locked at preparation.
+     */
+    beforeSha256: string;
+
+    /**
+     * SHA-256 of that resource after the mutation.
+     */
+    afterSha256: string;
+
+    /**
+     * Number of lines the mutation changed or deleted inside that resource.
+     */
+    replacedLineCount: number;
+
+    /**
+     * Number of configured filter sources beyond the official filter manager.
+     */
+    extraSourceCount: number;
+}
+
+/**
  * Stable path-free failure classifications for the CLI evidence route.
  */
 export type EvidenceRouteFailureCode =
@@ -211,6 +242,33 @@ export interface EvidenceRoutePorts {
      * Remove the agent-authored source, leaving only the locked official baseline.
      */
     revokeCandidate(): Promise<void>;
+
+    /**
+     * Replace one exact line inside the locked published baseline.
+     *
+     * The route locates the line across the lists it executes and refuses rather than guesses when
+     * the line does not occur exactly once; every other byte stays untouched.
+     *
+     * @param originalRule - Exact published line to replace.
+     * @param replacementRule - Complete replacement line.
+     * @returns Receipt describing what the isolated installation now executes.
+     */
+    applyBaselineEdit(originalRule: string, replacementRule: string): Promise<BaselineEditReceipt>;
+
+    /**
+     * Delete one exact line from the locked published baseline, under the same uniqueness rule.
+     *
+     * @param originalRule - Exact published line to delete.
+     * @returns Receipt describing what the isolated installation now executes.
+     */
+    applyBaselineRemoval(originalRule: string): Promise<BaselineEditReceipt>;
+
+    /**
+     * Restore the locked published baseline bytes.
+     *
+     * @returns SHA-256 of the restored resource, or null when no mutation was in effect.
+     */
+    revokeBaselineEdit(): Promise<string | null>;
 }
 
 /**

@@ -19,9 +19,9 @@ import {
     type PublishedBaselineProvenance,
 } from '../environment/environment-proofs';
 import { adguardListKey } from '../environment/filter-list-ref';
-import { AdguardCliExecutorName } from './executor-name';
+import type { ExecutorName } from '../environment/executor-name';
 import { OFFICIAL_ADGUARD_FILTERS } from '../environment/official-filter-catalog';
-import { readAdguardCliFilterList, type AdguardCliCatalogRow } from './adguard-cli-filter-list';
+import { readProxyBlockerFilterList, type ProxyBlockerCatalogRow } from './catalog-table';
 import {
     describeDiagnosticError,
     recordPreflightDiagnostic,
@@ -45,23 +45,26 @@ const MAX_BASELINE_AGGREGATE_BYTES = 256 * 1024 * 1024;
  */
 const MAX_BASELINE_STORAGE_FILES = 4_096;
 
-export { BASELINE_ACTION_CONTRACT as ADGUARD_CLI_BASELINE_ACTION_CONTRACT } from '../local/evidence-route-contract';
-
 /**
  * Exact native action this module may ask the isolated installation to perform; the vocabulary
  * lives in the src-owned evidence-route contract.
  */
-export type AdguardCliBaselineAction = BaselineHostAction;
+export type ProxyBlockerBaselineAction = BaselineHostAction;
 
 /**
  * Host boundary this module drives; the production implementation owns spawning and its bounds.
  */
-export type AdguardCliBaselineHostPort = BaselineHostPort;
+export type ProxyBlockerBaselineHostPort = BaselineHostPort;
 
 /**
  * Exact requested official baseline and the instant it was acquired.
  */
-export interface AdguardCliBaselineRequest {
+export interface ProxyBlockerBaselineRequest {
+    /**
+     * Executor the baseline is locked for, recorded in the provenance.
+     */
+    environment: ExecutorName;
+
     /**
      * Pinned official catalog IDs, strictly ascending.
      */
@@ -76,7 +79,7 @@ export interface AdguardCliBaselineRequest {
 /**
  * Successfully applied and integrity-locked baseline.
  */
-export interface ReadyAdguardCliBaseline {
+export interface ReadyProxyBlockerBaseline {
     /**
      * Discriminator for a locked baseline.
      */
@@ -91,7 +94,7 @@ export interface ReadyAdguardCliBaseline {
 /**
  * Baseline preparation stopped by a stable limitation.
  */
-export interface LimitedAdguardCliBaseline {
+export interface LimitedProxyBlockerBaseline {
     /**
      * Discriminator for an unavailable baseline.
      */
@@ -106,7 +109,7 @@ export interface LimitedAdguardCliBaseline {
 /**
  * Locked baseline or the stable reason no reproducible baseline exists.
  */
-export type AdguardCliBaselineResult = ReadyAdguardCliBaseline | LimitedAdguardCliBaseline;
+export type ProxyBlockerBaselineResult = ReadyProxyBlockerBaseline | LimitedProxyBlockerBaseline;
 
 /**
  * Finite local reason one baseline preparation was refused.
@@ -332,8 +335,8 @@ function isValidRequestedSet(requestedFilterIds: readonly number[]): boolean {
  * @returns Every readable catalog row in displayed order.
  */
 async function listCatalogRows(
-    host: AdguardCliBaselineHostPort,
-): Promise<readonly AdguardCliCatalogRow[]> {
+    host: ProxyBlockerBaselineHostPort,
+): Promise<readonly ProxyBlockerCatalogRow[]> {
     let stdout: string;
     try {
         stdout = await host.runBaselineAction('list_all_filters', null);
@@ -341,7 +344,7 @@ async function listCatalogRows(
         recordNativeFailure('list_command_failed', error);
         reject(CliBaselineRejection.FilterListUnreadable);
     }
-    return readAdguardCliFilterList(stdout, (listRejection, observed) => {
+    return readProxyBlockerFilterList(stdout, (listRejection, observed) => {
         recordPreflightDiagnostic('published_baseline', {
             note: 'filter_list_unreadable',
             listRejection,
@@ -357,7 +360,7 @@ async function listCatalogRows(
  * @param host - Bounded command and storage boundary for the isolated installation.
  * @returns Every absolute path the installation holds.
  */
-async function snapshotStorage(host: AdguardCliBaselineHostPort): Promise<ReadonlySet<string>> {
+async function snapshotStorage(host: ProxyBlockerBaselineHostPort): Promise<ReadonlySet<string>> {
     let files: readonly string[];
     try {
         files = await host.listStorageFiles();
@@ -419,12 +422,12 @@ interface BaselinePreparationObservation {
     /**
      * Catalog rows displayed before any command ran.
      */
-    initialRows: readonly AdguardCliCatalogRow[] | null;
+    initialRows: readonly ProxyBlockerCatalogRow[] | null;
 
     /**
      * Catalog rows displayed after the whole application sequence.
      */
-    finalRows: readonly AdguardCliCatalogRow[] | null;
+    finalRows: readonly ProxyBlockerCatalogRow[] | null;
 
     /**
      * Files each add created, in application order.
@@ -472,8 +475,8 @@ interface AttributedFilterFile {
  *   bytes observation could not attribute.
  */
 async function applyRequestedBaseline(
-    request: AdguardCliBaselineRequest,
-    host: AdguardCliBaselineHostPort,
+    request: ProxyBlockerBaselineRequest,
+    host: ProxyBlockerBaselineHostPort,
     observation: BaselinePreparationObservation,
 ): Promise<{
     /**
@@ -626,7 +629,7 @@ interface PreflightAttributedFile extends AttributedFilterFile {
  * @returns Exact executed baseline provenance.
  */
 async function lockAttributedBytes(
-    request: AdguardCliBaselineRequest,
+    request: ProxyBlockerBaselineRequest,
     attributed: readonly AttributedFilterFile[],
     cliDataRoot: string,
     fileSystem: BaselineFileSystemPort,
@@ -691,7 +694,7 @@ async function lockAttributedBytes(
         });
     }
     return v.parse(PublishedBaselineProvenanceSchema, {
-        environment: AdguardCliExecutorName,
+        environment: request.environment,
         acquiredAt: request.acquiredAt,
         enabledListKeys: request.requestedFilterIds.map(adguardListKey),
         resources,
@@ -713,11 +716,11 @@ async function lockAttributedBytes(
  * @param fileSystem - No-follow filesystem boundary used for byte locking.
  * @returns Locked published baseline provenance or a stable path-free limitation.
  */
-export async function prepareAdguardCliPublishedBaseline(
-    request: AdguardCliBaselineRequest,
-    host: AdguardCliBaselineHostPort,
+export async function prepareProxyBlockerPublishedBaseline(
+    request: ProxyBlockerBaselineRequest,
+    host: ProxyBlockerBaselineHostPort,
     fileSystem: BaselineFileSystemPort = nodeBaselineFileSystem,
-): Promise<AdguardCliBaselineResult> {
+): Promise<ProxyBlockerBaselineResult> {
     const observed: BaselinePreparationObservation = {
         requestedFilterIds: request.requestedFilterIds,
         initialRows: null,

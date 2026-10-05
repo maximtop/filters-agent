@@ -1,11 +1,11 @@
 import { readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { OFFICIAL_ADGUARD_FILTERS } from '../environment/official-filter-catalog';
-import { CATALOG_STATUS_FORMS } from './adguard-cli-filter-list';
+import { CATALOG_STATUS_FORMS } from './catalog-table';
 import type {
-    AdguardCliBaselineAction,
-    AdguardCliBaselineHostPort,
-} from './adguard-cli-published-baseline';
+    ProxyBlockerBaselineAction,
+    ProxyBlockerBaselineHostPort,
+} from './published-baseline';
 import type { DownloadedOfficialFilter } from '../local/official-filter-downloader';
 
 /**
@@ -62,7 +62,7 @@ function renderRow(
 /**
  * Construction input for the locally backed baseline host.
  */
-export interface AdguardCliBaselineHostInput {
+export interface ProxyBlockerBaselineHostInput {
     /**
      * Data directory the host owns for the files each add creates.
      */
@@ -82,7 +82,7 @@ export interface AdguardCliBaselineHostInput {
 /**
  * Baseline host port extended with the reader the AdGuard CLI route reconciles its proxy against.
  */
-export interface AdguardCliBaselineHost extends AdguardCliBaselineHostPort {
+export interface ProxyBlockerBaselineHost extends ProxyBlockerBaselineHostPort {
     /**
      * Official identifiers currently enabled, ascending.
      *
@@ -104,9 +104,9 @@ export interface AdguardCliBaselineHost extends AdguardCliBaselineHostPort {
  * @param input - Data directory and the filter bytes each identifier resolves to.
  * @returns Baseline host port over local files.
  */
-export function createAdguardCliBaselineHost(
-    input: AdguardCliBaselineHostInput,
-): AdguardCliBaselineHost {
+export function createProxyBlockerBaselineHost(
+    input: ProxyBlockerBaselineHostInput,
+): ProxyBlockerBaselineHost {
     const byId = new Map(input.filters.map((filter) => [filter.filterId, filter]));
     const titles = new Map(
         OFFICIAL_ADGUARD_FILTERS.map((filter) => [filter.filterId, filter.name]),
@@ -117,7 +117,7 @@ export function createAdguardCliBaselineHost(
     return {
         cliDataRoot: input.dataRoot,
 
-        async runBaselineAction(action: AdguardCliBaselineAction, filterId: number | null) {
+        async runBaselineAction(action: ProxyBlockerBaselineAction, filterId: number | null) {
             if (action === 'list_all_filters') {
                 const rows = [...titles.entries()]
                     .sort(([left], [right]) => left - right)

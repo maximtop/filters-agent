@@ -366,8 +366,7 @@ export function createDiagnosticQuarantine(
  * call returns the typed tool_gated refusal naming why the step is runner-owned and what to do
  * first — the document's "read that refusal and adapt" contract. The cause is always
  * ToolGateCause.NotApplicable: the tool is not merely currently unavailable, it can never become
- * usable in this mode's run. Shared by analyze and replay; split from analyze-session.ts so all
- * wiring modules stay under the repo's 500-line ceiling.
+ * usable in this mode's run.
  */
 
 /**

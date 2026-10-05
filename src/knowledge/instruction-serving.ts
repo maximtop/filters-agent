@@ -28,11 +28,6 @@ export const RuleGuidanceNotice = {
 } as const;
 
 /**
- * Every RuleGuidanceNotice value, for schemas and exhaustive listings.
- */
-export const RULE_GUIDANCE_NOTICE_VALUES = Object.values(RuleGuidanceNotice);
-
-/**
  * RuleGuidanceNotice value.
  */
 export type RuleGuidanceNotice = (typeof RuleGuidanceNotice)[keyof typeof RuleGuidanceNotice];

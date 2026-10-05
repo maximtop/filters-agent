@@ -70,11 +70,6 @@ export const SkippedListReason = {
 export type SkippedListReason = (typeof SkippedListReason)[keyof typeof SkippedListReason];
 
 /**
- * Every `SkippedListReason` value, for exhaustive listings.
- */
-export const SKIPPED_LIST_REASON_VALUES = Object.values(SkippedListReason);
-
-/**
  * One catalog candidate the catalog refused to emit, kept for diagnosis instead of dropped.
  */
 export interface SkippedListEntry {

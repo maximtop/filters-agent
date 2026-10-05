@@ -19,11 +19,6 @@ export const RuleGuidanceSourceKind = {
 } as const;
 
 /**
- * Every RuleGuidanceSourceKind value, for schemas and exhaustive listings.
- */
-export const RULE_GUIDANCE_SOURCE_KIND_VALUES = Object.values(RuleGuidanceSourceKind);
-
-/**
  * RuleGuidanceSourceKind value.
  */
 export type RuleGuidanceSourceKind =

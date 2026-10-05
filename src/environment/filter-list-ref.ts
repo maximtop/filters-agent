@@ -75,16 +75,6 @@ export const FilterListSourceKind = {
 export type FilterListSourceKind = (typeof FilterListSourceKind)[keyof typeof FilterListSourceKind];
 
 /**
- * Every `FilterListSourceKind` value, for schemas and exhaustive listings.
- */
-export const FILTER_LIST_SOURCE_KIND_VALUES = Object.values(FilterListSourceKind);
-
-/**
- * Finite reason catalog of the referenced list text.
- */
-export const FilterListSourceKindSchema = v.picklist(FILTER_LIST_SOURCE_KIND_VALUES);
-
-/**
  * Where the referenced list text lives: a repository file path or a published URL.
  */
 export const FilterListSourceSchema = v.variant('kind', [
@@ -122,11 +112,6 @@ export const FilterListRefSchema = v.strictObject({
  * A stable `catalog:entry` identifier of one filter list.
  */
 export type FilterListKey = v.InferOutput<typeof FilterListKeySchema>;
-
-/**
- * A bounded, single-line description of one filter list.
- */
-export type FilterListSource = v.InferOutput<typeof FilterListSourceSchema>;
 
 /**
  * One filter list described by an opaque reference, never by a numeric registry id.

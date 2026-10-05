@@ -45,11 +45,6 @@ export const DefaultSingleIssueResultKind = {
 } as const;
 
 /**
- * Every DefaultSingleIssueResultKind value, for exhaustive listings.
- */
-export const DEFAULT_SINGLE_ISSUE_RESULT_KIND_VALUES = Object.values(DefaultSingleIssueResultKind);
-
-/**
  * DefaultSingleIssueResultKind value.
  */
 export type DefaultSingleIssueResultKind =
@@ -93,11 +88,6 @@ export const DefaultSingleIssueFailure = {
      */
     FileBackedApplicationUnsupported: 'file_backed_application_unsupported',
 } as const;
-
-/**
- * Every DefaultSingleIssueFailure value, for exhaustive listings.
- */
-export const DEFAULT_SINGLE_ISSUE_FAILURE_VALUES = Object.values(DefaultSingleIssueFailure);
 
 /**
  * DefaultSingleIssueFailure value.

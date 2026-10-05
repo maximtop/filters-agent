@@ -11,20 +11,6 @@
 import { FixOutcomeKind, type FixOutcome } from '../pr/fix-outcome';
 import type { NonTerminalSeal } from '../pi/seal-types';
 import { sealDetail } from '../tracer/session-trace';
-import type { ModeSessionResult } from './mode-session';
-
-/**
- * What a mode that continues on this fallback returns: the sealed mode-session result plus the
- * `FixOutcome` the unchanged post-pipeline consumes. Declared once here beside the fallback itself,
- * because the shape exists only for the modes that use it.
- */
-export interface AnalysisOnlyModeRun extends ModeSessionResult<FixOutcome> {
-    /**
-     * The FixOutcome consumed by the unchanged post-pipeline — the accepted payload, or the
-     * analysis_only fallback carrying the seal detail.
-     */
-    fixOutcome: FixOutcome;
-}
 
 /**
  * What a mode was waiting for, named in the fallback reasoning. The exact wording is a persisted
@@ -37,11 +23,6 @@ export const AcceptedSubject = {
      */
     FixOutcome: 'fix outcome',
 } as const;
-
-/**
- * Every AcceptedSubject value, for exhaustive listings.
- */
-export const ACCEPTED_SUBJECT_VALUES = Object.values(AcceptedSubject);
 
 /**
  * AcceptedSubject value.

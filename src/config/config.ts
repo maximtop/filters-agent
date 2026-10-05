@@ -208,7 +208,6 @@ const CoreConfigSchema = v.object({
      * Pass --no-sandbox to Chromium (only for CI/Docker; default false).
      */
     noSandbox: v.optional(v.boolean(), false),
-    cloakBrowserPath: v.optional(v.string()),
     /**
      * Local checkout of the repository the run works with, mapped from `REPOSITORY_PATH`.
      */
@@ -358,7 +357,6 @@ function buildRawCoreConfig(env: Record<string, string | undefined>): Record<str
         },
         headless: parseBool(env.HEADLESS, true),
         noSandbox: parseBool(env.NO_SANDBOX, false),
-        cloakBrowserPath: env.CLOAKBROWSER_PATH,
         repositoryPath: env[REPOSITORY_PATH_VAR],
         adguardExtensionManifestVersion:
             env.ADGUARD_EXTENSION_MANIFEST_VERSION === undefined

@@ -692,13 +692,6 @@ export const EnvironmentPhaseConfigurationOutcome = {
 } as const;
 
 /**
- * Every EnvironmentPhaseConfigurationOutcome value, for exhaustive listings.
- */
-export const ENVIRONMENT_PHASE_CONFIGURATION_OUTCOME_VALUES = Object.values(
-    EnvironmentPhaseConfigurationOutcome,
-);
-
-/**
  * EnvironmentPhaseConfigurationOutcome value.
  */
 export type EnvironmentPhaseConfigurationOutcome =

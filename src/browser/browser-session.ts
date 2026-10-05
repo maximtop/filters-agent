@@ -22,8 +22,6 @@ import { launchSessionBrowser, type LaunchedSessionPieces } from './launch-wirin
 import { BrowserConfigurationError } from './browser-launch-errors';
 
 export {
-    BROWSER_LAUNCH_BOUNDARY_VALUES,
-    SETTINGS_FAILURE_REASON_VALUES,
     BrowserConfigurationError,
     BrowserLaunchBoundary,
     BrowserLaunchError,

@@ -32,7 +32,9 @@ import {
 import {
     hasUnsafeControl,
     LocalPublicationTrustError,
+    LocalPublicationTrustFailureCode,
     normalizeEvidencePath,
+    schemaIssueDetail,
     sha256,
 } from './local-publication-trust';
 
@@ -75,12 +77,23 @@ function verifyPublicationArtifact(
 export function parseVerifiedJsonArtifact<
     TSchema extends v.BaseSchema<unknown, unknown, v.BaseIssue<unknown>>,
 >(bytes: Buffer, schema: TSchema): v.InferOutput<TSchema> {
+    let value: unknown;
     try {
-        const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-        return v.parse(schema, JSON.parse(text) as unknown);
+        value = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)) as unknown;
     } catch {
-        throw new LocalPublicationTrustError('unsafe_artifact');
+        throw new LocalPublicationTrustError(
+            LocalPublicationTrustFailureCode.UnsafeArtifact,
+            'json: undecodable',
+        );
     }
+    const parsed = v.safeParse(schema, value);
+    if (!parsed.success) {
+        throw new LocalPublicationTrustError(
+            LocalPublicationTrustFailureCode.UnsafeArtifact,
+            schemaIssueDetail(parsed.issues[0]),
+        );
+    }
+    return parsed.output;
 }
 
 /**

@@ -603,11 +603,6 @@ export const EnvironmentProjectionRefusal = {
 } as const;
 
 /**
- * Every projection refusal value, for schemas and exhaustive listings.
- */
-export const ENVIRONMENT_PROJECTION_REFUSAL_VALUES = Object.values(EnvironmentProjectionRefusal);
-
-/**
  * One exact reason canonical execution did not project.
  */
 export type EnvironmentProjectionRefusal =

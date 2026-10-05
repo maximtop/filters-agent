@@ -37,11 +37,6 @@ export const ReportTemplateSource = {
 } as const;
 
 /**
- * Every ReportTemplateSource value, for schemas and exhaustive listings.
- */
-export const REPORT_TEMPLATE_SOURCE_VALUES = Object.values(ReportTemplateSource);
-
-/**
  * ReportTemplateSource value.
  */
 export type ReportTemplateSource = (typeof ReportTemplateSource)[keyof typeof ReportTemplateSource];

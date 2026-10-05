@@ -46,8 +46,7 @@ function cloakbrowserLaunchOptions(config: BrowserEngineLaunchConfig): Record<st
 /**
  * CloakBrowser engine implementation wrapping cloakbrowser's `launch()`.
  *
- * CloakBrowser is a stealth Playwright drop-in. This engine is the default when `CLOAKBROWSER_PATH`
- * is configured.
+ * CloakBrowser is a stealth Playwright drop-in and the default engine.
  */
 export class CloakBrowserEngine implements IBrowserEngine {
     /**

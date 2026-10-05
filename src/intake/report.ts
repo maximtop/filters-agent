@@ -82,11 +82,6 @@ export const ReportScreenshotSchema = v.object({
 });
 
 /**
- * A reporter screenshot reference.
- */
-export type ReportScreenshot = v.InferOutput<typeof ReportScreenshotSchema>;
-
-/**
  * The reporter's environment as the report declares it, copied verbatim.
  */
 export const ReportEnvironmentSchema = v.object({
@@ -110,11 +105,6 @@ export const ReportEnvironmentSchema = v.object({
      */
     version: v.optional(v.string()),
 });
-
-/**
- * The reporter's declared environment.
- */
-export type ReportEnvironment = v.InferOutput<typeof ReportEnvironmentSchema>;
 
 /**
  * The model-filled, code-validated report extracted from one issue.

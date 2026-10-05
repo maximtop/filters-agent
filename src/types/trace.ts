@@ -9,16 +9,6 @@ export const RunMode = {
      * Browser-first fix investigation that may propose a patch.
      */
     Fix: 'fix',
-
-    /**
-     * Read-only investigation that never writes to GitHub.
-     */
-    Analyze: 'analyze',
-
-    /**
-     * Backtest against a closed issue with a known developer fix.
-     */
-    Replay: 'replay',
 } as const;
 
 /**

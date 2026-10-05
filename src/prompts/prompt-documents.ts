@@ -26,16 +26,6 @@ export const PromptDocumentName = {
     Nudge: 'nudge',
 
     /**
-     * Analyze-mode user task.
-     */
-    AnalyzeTask: 'tasks/analyze',
-
-    /**
-     * Replay-mode user task.
-     */
-    ReplayTask: 'tasks/replay',
-
-    /**
      * Fix-mode user task.
      */
     FixTask: 'tasks/fix',

@@ -1,16 +1,18 @@
 /**
- * What the AdGuard CLI proxy reports inside the pages it filters.
+ * What a proxy blocker reports inside the pages it filters, in the format its description names
+ * ({@link PageEvidenceFormat}). Only the agent holds the page, so the agent reads these reports
+ * itself.
  *
- * The standalone proxy_server switches every developer-mode flag on, so its cosmetic filtering
- * reports itself: every element-hiding rule marks what it hides with `content:
- * 'adguard<list>;<rule>'`, and the content script the proxy injects lists every script rule it runs
- * with its text. The content script also logs its hits to the page console, but the stealth browser
- * passes no page console message to the run at all, so the report is read where it lands: the
- * markers on the elements of every frame, and the content-script bodies the page loads.
+ * {@link PageEvidenceFormat.AdguardMarkers}: the AdGuard proxy switches every developer-mode flag
+ * on, so its cosmetic filtering reports itself: every element-hiding rule marks what it hides with
+ * `content: 'adguard<list>;<rule>'`, and the content script the proxy injects lists every script
+ * rule it runs with its text. The content script also logs its hits to the page console, but the
+ * stealth browser passes no page console message to the run at all, so the report is read where it
+ * lands: the markers on the elements of every frame, and the content-script bodies the page loads.
  */
 import type { Frame, Page, Response } from 'playwright-core';
 import type { Logger } from '../logger/logger';
-import { INJECTIONS_HOST } from './adguard-cli-proxy-config';
+import type { PageEvidence } from './blocker-contract';
 
 /**
  * The `type` a content-script request carries to the injections host.
@@ -154,7 +156,7 @@ interface ScannedPage {
 /**
  * What the proxy reported inside the session's pages.
  */
-export interface AdguardCliPageReports {
+export interface PageReports {
     /**
      * Script rules injected into the session's frames since the watch started.
      *
@@ -254,7 +256,7 @@ async function scanFrame(frame: Frame, logger: Logger): Promise<MarkedElement[]>
     } catch (error) {
         logger.warn(
             { err: error, frameUrl: frame.url() },
-            'a frame could not be scanned for AdGuard CLI element-hiding markers',
+            'a frame could not be scanned for element-hiding markers',
         );
         return [];
     } finally {
@@ -263,19 +265,20 @@ async function scanFrame(frame: Frame, logger: Logger): Promise<MarkedElement[]>
 }
 
 /**
- * Start watching what the proxy reports inside one session's pages. Call it before the session
+ * Start watching what the blocker reports inside one session's pages. Call it before the session
  * navigates: a content script served earlier is not seen.
  *
  * @param page - The session's page.
+ * @param evidence - Where the blocker serves its content scripts.
  * @param logger - Run logger for what could not be read.
  * @returns The session's page reports.
  */
-export function watchAdguardCliPageReports(page: Page, logger: Logger): AdguardCliPageReports {
+export function watchPageEvidence(page: Page, evidence: PageEvidence, logger: Logger): PageReports {
     const injections: Array<Promise<InjectedScript[]>> = [];
     page.on('response', (response: Response) => {
         const url = new URL(response.url());
         if (
-            url.hostname !== INJECTIONS_HOST ||
+            url.hostname !== evidence.contentScriptHost ||
             url.searchParams.get('type') !== CONTENT_SCRIPT_REQUEST_TYPE
         ) {
             return;
@@ -287,7 +290,7 @@ export function watchAdguardCliPageReports(page: Page, logger: Logger): AdguardC
                 (error: unknown) => {
                     logger.warn(
                         { err: error, contentScriptUrl: response.url() },
-                        'an AdGuard CLI content script body could not be read',
+                        'a blocker content script body could not be read',
                     );
                     return [];
                 },

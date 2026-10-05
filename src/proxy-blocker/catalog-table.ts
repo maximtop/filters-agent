@@ -5,7 +5,7 @@
  * wanted: catalog membership, titles, group names and surrounding notices belong to upstream and
  * are free to change, so a consumer decides those for itself on the rows returned here.
  */
-export type AdguardCliFilterListRejection =
+export type ProxyBlockerFilterListRejection =
     | 'ansi_wrapper_unsupported'
     | 'table_header_absent'
     | 'enabled_row_unreadable'
@@ -14,7 +14,7 @@ export type AdguardCliFilterListRejection =
 /**
  * Parsed catalog row from one complete native list.
  */
-export interface AdguardCliCatalogRow {
+export interface ProxyBlockerCatalogRow {
     /**
      * Numeric catalog ID; the built-in user filter uses a negative pseudo-ID.
      */
@@ -40,11 +40,11 @@ export interface AdguardCliCatalogRow {
 /**
  * Everything one complete native list carried: readable rows and diagnosable remainder alike.
  */
-export interface AdguardCliFilterListReading {
+export interface ProxyBlockerFilterListReading {
     /**
      * Every readable catalog row, in displayed order.
      */
-    rows: readonly AdguardCliCatalogRow[];
+    rows: readonly ProxyBlockerCatalogRow[];
     /**
      * Disabled or absent rows the contract could not read, retained for diagnosis.
      */
@@ -143,7 +143,7 @@ interface ParsedCatalogRowColumns {
  */
 function decodeFilterListLine(
     line: string,
-    reject: (reason: AdguardCliFilterListRejection, observed: unknown) => never,
+    reject: (reason: ProxyBlockerFilterListRejection, observed: unknown) => never,
 ): DecodedFilterListLine {
     if (!line.includes(ANSI_ESCAPE)) {
         return { text: line, bold: false };
@@ -192,7 +192,7 @@ function splitCatalogRowColumns(columns: string): ParsedCatalogRowColumns | null
  * @param line - One non-bold native row.
  * @returns Parsed row, or null when the row does not carry the state contract.
  */
-function parseCatalogRow(line: string): AdguardCliCatalogRow | null {
+function parseCatalogRow(line: string): ProxyBlockerCatalogRow | null {
     const row = CATALOG_ROW_PATTERN.exec(line);
     if (!row) {
         return null;
@@ -240,11 +240,11 @@ function parseCatalogRow(line: string): AdguardCliCatalogRow | null {
  * @param reject - Called with the finite reason and observed facts; must throw.
  * @returns Every readable row plus the material a refusal would need.
  */
-export function readAdguardCliFilterList(
+export function readProxyBlockerFilterList(
     stdout: string,
-    reject: (reason: AdguardCliFilterListRejection, observed: unknown) => never,
-): AdguardCliFilterListReading {
-    const rows: AdguardCliCatalogRow[] = [];
+    reject: (reason: ProxyBlockerFilterListRejection, observed: unknown) => never,
+): ProxyBlockerFilterListReading {
+    const rows: ProxyBlockerCatalogRow[] = [];
     const ids = new Set<number>();
     const surroundingLines: string[] = [];
     const unreadableRows: string[] = [];

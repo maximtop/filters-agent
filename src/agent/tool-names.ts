@@ -196,8 +196,3 @@ export const ToolName = {
  * One agent tool name.
  */
 export type ToolName = (typeof ToolName)[keyof typeof ToolName];
-
-/**
- * Every ToolName value, for schemas and exhaustive listings.
- */
-export const TOOL_NAME_VALUES = Object.values(ToolName);

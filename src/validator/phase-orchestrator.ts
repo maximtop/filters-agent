@@ -226,13 +226,6 @@ export const AdsEnvironmentExperimentVerdict = {
 } as const;
 
 /**
- * Every AdsEnvironmentExperimentVerdict value, for schemas and exhaustive listings.
- */
-export const ADS_ENVIRONMENT_EXPERIMENT_VERDICT_VALUES = Object.values(
-    AdsEnvironmentExperimentVerdict,
-);
-
-/**
  * AdsEnvironmentExperimentVerdict value.
  */
 export type AdsEnvironmentExperimentVerdict =

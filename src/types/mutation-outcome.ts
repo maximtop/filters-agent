@@ -8,11 +8,6 @@ export const MutationOutcome = {
 } as const;
 
 /**
- * Every MutationOutcome value, for schemas and exhaustive listings.
- */
-export const MUTATION_OUTCOME_VALUES = Object.values(MutationOutcome);
-
-/**
  * MutationOutcome value.
  */
 export type MutationOutcome = (typeof MutationOutcome)[keyof typeof MutationOutcome];

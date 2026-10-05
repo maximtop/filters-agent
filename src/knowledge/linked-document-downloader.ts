@@ -137,13 +137,6 @@ export const LinkedDocumentDownloadFailureCode = {
 } as const;
 
 /**
- * Every LinkedDocumentDownloadFailureCode value, for schemas and exhaustive listings.
- */
-export const LINKED_DOCUMENT_DOWNLOAD_FAILURE_CODES = Object.values(
-    LinkedDocumentDownloadFailureCode,
-);
-
-/**
  * LinkedDocumentDownloadFailureCode value.
  */
 export type LinkedDocumentDownloadFailureCode =

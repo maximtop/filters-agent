@@ -57,11 +57,6 @@ export const HostApplicationStep = {
 } as const;
 
 /**
- * Every HostApplicationStep value, for exhaustive listings.
- */
-export const HOST_APPLICATION_STEP_VALUES = Object.values(HostApplicationStep);
-
-/**
  * HostApplicationStep value.
  */
 export type HostApplicationStep = (typeof HostApplicationStep)[keyof typeof HostApplicationStep];

@@ -9,19 +9,6 @@
 # capability, its installed files are not (`ldd` and directory listings assert prerequisites,
 # not the capability).
 
-# The AdGuard CLI behind the `adguard_cli` executor: the official public release, pinned by version
-# and archive checksum, with the binary's own Ed25519 signature checked against AdGuard's published
-# key (https://github.com/AdguardTeam/AdGuardCLI#verify-releases). The stage sits on the bare base
-# image so source changes never re-run the download. The pins are the lab `Dockerfile`'s: bump URL
-# and checksum together, in both recipes.
-FROM node:24-bookworm-slim AS adguard-cli-fetch
-
-ARG ADGUARD_CLI_URL=https://github.com/AdguardTeam/AdGuardCLI/releases/download/v1.5.0-rc.1/adguard-cli-1.5.0-rc.1-linux-x86_64.tar.gz
-ARG ADGUARD_CLI_SHA256=f782aa950be96ea6817d935bfe55a8f445bc972d10c4eee5b9db6c15a88dbfa1
-
-COPY scripts/fetch-adguard-cli.mjs /fetch/fetch-adguard-cli.mjs
-RUN node /fetch/fetch-adguard-cli.mjs "${ADGUARD_CLI_URL}" "${ADGUARD_CLI_SHA256}" /opt/adguard-cli
-
 FROM node:24-bookworm-slim
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -35,8 +22,7 @@ ENV CLOAKBROWSER_CACHE_DIR=/opt/cloakbrowser \
     CLOAKBROWSER_AUTO_UPDATE=false \
     HEADLESS=true \
     NO_SANDBOX=true \
-    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
-    ADGUARD_CLI_PATH=/opt/adguard-cli/adguard-cli
+    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 WORKDIR /app
 
@@ -98,17 +84,6 @@ RUN pnpm exec playwright-core install-deps firefox \
     && pnpm exec playwright-core install firefox
 
 RUN node --input-type=module -e "import { firefox } from 'playwright-core'; const browser = await firefox.launch({ headless: true }); console.log('playwright firefox ready:', browser.version()); await browser.close();"
-
-COPY --from=adguard-cli-fetch /opt/adguard-cli/ /opt/adguard-cli/
-
-# Filtering needs an activated licence, which a build step does not have, so the probe stops at
-# executing the binary: a missing library or a wrong architecture fails here, not in a run. It runs
-# with exactly the environment the run gives the CLI (HOME, PATH, LANG) and not the image's, so
-# nothing the image sets can paper over a library the CLI would miss in the run.
-RUN probe_home="$(mktemp -d /tmp/agcli-probe-XXXXXX)" \
-    && env -i HOME="${probe_home}" PATH="${PATH}" LANG=en_US.UTF-8 \
-        "${ADGUARD_CLI_PATH}" --version \
-    && rm -rf "${probe_home}"
 
 # Sources only — never `lab/` (the lint boundary keeps it out of every published surface) and
 # never the tests; the tsconfig pair travels with them because tsx resolves the module graph

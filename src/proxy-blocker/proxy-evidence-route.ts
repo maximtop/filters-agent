@@ -1,11 +1,21 @@
 import { createHash, randomUUID, X509Certificate } from 'node:crypto';
-import { chmod, mkdir, mkdtemp, readFile, stat } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp } from 'node:fs/promises';
 import { join } from 'node:path';
 import { BrowserSession } from '../browser/browser-session';
+import { createBlockerAppliedRulesLog } from '../blocker-contract/blocker-applied-rules';
+import type {
+    BlockerContract,
+    BlockerDescription,
+    BlockerFilterList,
+    BlockerRoute,
+} from '../blocker-contract/blocker-contract';
+import { followBlockedRequests } from '../blocker-contract/blocked-requests';
+import { watchPageEvidence } from '../blocker-contract/page-evidence';
 import type { AppliedRulesLog } from '../environment/applied-rules';
 import type { Logger } from '../logger/logger';
 import { createPreparedStrictBrowserRoute } from '../browser/strict-browser-route';
 import type {
+    BaselineEditReceipt,
     EvidenceRouteHost,
     EvidenceRoutePorts,
     EvidenceRouteSnapshot,
@@ -14,14 +24,9 @@ import type {
 import { EvidenceRouteError } from '../local/evidence-route-contract';
 import { probeTlsInterception } from '../local/tls-interception-diagnostic';
 import {
-    createAdguardCliBaselineHost,
-    type AdguardCliBaselineHost,
-} from './adguard-cli-baseline-host';
-import { createAdguardCliAppliedRulesLog } from './adguard-cli-applied-rules';
-import { createAdguardCliBlockedRequests } from './adguard-cli-blocked-requests';
-import { watchAdguardCliPageReports } from './adguard-cli-page-reports';
-import type { ProxyHost, ProxyHostInput, ProxyLogger } from './proxy-host';
-import { ACCESS_LOG_FILENAME, OUTPUT_LOG_FILENAME } from './adguard-cli-proxy-config';
+    createProxyBlockerBaselineHost,
+    type ProxyBlockerBaselineHost,
+} from './baseline-catalog-host';
 import {
     downloadOfficialFilters,
     type DownloadedOfficialFilter,
@@ -33,49 +38,43 @@ import {
 const EVIDENCE_ROUTE_LIFETIME_MS = 10 * 60_000;
 
 /**
- * Size of one proxy log, zero while the proxy has not written it yet.
+ * The text of one list as the blocker and the baseline host both write it: ending in a newline, so
+ * the digest of this text is the digest the baseline locked.
  *
- * @param path - The log file.
- * @returns Its size in bytes.
+ * @param content - Downloaded list text.
+ * @returns Executed list text.
  */
-async function logSize(path: string): Promise<number> {
-    try {
-        return (await stat(path)).size;
-    } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-            return 0;
-        }
-        throw error;
-    }
+function executedFilterText(content: string): string {
+    return content.endsWith('\n') ? content : `${content}\n`;
+}
+
+/**
+ * Drop the carriage return a CRLF list leaves at the end of each line, so a published line is
+ * compared the way a reader sees it.
+ *
+ * @param line - One line split on the line feed.
+ * @returns The line without a trailing carriage return.
+ */
+function stripCarriageReturn(line: string): string {
+    return line.endsWith('\r') ? line.slice(0, -1) : line;
 }
 
 /**
  * Construction input for one run-owned AdGuard CLI evidence route.
  */
-export interface CreateAdguardCliEvidenceRouteHostInput {
+export interface CreateProxyBlockerEvidenceRouteInput {
     /**
      * Exact cycle identity, retained for route binding.
      */
     cycleId: string;
 
     /**
-     * Absolute path of the `adguard-cli` executable.
+     * The blocker the route drives through the contract.
      */
-    binaryPath: string;
+    blocker: BlockerContract;
 
     /**
-     * Engine choice: builds the proxy host for the resolved engine around the route's workspace,
-     * filter lists, and logger.
-     */
-    createProxy: (proxyInput: ProxyHostInput) => ProxyHost;
-
-    /**
-     * Logger handed to the proxy so its lifecycle steps and failures reach the run log.
-     */
-    logger?: ProxyLogger;
-
-    /**
-     * Directory the route owns for configuration, filter files, and logs.
+     * Directory the route owns for the baseline catalog and browser profiles.
      */
     workspaceDir: string;
 
@@ -88,12 +87,6 @@ export interface CreateAdguardCliEvidenceRouteHostInput {
      * Official filter identifiers the reporter had enabled.
      */
     reporterFilterIds?: readonly number[];
-
-    /**
-     * Version the executing context reports, kept equal to the preparation provenance so the
-     * selection snapshot stays internally consistent. Null when the engine build knows none.
-     */
-    cliVersion?: string | null;
 
     /**
      * Host wall-clock source.
@@ -133,8 +126,8 @@ export interface CreateAdguardCliEvidenceRouteHostInput {
  * @param input - Binary, engine choice, workspace, reporter filters, and optional seams.
  * @returns Evidence route host.
  */
-export function createAdguardCliEvidenceRouteHost(
-    input: CreateAdguardCliEvidenceRouteHostInput,
+export function createProxyBlockerEvidenceRoute(
+    input: CreateProxyBlockerEvidenceRouteInput,
 ): EvidenceRouteHost {
     const now = input.now ?? (() => new Date().toISOString());
     const downloadFilters = input.dependencies?.downloadFilters ?? downloadOfficialFilters;
@@ -142,20 +135,23 @@ export function createAdguardCliEvidenceRouteHost(
 
     let state: EvidenceRouteSnapshot['state'] = 'new';
     let failureCode: EvidenceRouteSnapshot['failureCode'] = null;
-    let proxy: ProxyHost | null = null;
+    let description: BlockerDescription | null = null;
     let filters: readonly DownloadedOfficialFilter[] = [];
     let unavailableFilterIds: readonly number[] = [];
     let interception: Awaited<ReturnType<typeof probeTlsInterception>> | null = null;
-    let route: Awaited<ReturnType<ProxyHost['start']>> | null = null;
-    let baselineHost: AdguardCliBaselineHost | null = null;
-    // SHA-256 of the executing proxy binary: the adapter folds the installation identity into its
-    // state digest under a pinned sha256 schema, and this is the digest that honestly names the
-    // engine build a run executed.
-    let binarySha256: string | null = null;
+    // How the browser reaches the running proxy, and the revision it runs at; null until started.
+    let route: BlockerRoute | null = null;
+    let revision = 0;
+    let port: number | null = null;
+    let userRules: readonly string[] = [];
+    // The text one list executes instead of its downloaded text while a candidate edits or removes
+    // one of its lines, and the locked digest of that list to restore.
+    let listReplacement: BlockerFilterList | null = null;
+    let lockedReplacedSha256: string | null = null;
+    let baselineHost: ProxyBlockerBaselineHost | null = null;
 
-    // The baseline host owns this directory alone. It must not be the proxy workspace: the proxy
-    // prepares files named exactly like the ones each baseline add creates, and an add that only
-    // overwrites an existing file loses its byte attribution.
+    // The baseline host owns this directory alone: it is the agent's own record of the catalog
+    // phases enable lists from, and it must not mix with anything the blocker writes.
     const baselineDataRoot = join(input.workspaceDir, 'baseline');
 
     const fail = (
@@ -172,6 +168,104 @@ export function createAdguardCliEvidenceRouteHost(
     const executedFilterIds = (): readonly number[] | null =>
         baselineHost === null ? null : baselineHost.enabledFilterIds();
 
+    /**
+     * Ask the blocker to execute the current lists and rules, starting it on first use, and record
+     * where it runs now.
+     *
+     * @returns Whether the proxy restarted.
+     */
+    const reconcile = async (): Promise<boolean> => {
+        if (route === null) {
+            const started = await input.blocker.start({
+                lists: filters.map((filter) => ({ id: filter.filterId, content: filter.content })),
+                enabledListIds: executedFilterIds(),
+                userRules,
+                listReplacement,
+            });
+            route = started.route;
+            revision = started.revision;
+            port = (await input.blocker.state()).port;
+            state = 'foreground_running';
+            return false;
+        }
+        const applied = await input.blocker.apply({
+            enabledListIds: executedFilterIds(),
+            userRules,
+            listReplacement,
+        });
+        route = applied.route;
+        revision = applied.revision;
+        port = (await input.blocker.state()).port;
+        return applied.restarted;
+    };
+
+    /**
+     * The digest of one list as the blocker executes it now, read back from the blocker.
+     *
+     * @param filterId - The list.
+     * @returns Its SHA-256, or null when the blocker does not execute it.
+     */
+    const executedListSha256 = async (filterId: number): Promise<string | null> =>
+        (await input.blocker.state()).lists.find((list) => list.id === filterId)?.sha256 ?? null;
+
+    /**
+     * Rewrite one exact published line in the list the blocker executes, and run the blocker on it.
+     *
+     * The line is looked up across the lists the current phase executes. A line that occurs nowhere
+     * or more than once is refused: the mutation must be attributable to one source line. The
+     * receipt's after-digest is the blocker's own read-back, not the text the route asked for.
+     *
+     * @param originalRule - Exact published line to replace or delete.
+     * @param replacementRule - Complete replacement line, or null to delete the line.
+     * @returns Receipt naming the list and its bytes before and after.
+     */
+    const mutateBaselineLine = async (
+        originalRule: string,
+        replacementRule: string | null,
+    ): Promise<BaselineEditReceipt> => {
+        const executed = executedFilterIds();
+        const occurrences = filters
+            .filter((filter) => executed === null || executed.includes(filter.filterId))
+            .flatMap((filter) => {
+                const lines = executedFilterText(filter.content).split('\n');
+                return lines.flatMap((line, index) =>
+                    stripCarriageReturn(line) === originalRule
+                        ? [{ filterId: filter.filterId, lines, index }]
+                        : [],
+                );
+            });
+        if (occurrences.length !== 1) {
+            throw new Error(
+                occurrences.length === 0 ? 'baseline_line_not_found' : 'baseline_line_not_unique',
+            );
+        }
+        const { filterId, lines, index } = occurrences[0]!;
+        const before = lines.join('\n');
+        const lineEnding = lines[index]!.endsWith('\r') ? '\r' : '';
+        const mutated = [...lines];
+        if (replacementRule === null) {
+            mutated.splice(index, 1);
+        } else {
+            mutated[index] = `${replacementRule}${lineEnding}`;
+        }
+        // Recorded before the blocker runs it: an apply that fails after the list was rewritten must
+        // still leave the revoke knowing there is something to restore.
+        lockedReplacedSha256 = createHash('sha256').update(before).digest('hex');
+        listReplacement = { id: filterId, content: mutated.join('\n') };
+        await reconcile();
+        const afterSha256 = await executedListSha256(filterId);
+        if (afterSha256 === null) {
+            throw new Error('The blocker does not execute the list the candidate changed.');
+        }
+        return {
+            filterId,
+            beforeSha256: lockedReplacedSha256,
+            afterSha256,
+            replacedLineCount: 1,
+            extraSourceCount: (await input.blocker.state()).userRules.length === 0 ? 0 : 1,
+        };
+    };
+
     const reserveBrowserRoot =
         input.dependencies?.reserveBrowserRoot ??
         (async (): Promise<string> => {
@@ -182,15 +276,13 @@ export function createAdguardCliEvidenceRouteHost(
 
     return {
         async prepareConfiguration(): Promise<void> {
-            if (proxy) {
+            if (description) {
                 return;
             }
             try {
                 await mkdir(input.workspaceDir, { recursive: true, mode: 0o700 });
                 await mkdir(baselineDataRoot, { recursive: true, mode: 0o700 });
-                binarySha256 = createHash('sha256')
-                    .update(await readFile(input.binaryPath))
-                    .digest('hex');
+                description = await input.blocker.describe();
                 // Base is always present: an unfiltered baseline would make every phase
                 // meaningless, and the reporter's own selection is layered on top of it.
                 const requested = [...new Set([2, ...(input.reporterFilterIds ?? [])])].sort(
@@ -202,16 +294,6 @@ export function createAdguardCliEvidenceRouteHost(
                 if (filters.length === 0) {
                     throw fail('configuration_failed');
                 }
-                proxy = input.createProxy({
-                    binaryPath: input.binaryPath,
-                    workspaceDir: input.workspaceDir,
-                    logger: input.logger,
-                    filterLists: filters.map((filter) => ({
-                        filterId: filter.filterId,
-                        content: filter.content,
-                    })),
-                });
-                await proxy.prepare();
                 state = 'configured';
             } catch (error) {
                 if (error instanceof EvidenceRouteError) {
@@ -222,8 +304,7 @@ export function createAdguardCliEvidenceRouteHost(
         },
 
         async launchEvidenceSession(request: EvidenceSessionRequest) {
-            const host = proxy;
-            if (!host) {
+            if (!description) {
                 throw fail('route_unavailable');
             }
             try {
@@ -231,43 +312,33 @@ export function createAdguardCliEvidenceRouteHost(
                 // enabled through the baseline host — bookkeeping alone would leave a control
                 // phase filtered by the whole baseline. Before any baseline exists, every
                 // downloaded list runs.
-                const restarted = await host.setEnabledFilters(executedFilterIds());
-                if (restarted !== null && route !== null) {
-                    route = restarted;
-                    request.logger.info(
-                        { proxyPort: route.port },
-                        'adguard-cli evidence route reconciled to the enabled filter set',
-                    );
-                }
-                if (route === null) {
-                    route = await host.start();
-                    state = 'foreground_running';
-                    request.logger.info(
-                        {
-                            proxyPort: route.port,
-                            filterIds: filters.map((filter) => filter.filterId),
-                            unavailableFilterIds,
-                        },
-                        'adguard-cli evidence route started',
-                    );
-                }
+                const restarted = await reconcile();
+                request.logger.info(
+                    {
+                        proxyPort: port,
+                        revision,
+                        restarted,
+                        filterIds: executedFilterIds() ?? filters.map((filter) => filter.filterId),
+                        unavailableFilterIds,
+                    },
+                    'blocker evidence route ready',
+                );
             } catch (error) {
-                // The public code is finite, but the proxy's own failure detail is the only thing
+                // The public code is finite, but the blocker's own failure detail is the only thing
                 // that makes a foreground start diagnosable — log it before collapsing.
                 request.logger.info(
                     {
                         error: error instanceof Error ? error.message : String(error),
                         stack: error instanceof Error ? error.stack : undefined,
                     },
-                    'adguard-cli evidence route foreground start failed',
+                    'blocker evidence route foreground start failed',
                 );
                 throw fail('foreground_failed', error);
             }
-            const certificate = route;
+            const certificate = route!;
             if (!interception) {
-                // Same proof the CLI route needs: the proxy presents a leaf alone, so the browser
-                // can only accept it once the Host has verified the leaf is signed by this run's
-                // own authority.
+                // The proxy presents a leaf alone, so the browser can only accept it once the Host
+                // has verified the leaf is signed by this run's own authority.
                 const probe = input.dependencies?.probeInterception ?? probeTlsInterception;
                 interception = await probe(
                     certificate.proxyUrl,
@@ -279,7 +350,7 @@ export function createAdguardCliEvidenceRouteHost(
                         outcome: interception?.outcome,
                         leafIssuedByExpectedCa: interception?.leafIssuedByExpectedCa,
                     },
-                    'adguard-cli evidence route interception probe',
+                    'blocker evidence route interception probe',
                 );
             }
             try {
@@ -302,7 +373,7 @@ export function createAdguardCliEvidenceRouteHost(
                     ).toISOString(),
                 });
                 const { CloakBrowserEngine } = await import('../browser/cloakbrowser-engine');
-                const accessLogPath = join(input.workspaceDir, ACCESS_LOG_FILENAME);
+                const sessionLog = await input.blocker.log(null);
                 return await createSession({
                     engine: new CloakBrowserEngine(),
                     logger: request.logger,
@@ -313,9 +384,11 @@ export function createAdguardCliEvidenceRouteHost(
                     strictRoute,
                     strictRouteTargetUrl: request.targetUrl,
                     strictRouteAcceptProxyAuthority: interception?.leafIssuedByExpectedCa === true,
-                    engineBlockedRequests: createAdguardCliBlockedRequests(
-                        accessLogPath,
-                        await logSize(accessLogPath),
+                    engineBlockedRequests: followBlockedRequests(
+                        input.blocker,
+                        sessionLog.cursor,
+                        revision,
+                        request.logger,
                     ),
                 });
             } catch (error) {
@@ -340,37 +413,60 @@ export function createAdguardCliEvidenceRouteHost(
                         error: chain.join(' <- '),
                         stack: error instanceof Error ? error.stack : undefined,
                     },
-                    'adguard-cli evidence session launch failed',
+                    'blocker evidence session launch failed',
                 );
                 throw fail('browser_launch_failed', error);
             }
         },
 
         environmentPorts(): EvidenceRoutePorts {
-            const host = proxy;
-            if (!host) {
+            const blockerDescription = description;
+            if (!blockerDescription) {
                 throw fail('route_unavailable');
             }
-            baselineHost ??= createAdguardCliBaselineHost({
+            baselineHost ??= createProxyBlockerBaselineHost({
                 dataRoot: baselineDataRoot,
                 filters,
                 acquiredAt: now(),
             });
             return {
-                cliVersion: input.cliVersion ?? null,
-                product: 'AdGuard CLI',
-                installationDigest: binarySha256!,
+                cliVersion: blockerDescription.version,
+                product: blockerDescription.product,
+                installationDigest: blockerDescription.binarySha256,
                 baselineHost,
                 applyCandidate: async (rule) => {
-                    route = await host.setUserRules([rule]);
+                    userRules = [rule];
+                    await reconcile();
+                    // The receipt is the blocker's own account of what it executes, not the
+                    // request: a rule it dropped or rewrote fails the candidate phase.
+                    const executed = (await input.blocker.state()).userRules;
                     return {
-                        contentDigest: createHash('sha256').update(rule).digest('hex'),
-                        ruleCount: 1,
-                        extraSourceCount: 1,
+                        contentDigest: createHash('sha256')
+                            .update(executed.join('\n'))
+                            .digest('hex'),
+                        ruleCount: executed.length,
+                        extraSourceCount: executed.length === 0 ? 0 : 1,
                     };
                 },
                 revokeCandidate: async () => {
-                    route = await host.setUserRules([]);
+                    userRules = [];
+                    await reconcile();
+                },
+                applyBaselineEdit: async (originalRule, replacementRule) =>
+                    await mutateBaselineLine(originalRule, replacementRule),
+                applyBaselineRemoval: async (originalRule) =>
+                    await mutateBaselineLine(originalRule, null),
+                revokeBaselineEdit: async () => {
+                    if (lockedReplacedSha256 === null || listReplacement === null) {
+                        return null;
+                    }
+                    const filterId = listReplacement.id;
+                    listReplacement = null;
+                    lockedReplacedSha256 = null;
+                    await reconcile();
+                    // The restored digest is the blocker's own read-back; the adapter compares it
+                    // with the digest locked at preparation.
+                    return await executedListSha256(filterId);
                 },
             };
         },
@@ -379,40 +475,42 @@ export function createAdguardCliEvidenceRouteHost(
             session: BrowserSession,
             logger: Logger,
         ): Promise<AppliedRulesLog> {
-            const running = route;
-            if (running === null) {
+            if (route === null || description === null) {
                 throw new Error(
                     'The applied-rules log opened with no proxy running, yet a session launches ' +
                         'on this route only after it starts the proxy.',
                 );
             }
-            const accessLogPath = join(input.workspaceDir, ACCESS_LOG_FILENAME);
-            const outputLogPath = join(input.workspaceDir, OUTPUT_LOG_FILENAME);
             const executed = executedFilterIds();
-            return createAdguardCliAppliedRulesLog({
-                accessLogPath,
-                outputLogPath,
-                accessLogOffset: await logSize(accessLogPath),
-                outputLogOffset: await logSize(outputLogPath),
-                lists: filters.filter(
-                    (filter) => executed === null || executed.includes(filter.filterId),
-                ),
-                page: watchAdguardCliPageReports(session.getPage(), logger),
-                // Every start and restart hands back a new route, so identity is the restart signal.
-                stillCurrent: () => route === running,
+            const sessionLog = await input.blocker.log(null);
+            return createBlockerAppliedRulesLog({
+                blocker: input.blocker,
+                description,
+                cursor: sessionLog.cursor,
+                revision,
+                lists: filters
+                    .filter((filter) => executed === null || executed.includes(filter.filterId))
+                    .map((filter) => ({ id: filter.filterId, content: filter.content })),
+                page:
+                    description.pageEvidence === null
+                        ? null
+                        : watchPageEvidence(session.getPage(), description.pageEvidence, logger),
             });
         },
 
         async stop(): Promise<void> {
-            await proxy?.stop();
+            await input.blocker.stop();
             route = null;
+            port = null;
+            if (state !== 'failed') {
+                state = 'stopped';
+            }
         },
 
         snapshot(): EvidenceRouteSnapshot {
-            const proxySnapshot = proxy?.snapshot();
             return {
-                state: proxySnapshot?.state === 'stopped' ? 'stopped' : state,
-                port: proxySnapshot?.port ?? null,
+                state,
+                port,
                 baseFilterEnabled: filters.some((filter) => filter.filterId === 2),
                 reproducedFilterIds: filters
                     .map((filter) => filter.filterId)

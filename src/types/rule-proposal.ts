@@ -146,5 +146,4 @@ export const RuleProposalSchema = v.object({
     productCompatibility: ProductCompatibilitySchema,
 });
 
-export type RuleRisk = v.InferOutput<typeof RuleRiskSchema>;
 export type RuleProposal = v.InferOutput<typeof RuleProposalSchema>;

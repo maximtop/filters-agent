@@ -21,11 +21,6 @@ export const RuleKind = {
 } as const;
 
 /**
- * Every rule kind value, for schemas and exhaustive listings.
- */
-export const RULE_KIND_VALUES = Object.values(RuleKind);
-
-/**
  * Inferred rule kind of one filter line.
  */
 export type RuleKind = (typeof RuleKind)[keyof typeof RuleKind];

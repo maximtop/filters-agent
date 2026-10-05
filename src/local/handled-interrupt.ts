@@ -10,8 +10,6 @@ export const InterruptSignal = {
     QueueAbort: 'queue_abort',
 } as const;
 
-export const INTERRUPT_SIGNAL_VALUES = Object.values(InterruptSignal);
-
 /**
  * One interrupt signal.
  */

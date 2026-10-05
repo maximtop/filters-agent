@@ -41,11 +41,6 @@ export const ExecutorPreparedProvenanceSchema = v.strictObject({
 });
 
 /**
- * ExecutorPreparedProvenance value.
- */
-export type ExecutorPreparedProvenance = v.InferOutput<typeof ExecutorPreparedProvenanceSchema>;
-
-/**
  * Stable path-free reason one executor preparation attempt did not produce a ready executor.
  */
 export const ExecutorPreparationLimitationSchema = v.strictObject({
@@ -53,13 +48,6 @@ export const ExecutorPreparationLimitationSchema = v.strictObject({
     code: BoundedIdentifierSchema,
     detail: PreparationDetailSchema,
 });
-
-/**
- * ExecutorPreparationLimitation value.
- */
-export type ExecutorPreparationLimitation = v.InferOutput<
-    typeof ExecutorPreparationLimitationSchema
->;
 
 /**
  * The two states one executor preparation attempt settles into: a ready executor with its
@@ -76,11 +64,6 @@ export const ExecutorPreparationState = {
      */
     Limited: 'limited',
 } as const;
-
-/**
- * Every ExecutorPreparationState value, for schemas and exhaustive listings.
- */
-export const EXECUTOR_PREPARATION_STATE_VALUES = Object.values(ExecutorPreparationState);
 
 /**
  * ExecutorPreparationState value.
@@ -101,11 +84,6 @@ export const ExecutorPreparationSchema = v.variant('state', [
         limitation: ExecutorPreparationLimitationSchema,
     }),
 ]);
-
-/**
- * ExecutorPreparation value.
- */
-export type ExecutorPreparation = v.InferOutput<typeof ExecutorPreparationSchema>;
 
 /**
  * Trusted outcome of one executor preparation attempt: the opaque capability is absent by contract

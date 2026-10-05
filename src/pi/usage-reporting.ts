@@ -146,25 +146,6 @@ export function toCompletionUsage(model: string, usage: Usage): CompletionUsage 
 }
 
 /**
- * One completion whose token telemetry is known to be missing: the attempt is counted, its counts
- * stay zero, and `reported: false` drops the run's usage completeness below `complete`.
- *
- * @param model - The model the attempt targeted.
- * @returns The explicit unreported completion.
- */
-export function unreportedCompletion(model: string): CompletionUsage {
-    return {
-        model,
-        reported: false,
-        input: 0,
-        output: 0,
-        cacheRead: 0,
-        cacheWrite: 0,
-        reasoningTokens: 0,
-    };
-}
-
-/**
  * Deliver one usage report to a telemetry sink without ever letting the sink break its caller, and
  * without ever losing the failure silently.
  *

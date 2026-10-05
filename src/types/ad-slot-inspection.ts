@@ -322,8 +322,3 @@ export const AdSlotInspectionResultSchema = v.pipe(
  * Deterministic scan result before artifact persistence.
  */
 export type AdSlotScanResult = v.InferOutput<typeof AdSlotScanResultSchema>;
-
-/**
- * Deterministic scan result returned by the registered browser tool.
- */
-export type AdSlotInspectionResult = v.InferOutput<typeof AdSlotInspectionResultSchema>;

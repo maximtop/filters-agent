@@ -35,11 +35,6 @@ export const VersionUpdateDecision = {
 } as const;
 
 /**
- * Every VersionUpdateDecision value, for schemas and exhaustive listings.
- */
-export const VERSION_UPDATE_DECISION_VALUES = Object.values(VersionUpdateDecision);
-
-/**
  * VersionUpdateDecision value.
  */
 export type VersionUpdateDecision =

@@ -91,11 +91,6 @@ export const CostStatus = {
 } as const;
 
 /**
- * Every CostStatus value, for schemas and exhaustive listings.
- */
-export const COST_STATUS_VALUES = Object.values(CostStatus);
-
-/**
  * CostStatus value.
  */
 export type CostStatus = (typeof CostStatus)[keyof typeof CostStatus];
@@ -111,41 +106,6 @@ export const TelemetryHealth = {
 } as const;
 
 /**
- * Every telemetry health value, for schemas and exhaustive listings.
- */
-export const TELEMETRY_HEALTH_VALUES = Object.values(TelemetryHealth);
-
-/**
  * Telemetry health value.
  */
 export type TelemetryHealth = (typeof TelemetryHealth)[keyof typeof TelemetryHealth];
-
-/**
- * The campaign cost status each run-era cost coverage denotes.
- *
- * `Full` becomes `Estimated` rather than `Reported`: every pi-era figure is priced from the tracked
- * rate pin, and the provider-reported route that produced `Reported` is gone. This is the whole
- * correspondence — a pi-era campaign case never carries a cost status derived any other way.
- */
-export const CAMPAIGN_COST_STATUS_BY_COVERAGE: Readonly<Record<CostCoverage, CostStatus>> = {
-    [CostCoverage.Full]: CostStatus.Estimated,
-    [CostCoverage.Partial]: CostStatus.Partial,
-    [CostCoverage.None]: CostStatus.Unavailable,
-};
-
-/**
- * The campaign telemetry health each run-era completeness denotes, for a run that made at least one
- * provider call.
- *
- * Not a rename in either direction: `NoProviderCalls` has no run-era counterpart at all — the
- * completion count answers it, not the completeness — so a caller must settle that case before
- * consulting this table. `Partial` and `Unreported` both land on `Incomplete`, because the campaign
- * vocabulary asks only whether telemetry covered the whole run.
- */
-export const CAMPAIGN_TELEMETRY_HEALTH_BY_COMPLETENESS: Readonly<
-    Record<UsageCompleteness, TelemetryHealth>
-> = {
-    [UsageCompleteness.Complete]: TelemetryHealth.Healthy,
-    [UsageCompleteness.Partial]: TelemetryHealth.Incomplete,
-    [UsageCompleteness.Unreported]: TelemetryHealth.Incomplete,
-};

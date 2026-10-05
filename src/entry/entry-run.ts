@@ -60,11 +60,6 @@ export const AgentEntryStatus = {
 } as const;
 
 /**
- * Every AgentEntryStatus value, for exhaustive listings.
- */
-export const AGENT_ENTRY_STATUS_VALUES = Object.values(AgentEntryStatus);
-
-/**
  * AgentEntryStatus value.
  */
 export type AgentEntryStatus = (typeof AgentEntryStatus)[keyof typeof AgentEntryStatus];
@@ -83,11 +78,6 @@ export const AgentEntryExitCode = {
      */
     RunFailed: 1,
 } as const;
-
-/**
- * Every AgentEntryExitCode value, for exhaustive listings.
- */
-export const AGENT_ENTRY_EXIT_CODE_VALUES = Object.values(AgentEntryExitCode);
 
 /**
  * AgentEntryExitCode value.

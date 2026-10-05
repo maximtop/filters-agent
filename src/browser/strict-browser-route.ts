@@ -1,22 +1,4 @@
-import { createHash, X509Certificate } from 'node:crypto';
-import * as v from 'valibot';
-
-const Sha256Schema = v.pipe(v.string(), v.regex(/^[a-f0-9]{64}$/u));
-
-export const StrictBrowserNavigationProofSchema = v.strictObject({
-    routeId: v.pipe(v.string(), v.uuid()),
-    requestedUrl: v.pipe(v.string(), v.url()),
-    finalUrl: v.pipe(v.string(), v.url()),
-    cacheDisposition: v.literal('network'),
-    certificateChainSha256: v.pipe(v.array(Sha256Schema), v.minLength(1), v.maxLength(16)),
-    trustAnchorSha256: Sha256Schema,
-    verifiedAt: v.pipe(v.string(), v.isoTimestamp()),
-});
-
-/**
- * Public path-free proof that one strict route carried a non-cached HTTPS navigation.
- */
-export type StrictBrowserNavigationProof = v.InferOutput<typeof StrictBrowserNavigationProofSchema>;
+import { createHash } from 'node:crypto';
 
 /**
  * Private state retained for one isolated browser route.
@@ -83,20 +65,6 @@ interface StoredStrictRoute {
     consumed: boolean;
 }
 
-/**
- * Cache and service-worker facts for one final main-document response.
- */
-export interface StrictBrowserNetworkDisposition {
-    /**
-     * Whether Chromium served the response from cache.
-     */
-    fromCache: boolean;
-    /**
-     * Whether a service worker served the response.
-     */
-    fromServiceWorker: boolean;
-}
-
 const strictRouteStates = new WeakMap<PreparedStrictBrowserRoute, StoredStrictRoute>();
 
 /**
@@ -104,10 +72,9 @@ const strictRouteStates = new WeakMap<PreparedStrictBrowserRoute, StoredStrictRo
  *
  * Plain `http:` targets are accepted deliberately: reporters paste them (live run 32706975563
  * failed task #239090 over `http://www.emaillink.adtidy.org/`), the CLI proxy filters plaintext
- * traffic exactly as it filters TLS, and the route's TLS machinery — the SPKI launch pin and
- * {@link verifyStrictBrowserNavigation} — simply never engages for a connection that carries no
- * certificate. Fragments are accepted because the reporter's URL may carry one and `page.url()`
- * echoes it back; they never reach the network.
+ * traffic exactly as it filters TLS, and the route's TLS machinery — the SPKI launch pin — simply
+ * never engages for a connection that carries no certificate. Fragments are accepted because the
+ * reporter's URL may carry one and `page.url()` echoes it back; they never reach the network.
  *
  * @param value - Candidate URL.
  * @returns Parsed canonical URL.
@@ -120,24 +87,6 @@ function parseStrictTargetUrl(value: string): URL {
         url.password !== '' ||
         url.href !== value
     ) {
-        throw new Error('strict_route_target_invalid');
-    }
-    return url;
-}
-
-/**
- * Validate a canonical credential-free HTTPS URL.
- *
- * The navigation proof verifies a certificate chain, which only exists for TLS, so this stricter
- * parse guards {@link verifyStrictBrowserNavigation} alone; route creation accepts plain HTTP via
- * {@link parseStrictTargetUrl}.
- *
- * @param value - Candidate URL.
- * @returns Parsed canonical URL.
- */
-function parseHttpsUrl(value: string): URL {
-    const url = parseStrictTargetUrl(value);
-    if (url.protocol !== 'https:') {
         throw new Error('strict_route_target_invalid');
     }
     return url;
@@ -226,70 +175,4 @@ export function consumePreparedStrictBrowserRoute(
     }
     stored.consumed = true;
     return structuredClone(stored.state);
-}
-
-/**
- * Verify a DER certificate chain against the generated route CA.
- *
- * @param state - Consumed strict route state.
- * @param requestedUrl - Original exact request URL.
- * @param finalUrl - Final main-document URL after redirects.
- * @param chainDerBase64 - Leaf-first CDP certificate chain.
- * @param observed - Cache and service-worker facts.
- * @param observed.fromCache - Whether Chromium served the response from cache.
- * @param observed.fromServiceWorker - Whether a service worker served the response.
- * @param now - Verification clock.
- * @returns Path-free cryptographic navigation proof.
- */
-export function verifyStrictBrowserNavigation(
-    state: StrictBrowserRouteState,
-    requestedUrl: string,
-    finalUrl: string,
-    chainDerBase64: readonly string[],
-    observed: StrictBrowserNetworkDisposition,
-    now: Date = new Date(),
-): StrictBrowserNavigationProof {
-    if (requestedUrl !== state.targetUrl) {
-        throw new Error('strict_route_target_mismatch');
-    }
-    const final = parseHttpsUrl(finalUrl);
-    const requested = parseHttpsUrl(requestedUrl);
-    if (final.origin !== requested.origin) {
-        throw new Error('strict_route_origin_bypass');
-    }
-    if (observed.fromCache || observed.fromServiceWorker) {
-        throw new Error('strict_route_not_network');
-    }
-    if (chainDerBase64.length === 0 || chainDerBase64.length > 16) {
-        throw new Error('strict_route_certificate_chain_invalid');
-    }
-    const routeCaDer = Buffer.from(state.certificateDerBase64, 'base64');
-    const routeCa = new X509Certificate(routeCaDer);
-    const chain = chainDerBase64.map(
-        (encoded) => new X509Certificate(Buffer.from(encoded, 'base64')),
-    );
-    if (chain[0].checkHost(final.hostname) === undefined) {
-        throw new Error('strict_route_certificate_hostname_mismatch');
-    }
-    for (let index = 0; index < chain.length - 1; index += 1) {
-        if (!chain[index].verify(chain[index + 1].publicKey)) {
-            throw new Error('strict_route_certificate_chain_invalid');
-        }
-    }
-    const terminal = chain[chain.length - 1];
-    const terminalDigest = createHash('sha256').update(terminal.raw).digest('hex');
-    if (terminalDigest !== state.certificateSha256 && !terminal.verify(routeCa.publicKey)) {
-        throw new Error('strict_route_trust_anchor_mismatch');
-    }
-    return v.parse(StrictBrowserNavigationProofSchema, {
-        routeId: state.routeId,
-        requestedUrl,
-        finalUrl,
-        cacheDisposition: 'network',
-        certificateChainSha256: chain.map((certificate) =>
-            createHash('sha256').update(certificate.raw).digest('hex'),
-        ),
-        trustAnchorSha256: state.certificateSha256,
-        verifiedAt: now.toISOString(),
-    });
 }

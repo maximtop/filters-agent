@@ -36,12 +36,15 @@ import { SETTINGS_PROFILE_KIND_VALUES } from '../types/settings-profile-kind';
 import { CANDIDATE_BINDING_FAILURE_CODE_VALUES } from '../types/candidate-binding-failure-code';
 import {
     LocalPublicationTrustError,
+    LocalPublicationTrustFailureCode,
     MAX_CAPTURE_PIXELS,
     MAX_EVIDENCE_FILE_BYTES,
     normalizeEvidencePath,
+    schemaIssueDetail,
     type PublishedImageCapture,
     type PublishedImageOmission,
 } from './local-publication-trust';
+import { MAX_EVIDENCE_FILES } from './evidence-sanitizer';
 
 /**
  * The publication vocabulary: what a generation IS, and how a manifest is proved to say it.
@@ -91,11 +94,6 @@ export const LocalPublicationFailureStage = {
      */
     ReviewCheckout: 'review_checkout',
 } as const;
-
-/**
- * Every LocalPublicationFailureStage value, for schemas and exhaustive listings.
- */
-export const LOCAL_PUBLICATION_FAILURE_STAGE_VALUES = Object.values(LocalPublicationFailureStage);
 
 /**
  * LocalPublicationFailureStage value.
@@ -712,7 +710,9 @@ export const LocalPublicationManifestSchema = v.pipe(
         candidate: LocalPublicationCandidateSchema,
         failure: v.nullable(LocalPublicationFailureSchema),
         artifacts: v.pipe(v.array(LocalPublicationArtifactSchema), v.maxLength(512)),
-        images: v.pipe(v.array(LocalPublicationImageSchema), v.maxLength(256)),
+        // Every image record is one collection file, captured or omitted, so the sanitizer's file
+        // cap is the bound: a lower one refuses a collection the sanitizer already accepted.
+        images: v.pipe(v.array(LocalPublicationImageSchema), v.maxLength(MAX_EVIDENCE_FILES)),
         review: v.nullable(LocalPublicationReviewSchema),
     }),
     v.check(
@@ -818,9 +818,12 @@ export function projectRunBindings(
  * @returns Structurally checked manifest.
  */
 export function parseLocalPublicationManifest(value: unknown): LocalPublicationManifest {
-    try {
-        return v.parse(LocalPublicationManifestSchema, value);
-    } catch {
-        throw new LocalPublicationTrustError('unsafe_artifact');
+    const parsed = v.safeParse(LocalPublicationManifestSchema, value);
+    if (!parsed.success) {
+        throw new LocalPublicationTrustError(
+            LocalPublicationTrustFailureCode.UnsafeArtifact,
+            schemaIssueDetail(parsed.issues[0]),
+        );
     }
+    return parsed.output;
 }

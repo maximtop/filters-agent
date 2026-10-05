@@ -128,11 +128,6 @@ export const LaunchBrowserSettingsPolicy = {
 } as const;
 
 /**
- * Every LaunchBrowserSettingsPolicy value, for exhaustive listings.
- */
-export const LAUNCH_BROWSER_SETTINGS_POLICY_VALUES = Object.values(LaunchBrowserSettingsPolicy);
-
-/**
  * LaunchBrowserSettingsPolicy value.
  */
 export type LaunchBrowserSettingsPolicy =

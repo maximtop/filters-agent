@@ -80,11 +80,6 @@ export const RunArtifactKind = {
 } as const;
 
 /**
- * Every RunArtifactKind value, for schemas and exhaustive listings.
- */
-export const RUN_ARTIFACT_KIND_VALUES = Object.values(RunArtifactKind);
-
-/**
  * RunArtifactKind value.
  */
 export type RunArtifactKind = (typeof RunArtifactKind)[keyof typeof RunArtifactKind];

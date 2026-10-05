@@ -6,8 +6,6 @@ export const RequestParty = {
     Third: 'third',
 } as const;
 
-export const REQUEST_PARTY_VALUES = Object.values(RequestParty);
-
 /**
  * RequestParty value.
  */

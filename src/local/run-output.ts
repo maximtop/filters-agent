@@ -214,11 +214,6 @@ export const LocalRunRecordSchema: v.GenericSchema<LocalRunRecord> = v.pipe(
 );
 
 /**
- * Applied filter proof recorded for one settings profile.
- */
-export type LocalEnabledFilterEvidence = v.InferOutput<typeof LocalEnabledFilterEvidenceSchema>;
-
-/**
  * Result of applying and proving one deterministic browser settings profile.
  */
 export type LocalSettingsProfileEvidence = v.InferOutput<typeof LocalSettingsProfileEvidenceSchema>;
@@ -234,16 +229,6 @@ export type LocalExtensionProvenance = v.InferOutput<typeof LocalExtensionProven
 export type LocalKnowledgeBaseProvenance = v.InferOutput<typeof LocalKnowledgeBaseProvenanceSchema>;
 
 /**
- * Browser environment provenance stored beside the core result.
- */
-export type LocalRunProvenance = v.InferOutput<typeof LocalRunProvenanceSchema>;
-
-/**
- * Human-readable and visual evidence categories captured during a local run.
- */
-export type LocalRunEvidence = v.InferOutput<typeof LocalRunEvidenceSchema>;
-
-/**
  * Live screenshots captured under one applied extension settings profile.
  */
 export type LocalProfileScreenshotEvidence = v.InferOutput<
@@ -254,16 +239,6 @@ export type LocalProfileScreenshotEvidence = v.InferOutput<
  * Before/after evidence rejected by the candidate vision review.
  */
 export type LocalRejectedCandidatePair = v.InferOutput<typeof LocalRejectedCandidatePairSchema>;
-
-/**
- * Named local artifact linked from the Markdown report.
- */
-export type LocalArtifactLink = v.InferOutput<typeof LocalArtifactLinkSchema>;
-
-/**
- * Immutable live report identity carried by a current hosted run.
- */
-export type LocalLiveRunBinding = LiveRunBinding;
 
 /**
  * Caller-controlled filesystem options for one local run output.

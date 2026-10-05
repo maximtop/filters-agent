@@ -1,7 +1,6 @@
 import { createHash, X509Certificate } from 'node:crypto';
 import { connect as connectTcp, type Socket } from 'node:net';
 import { connect as connectTls } from 'node:tls';
-import { recordPreflightDiagnostic } from './preflight-diagnostic-log';
 
 const DEFAULT_TIMEOUT_MS = 8_000;
 const MAXIMUM_CHAIN_LENGTH = 16;
@@ -267,29 +266,4 @@ export async function probeTlsInterception(
         leafIssuedByExpectedCa: leaf.verify(expected.publicKey),
         failure: null,
     };
-}
-
-/**
- * Probe the interception chain and append it to this run's diagnostic log.
- *
- * Never throws and never rejects: it observes the route, it does not participate in it.
- *
- * @param proxyUrl - Canonical loopback proxy URL the route exposes.
- * @param targetUrl - Exact HTTPS target whose interception is probed.
- * @param expectedCertificateDerBase64 - Base64 DER of the authority the route generated.
- * @returns Resolves once the record is appended, or silently on any failure.
- */
-export async function recordTlsInterceptionDiagnostic(
-    proxyUrl: string,
-    targetUrl: string,
-    expectedCertificateDerBase64: string,
-): Promise<void> {
-    try {
-        recordPreflightDiagnostic(
-            'tls_interception',
-            await probeTlsInterception(proxyUrl, targetUrl, expectedCertificateDerBase64),
-        );
-    } catch {
-        /* a diagnostic probe must never fail the route it observes */
-    }
 }

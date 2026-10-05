@@ -5,7 +5,6 @@
 import { mkdirSync, writeFileSync as writeArtifactFileSynchronously } from 'node:fs';
 import { join } from 'node:path';
 import { type BrowserSession } from '../browser/browser-session';
-import type { TraceRecorder } from '../tracer/trace-recorder';
 import {
     CurrentRulesResolutionStatus,
     FixRunStatus,
@@ -132,49 +131,4 @@ export function persistBrowserLog(session: BrowserSession, artifactsDir: string)
     const serialized = JSON.stringify(session.getConsoleLog(), null, 2);
     writeArtifactFileSynchronously(browserLogPath, serialized);
     return browserLogPath;
-}
-
-/**
- * Collect evidence paths for a terminal decision made before the reasoning loop.
- *
- * @param recorder - Artifact registry populated by browser preflight and vision.
- * @param tracePath - Persisted trace path.
- * @param settingsProofPath - Optional verified extension settings proof.
- * @param symptomEvidencePath - Optional typed live symptom comparison.
- * @param session - Active browser session used to persist bounded console diagnostics.
- * @param artifactsDir - Per-run local artifact directory.
- * @param visualInventoryPath - Optional pre-candidate full-page vision inventory.
- * @returns Complete browser evidence paths for the early terminal result.
- */
-export function preAgentArtifactPaths(
-    recorder: TraceRecorder,
-    tracePath: string,
-    symptomEvidencePath: string | undefined,
-    session: BrowserSession,
-    artifactsDir: string,
-    visualInventoryPath?: string,
-): FixRunArtifactPaths {
-    const artifacts = recorder.getArtifacts();
-    return {
-        screenshots: artifacts
-            .filter((artifact) =>
-                [
-                    'screenshot',
-                    'screenshot-full-page',
-                    'screenshot-tile',
-                    'issue-screenshot',
-                ].includes(artifact.type),
-            )
-            .map((artifact) => artifact.path),
-        domSnapshot: artifacts.find((artifact) => artifact.type === 'dom')?.path ?? null,
-        har: artifacts.find((artifact) => artifact.type === 'har')?.path ?? null,
-        trace: tracePath,
-        // The old driver published a pre-agent settings proof at launch; with the options-page
-        // driver retired (11-HITL Decision 2) no pre-agent settings artifact exists. The run's
-        // settings fact is the instruction application's host read-back, projected downstream.
-        settingsProof: null,
-        browserLog: persistBrowserLog(session, artifactsDir),
-        symptomObservationEvidence: symptomEvidencePath ?? null,
-        preCandidateVisualInventory: visualInventoryPath ?? null,
-    };
 }

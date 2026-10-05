@@ -1444,11 +1444,6 @@ export type AgentExtensionProvenance = v.InferOutput<typeof AgentExtensionProven
 export type AgentSettingsEvidence = v.InferOutput<typeof AgentSettingsEvidenceSchema>;
 
 /**
- * One viewport, full-page overview, and tile set bound to an exact browser session.
- */
-export type AgentBrowserCaptureEvidence = v.InferOutput<typeof AgentBrowserCaptureEvidenceSchema>;
-
-/**
  * Browser and vision evidence retained separately for each model-selected session.
  */
 export type AgentBrowserSessionEvidence = v.InferOutput<typeof AgentBrowserSessionEvidenceSchema>;
@@ -1461,24 +1456,11 @@ export type AgentConfigurationComparisonEvidence = v.InferOutput<
 >;
 
 /**
- * One exact runner-owned candidate artifact and its locked local path.
- */
-export type AgentCandidateArtifactEvidence = v.InferOutput<
-    typeof AgentCandidateArtifactEvidenceSchema
->;
-
-/**
  * Complete candidate proof bound to one prepared-extension session and its settings.
  */
 export type AgentCandidateValidationEvidence = v.InferOutput<
     typeof AgentCandidateValidationEvidenceSchema
 >;
-
-/**
- * The candidate application record: the instruction's verification method, the exact applied rules,
- * and the host-assembled action log of the application session.
- */
-export type AgentCandidateApplicationEvidence = v.InferOutput<typeof PhaseApplicationProofSchema>;
 
 /**
  * Exact viewport and full-page screenshots from one verified candidate visual review.

@@ -19,11 +19,6 @@ export const SettingsLimitation = {
 } as const;
 
 /**
- * Every SettingsLimitation value, for schemas and exhaustive listings.
- */
-export const SETTINGS_LIMITATION_VALUES = Object.values(SettingsLimitation);
-
-/**
  * SettingsLimitation value.
  */
 export type SettingsLimitation = (typeof SettingsLimitation)[keyof typeof SettingsLimitation];

@@ -35,11 +35,6 @@ export const ApplicationGoalKind = {
 } as const;
 
 /**
- * Every ApplicationGoalKind value, for schemas and exhaustive listings.
- */
-export const APPLICATION_GOAL_KIND_VALUES = Object.values(ApplicationGoalKind);
-
-/**
  * ApplicationGoalKind value.
  */
 export type ApplicationGoalKind = (typeof ApplicationGoalKind)[keyof typeof ApplicationGoalKind];
@@ -86,11 +81,6 @@ export const PhaseApplicationOutcomeKind = {
      */
     Unverified: 'unverified',
 } as const;
-
-/**
- * Every PhaseApplicationOutcomeKind value, for exhaustive listings.
- */
-export const PHASE_APPLICATION_OUTCOME_KIND_VALUES = Object.values(PhaseApplicationOutcomeKind);
 
 /**
  * PhaseApplicationOutcomeKind value.

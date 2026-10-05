@@ -31,11 +31,6 @@ export const BrowserFallbackOrigin = {
 } as const;
 
 /**
- * Every BrowserFallbackOrigin value, for schemas and exhaustive listings.
- */
-export const BROWSER_FALLBACK_ORIGIN_VALUES = Object.values(BrowserFallbackOrigin);
-
-/**
  * BrowserFallbackOrigin value.
  */
 export type BrowserFallbackOrigin =
@@ -86,16 +81,6 @@ const ORIGIN_BY_REASON: Readonly<Record<BrowserFallbackReason, BrowserFallbackOr
  */
 export function browserFallbackOrigin(reason: BrowserFallbackReason): BrowserFallbackOrigin {
     return ORIGIN_BY_REASON[reason];
-}
-
-/**
- * Decide whether a fallback may be stated as a fact about the reported target.
- *
- * @param reason - Exact fallback emitted by the browser runtime, or null when none was recorded.
- * @returns True only when the target's own response proved the outcome.
- */
-export function isSiteFallbackReason(reason: BrowserFallbackReason | null): boolean {
-    return reason !== null && browserFallbackOrigin(reason) === BrowserFallbackOrigin.Site;
 }
 
 /**

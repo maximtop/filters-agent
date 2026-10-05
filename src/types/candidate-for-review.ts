@@ -72,8 +72,3 @@ export const CandidateForReviewSchema = v.object({
         ),
     ),
 });
-
-/**
- * One unverified candidate an analysis-only run hands to a human reviewer.
- */
-export type CandidateForReview = v.InferOutput<typeof CandidateForReviewSchema>;

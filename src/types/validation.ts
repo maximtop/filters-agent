@@ -12,11 +12,6 @@ export const CaptureState = {
 } as const;
 
 /**
- * Every capture state value, for schemas and exhaustive listings.
- */
-export const CAPTURE_STATE_VALUES = Object.values(CaptureState);
-
-/**
  * Capture state value.
  */
 export type CaptureState = (typeof CaptureState)[keyof typeof CaptureState];
@@ -301,14 +296,7 @@ export type PhaseLabel = v.InferOutput<typeof PhaseLabelSchema>;
 export type PhaseResult = v.InferOutput<typeof PhaseResultSchema>;
 export type ElementGeometry = v.InferOutput<typeof ElementGeometrySchema>;
 export type ValidationViewportPosition = v.InferOutput<typeof ValidationViewportPositionSchema>;
-export type FullPageTile = v.InferOutput<typeof FullPageTileSchema>;
 export type FullPageTileCoverage = v.InferOutput<typeof FullPageTileCoverageSchema>;
 export type RuleApplicationFact = v.InferOutput<typeof RuleApplicationFactSchema>;
-export type AdElementStatus = v.InferOutput<typeof AdElementStatusSchema>;
-export type MeaningfulGeometry = v.InferOutput<typeof MeaningfulGeometrySchema>;
-export type StructuralTargetMeasurement = v.InferOutput<typeof StructuralTargetMeasurementSchema>;
 export type StructuralSnapshot = v.InferOutput<typeof StructuralSnapshotSchema>;
-export type CandidateStructureFacts = v.InferOutput<typeof CandidateStructureFactsSchema>;
-export type CandidateLayoutFacts = v.InferOutput<typeof CandidateLayoutFactsSchema>;
-export type TrustedValidationEvidence = v.InferOutput<typeof TrustedValidationEvidenceSchema>;
 export type FactualValidationResult = v.InferOutput<typeof FactualValidationResultSchema>;

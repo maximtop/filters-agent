@@ -8,11 +8,6 @@ export const FilterEngine = {
 } as const;
 
 /**
- * Every FilterEngine value, for schemas and exhaustive listings.
- */
-export const FILTER_ENGINE_VALUES = Object.values(FilterEngine);
-
-/**
  * FilterEngine value.
  */
 export type FilterEngine = (typeof FilterEngine)[keyof typeof FilterEngine];

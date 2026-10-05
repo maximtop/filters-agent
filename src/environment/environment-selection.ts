@@ -182,11 +182,6 @@ export type EnvironmentLimitationCode =
     (typeof EnvironmentLimitationCode)[keyof typeof EnvironmentLimitationCode];
 
 /**
- * EnvironmentLimitationCode or a bounded historical code read back from a persisted artifact.
- */
-export type EnvironmentLimitationCodeRead = v.InferOutput<typeof EnvironmentLimitationCodeSchema>;
-
-/**
  * Reserved outcome the model may ask for instead of one executor: the run reproduces no filtering
  * at all and records the unsupported-product verdict.
  */
@@ -196,13 +191,6 @@ export const EnvironmentSelectionReservedCase = {
      */
     UnsupportedProductCase: 'unsupported_product_case',
 } as const;
-
-/**
- * Every EnvironmentSelectionReservedCase value, for schemas and exhaustive listings.
- */
-export const ENVIRONMENT_SELECTION_RESERVED_CASE_VALUES = Object.values(
-    EnvironmentSelectionReservedCase,
-);
 
 /**
  * EnvironmentSelectionReservedCase value.
@@ -425,13 +413,6 @@ export const EnvironmentSelectionRejectionReason = {
 } as const;
 
 /**
- * Every EnvironmentSelectionRejectionReason value, for schemas and exhaustive listings.
- */
-export const ENVIRONMENT_SELECTION_REJECTION_REASON_VALUES = Object.values(
-    EnvironmentSelectionRejectionReason,
-);
-
-/**
  * EnvironmentSelectionRejectionReason value.
  */
 export type EnvironmentSelectionRejectionReason =
@@ -451,11 +432,6 @@ export const IntentUpdateRejectionReason = {
      */
     InvalidIntentAssessment: 'invalid_intent_assessment',
 } as const;
-
-/**
- * Every IntentUpdateRejectionReason value, for schemas and exhaustive listings.
- */
-export const INTENT_UPDATE_REJECTION_REASON_VALUES = Object.values(IntentUpdateRejectionReason);
 
 /**
  * IntentUpdateRejectionReason value.
@@ -566,11 +542,6 @@ export type EnvironmentCapability =
 export type FilteringEnvironmentDescriptor = v.InferOutput<
     typeof FilteringEnvironmentDescriptorSchema
 >;
-
-/**
- * Agent-authored classification derived from issue and browser evidence.
- */
-export type AgentIntentAssessment = v.InferOutput<typeof AgentIntentAssessmentSchema>;
 
 /**
  * Typed model request that chooses one environment.

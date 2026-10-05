@@ -23,11 +23,6 @@ export const BoundedIdentifierSchema = v.pipe(
 );
 
 /**
- * BoundedIdentifier value.
- */
-export type BoundedIdentifier = v.InferOutput<typeof BoundedIdentifierSchema>;
-
-/**
  * A validated executor name: the registry key one filtering executor is registered under.
  *
  * The vocabulary is deliberately open — the publishable tree registers the browser-extension

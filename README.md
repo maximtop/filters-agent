@@ -69,26 +69,65 @@ An instruction file switches the run to another blocker. Three examples ship und
 See [`docs/modules/browser-with-extension.md`](docs/modules/browser-with-extension.md) for the
 detail behind each route.
 
-### AdGuard CLI as a second blocker
+### Plug in another blocker
 
-The `adguard_cli` executor verifies the rule a second way: through
+Besides the built-in extension, a run can verify the rule through any proxy blocker packaged as a
+blocker module. A module is a program the action starts once per run and drives through six
+operations — `describe`, `start`, `apply`, `state`, `log`, `stop` — sent as JSON lines on its
+stdin. The action applies each phase's lists and the candidate rule through `apply` and credits the
+phase only when `state` reads back exactly that; the model never drives the blocker itself. The
+operations are defined in [`src/blocker-contract/blocker-contract.ts`](src/blocker-contract/blocker-contract.ts).
+
+A module ships a manifest beside its code:
+
+```json
+{
+    "executor": "my_proxy",
+    "selectionGuidance": "Which reports this blocker verifies, in prose the model reads.",
+    "command": ["node", "./module.mjs"],
+    "env": ["MY_PROXY_LICENSE_KEY"]
+}
+```
+
+`command` words starting with `./` resolve against the manifest's directory. The module receives
+`PATH`, `HOME`, `LANG`, `TMPDIR`, the variables `env` lists, and `FILTERS_AGENT_BLOCKER_WORKSPACE`,
+a private directory for its files. It must write nothing but protocol lines to stdout, and stop
+whatever it holds when its stdin closes.
+
+To plug a module in:
+
+1. Put the module and its manifest into the workspace in a step before the action.
+2. Pass the manifest path as `blockerModules` and add the executor to `executors`, for example
+   `executors: browser_extension,my_proxy`. Leave `browser_extension` out to run the module alone.
+3. Set every variable the manifest lists in the action step's `env:`, from secrets. A missing
+   one fails the step named, before the run starts.
+
+#### The AdGuard CLI module
+
+The `adguard-cli/` directory of this repository is a ready module: it verifies the rule through
 [AdGuard CLI](https://github.com/AdguardTeam/AdGuardCLI) running as a filtering proxy in front of
-the browser, the way a desktop AdGuard user sees the page. It runs on its own or next to the
-browser extension, and the run chooses between them for each report. To enable it:
+the browser, the way a desktop AdGuard user sees the page. Its setup step downloads the pinned CLI
+release, checks its checksum and AdGuard's signature, and installs it with the module:
 
-1. Add an AdGuard licence key as the repository secret `ADGUARD_LICENSE_KEY`.
-2. In your workflow, set `executors: browser_extension,adguard_cli` (or `adguard_cli` alone) and
-   `adguardLicenseKey: ${{ secrets.ADGUARD_LICENSE_KEY }}`.
-3. Uncomment the `concurrency` block in the example workflow.
+```yaml
+- name: Install the AdGuard CLI module
+  id: adguard-cli
+  uses: maximtop/filters-agent/adguard-cli@main
+
+- name: Analyze the issue
+  uses: maximtop/filters-agent@main
+  env:
+      ADGUARD_LICENSE_KEY: ${{ secrets.ADGUARD_LICENSE_KEY }}
+  with:
+      blockerModules: ${{ steps.adguard-cli.outputs.manifest }}
+      executors: browser_extension,adguard_cli
+      # ...the rest of the inputs as in the example workflow
+```
 
 Each run activates the licence on one device and resets it when it ends, so two parallel runs
-hold two devices. The concurrency block runs one job at a time. A run killed before its reset
-(a cancelled job, a runner lost mid-run) leaves its device bound; unlink it in your AdGuard
-account if activations start to fail.
-
-The image pins the CLI release and checks its checksum and AdGuard's signature at build time.
-A run without the licence input that names `adguard_cli` ends capability-limited instead of
-analyzing.
+hold two devices; uncomment the `concurrency` block in the example workflow to run one job at a
+time. A run killed before its reset (a cancelled job, a runner lost mid-run) leaves its device
+bound; unlink it in your AdGuard account if activations start to fail.
 
 ### How a rule gets applied between phases
 
@@ -240,7 +279,8 @@ so it is worth re-reading this table after an upgrade.
 | `maxRevisionsPerWindow` | No | Maximum revision-marked reports one backlog issue may receive inside the rolling `revisionWindowMs` window; defaults to the queue's revision budget. |
 | `revisionWindowMs` | No | Length of the rolling window the revision budget counts against, in milliseconds; defaults to the queue's revision window (24 hours). |
 | `backlogWallClockBudgetMs` | No | Wall-clock budget for the whole backlog loop, in milliseconds; defaults to 5h 30m so one job stays under GitHub's 6-hour cap. The loop stops taking new issues once the remaining time can no longer fit one more issue's own investigation budget. |
-| `executors` | No | Comma-separated executor names the analysis session may use: `browser_extension`, `adguard_cli`, or both; empty means `browser_extension` alone. See [AdGuard CLI as a second blocker](#adguard-cli-as-a-second-blocker). |
+| `executors` | No | Comma-separated executor names the analysis session may use: `browser_extension`, the executor of a module `blockerModules` plugs in, or several; empty means `browser_extension` alone. |
+| `blockerModules` | No | Blocker module manifests to plug in, one per line or comma-separated, relative to the workspace. See [Plug in another blocker](#plug-in-another-blocker). |
 | `instructionPath` | No | Path of the run instruction file, relative to the checkout; when unset, the checkout's default instruction at `.github/filters-agent/AGENTS.md` is loaded when present. |
 | `artifactsDir` | No | Directory the run writes its artifacts to; defaults to `filters-agent-artifacts/artifacts` under the checkout. |
 | `model` | No | Reasoning-model slug overriding the LLM runtime's configured model. |
@@ -254,7 +294,6 @@ so it is worth re-reading this table after an upgrade.
 | `llmContextWindowTokens` | No | Context window of the reasoning model, in tokens. The default (1048576) is the window of the model the agent was tuned on; state your own model's window when it differs. |
 | `llmMaxOutputTokens` | No | Completion cap sent with the reasoning model's requests, in tokens; defaults to 384000. Set it to your model's own limit when that is lower. |
 | `llmVisionMaxOutputTokens` | No | Completion cap sent with the vision model's requests, in tokens; defaults to 384000. A gateway that routes by the requested cap finds no endpoint for a vision model whose own limit is lower, so set it whenever `llmVisionModel` names a different model (65536 for `google/gemini-3.8-flash`). |
-| `adguardLicenseKey` | No | AdGuard licence key the `adguard_cli` executor activates the CLI with; pass it from a repository secret. Read only when `executors` names `adguard_cli`. |
 | `llmProviderRouting` | No | JSON routing preferences for an OpenRouter-compatible gateway, sent as the `provider` object on every request — for example `{"ignore":["Together"]}` to route around a faulting upstream provider. Plain configuration, not a secret; leave it unset for a gateway that does not understand the field. |
 
 ### Outputs
@@ -275,5 +314,5 @@ from CloakHQ. The CloakBrowser binary comes under its own
 MIT: using it is free, redistributing it is not. Read it before you run the action in your
 organization, and do not push an image that contains the binary to a public registry.
 
-The build also downloads the AdGuard CLI release from AdGuard's GitHub releases. Running it
-needs an AdGuard licence and is governed by AdGuard's own terms, not by MIT.
+The AdGuard CLI module downloads the AdGuard CLI release from AdGuard's GitHub releases.
+Running it needs an AdGuard licence and is governed by AdGuard's own terms, not by MIT.

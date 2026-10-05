@@ -37,11 +37,6 @@ export const VisionImageMime = {
 export type VisionImageMime = (typeof VisionImageMime)[keyof typeof VisionImageMime];
 
 /**
- * Every VisionImageMime value, for lookups and picklists.
- */
-export const VISION_IMAGE_MIME_VALUES = Object.values(VisionImageMime);
-
-/**
  * Largest image sent to the vision model inside one request.
  *
  * Measured against the provider gateway: a 9.5 MB request succeeds while 19 MB is refused with HTTP
@@ -175,11 +170,6 @@ export const SingleShotMessageRole = {
  */
 export type SingleShotMessageRole =
     (typeof SingleShotMessageRole)[keyof typeof SingleShotMessageRole];
-
-/**
- * Every SingleShotMessageRole value, for lookups and picklists.
- */
-export const SINGLE_SHOT_MESSAGE_ROLE_VALUES = Object.values(SingleShotMessageRole);
 
 /**
  * One caller-authored single-shot message.

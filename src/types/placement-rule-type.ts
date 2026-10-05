@@ -1,5 +1,3 @@
-import * as v from 'valibot';
-
 /**
  * The structural kind of one candidate rule, as every placement decision names it.
  *
@@ -39,5 +37,3 @@ export const PLACEMENT_RULE_TYPE_VALUES = Object.values(PlacementRuleType);
  * Structural type of one candidate as every placement decision names it.
  */
 export type PlacementRuleType = (typeof PlacementRuleType)[keyof typeof PlacementRuleType];
-
-export const PlacementRuleTypeSchema = v.picklist(PLACEMENT_RULE_TYPE_VALUES);

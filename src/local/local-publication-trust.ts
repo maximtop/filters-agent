@@ -14,6 +14,7 @@
  */
 import { createHash } from 'node:crypto';
 import { isAbsolute, sep as pathSeparator } from 'node:path';
+import type * as v from 'valibot';
 
 /**
  * Maximum bytes in one published evidence artifact.
@@ -77,13 +78,6 @@ export const LocalPublicationTrustFailureCode = {
      */
     InvalidImageProof: 'invalid_image_proof',
 } as const;
-
-/**
- * Every LocalPublicationTrustFailureCode value, for schemas and exhaustive listings.
- */
-export const LOCAL_PUBLICATION_TRUST_FAILURE_CODE_VALUES = Object.values(
-    LocalPublicationTrustFailureCode,
-);
 
 /**
  * LocalPublicationTrustFailureCode value.
@@ -222,4 +216,15 @@ export function normalizeEvidencePath(path: string): string {
         throw new LocalPublicationTrustError('unsafe_artifact');
     }
     return normalized;
+}
+
+/**
+ * Name a failed schema check by its key path and check type, never by the value it rejected.
+ *
+ * @param issue - First Valibot issue of the failed parse.
+ * @returns Bounded diagnostic such as `schema: images max_length`.
+ */
+export function schemaIssueDetail(issue: v.BaseIssue<unknown>): string {
+    const keys = (issue.path ?? []).map((item) => String(item.key)).join('.');
+    return `schema: ${keys.length === 0 ? '(root)' : keys} ${issue.type}`;
 }

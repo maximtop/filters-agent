@@ -50,11 +50,6 @@ export const FixOutcomeKind = {
 } as const;
 
 /**
- * Every FixOutcomeKind value, for schemas and exhaustive listings.
- */
-export const FIX_OUTCOME_KIND_VALUES = Object.values(FixOutcomeKind);
-
-/**
  * FixOutcomeKind value.
  */
 export type FixOutcomeKind = (typeof FixOutcomeKind)[keyof typeof FixOutcomeKind];
@@ -83,10 +78,6 @@ const SummarySchema = v.optional(
         ),
     ),
 );
-
-export const REPRODUCTION_STATUS_VALUES = Object.values(ReproductionStatus);
-
-export const ReproductionStatusSchema = v.picklist(REPRODUCTION_STATUS_VALUES);
 
 /**
  * Schema variant for a draft-PR outcome — the agent reproduced the ad and produced a validated,

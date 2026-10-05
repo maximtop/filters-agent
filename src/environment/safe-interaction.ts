@@ -132,11 +132,6 @@ export const SafeInteractionTargetSchema = v.pipe(
 );
 
 /**
- * Bounded description of the single element one step resolves.
- */
-export type SafeInteractionTarget = v.InferOutput<typeof SafeInteractionTargetSchema>;
-
-/**
  * Step kinds that resolve exactly one element before they are performed.
  */
 const TARGETED_STEP_KINDS: readonly SafeInteractionKind[] = [
@@ -592,15 +587,6 @@ export const SafeInteractionRefusalReason = {
      */
     UnverifiableSafety: 'unverifiable_safety',
 } as const;
-
-/**
- * Every SafeInteractionRefusalReason value, for schemas and exhaustive listings.
- */
-export const SAFE_INTERACTION_REFUSAL_REASON_VALUES = Object.values(SafeInteractionRefusalReason);
-
-export const SafeInteractionRefusalReasonSchema = v.picklist(
-    SAFE_INTERACTION_REFUSAL_REASON_VALUES,
-);
 
 /**
  * SafeInteractionRefusalReason value.

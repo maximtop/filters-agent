@@ -45,11 +45,6 @@ export const ApplicationInstructionGap = {
 } as const;
 
 /**
- * Every ApplicationInstructionGap value, for exhaustive listings.
- */
-export const APPLICATION_INSTRUCTION_GAP_VALUES = Object.values(ApplicationInstructionGap);
-
-/**
  * ApplicationInstructionGap value.
  */
 export type ApplicationInstructionGap =

@@ -16,33 +16,10 @@ const RepositorySchema = v.pipe(v.string(), v.regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-
  */
 export const ReportKeySchema = v.pipe(v.string(), v.regex(/^\d+:(?:body|comment:\d+)$/u));
 
-const TaskIdSchema = v.pipe(v.string(), v.regex(/^[0-9a-f]{24}$/u));
-
 /**
  * Hidden marker carrying one immutable live report binding.
  */
 const LIVE_REPORT_MARKER_PATTERN = /<!--\s*adguard-filters-agent:live-report\s+([\s\S]*?)-->/giu;
-
-/**
- * Hidden marker reserving one mirror before its issue-number-bound prompt can be finalized.
- */
-const LIVE_RESERVATION_MARKER_PATTERN =
-    /<!--\s*adguard-filters-agent:live-reservation\s+([\s\S]*?)-->/giu;
-
-export const LiveMirrorReservationBindingSchema = v.strictObject({
-    schemaVersion: v.literal(1),
-    reportKey: ReportKeySchema,
-    revisionDigest: Sha256Schema,
-    filtersCurrentSha: FullCommitSchema,
-    labSourceSha: FullCommitSchema,
-    taskId: TaskIdSchema,
-    repository: RepositorySchema,
-});
-
-/**
- * Durable identity written atomically with a newly-created private mirror.
- */
-export type LiveMirrorReservationBinding = v.InferOutput<typeof LiveMirrorReservationBindingSchema>;
 
 export const LiveRunBindingSchema = v.strictObject({
     schemaVersion: v.literal(1),
@@ -80,22 +57,6 @@ export function parseLiveRunBinding(input: unknown): LiveRunBinding {
 }
 
 /**
- * Normalize one provisional mirror reservation before it is persisted.
- *
- * @param input - Unknown provisional binding.
- * @returns Strict lowercase digest and commit identity.
- */
-export function parseLiveMirrorReservationBinding(input: unknown): LiveMirrorReservationBinding {
-    const parsed = v.parse(LiveMirrorReservationBindingSchema, input);
-    return {
-        ...parsed,
-        revisionDigest: parsed.revisionDigest.toLowerCase(),
-        filtersCurrentSha: parsed.filtersCurrentSha.toLowerCase(),
-        labSourceSha: parsed.labSourceSha.toLowerCase(),
-    };
-}
-
-/**
  * Render the exact trusted marker stored in a private live mirror issue.
  *
  * @param binding - Queue-selected report, prompt, filters, and lab identity.
@@ -104,18 +65,6 @@ export function parseLiveMirrorReservationBinding(input: unknown): LiveMirrorRes
 export function renderLiveMirrorMarker(binding: LiveRunBinding): string {
     return `<!-- adguard-filters-agent:live-report ${JSON.stringify(
         parseLiveRunBinding(binding),
-    )} -->`;
-}
-
-/**
- * Render the provisional marker included in the atomic issue-create request.
- *
- * @param binding - Queue-selected identity available before allocating a mirror issue number.
- * @returns Hidden canonical reservation marker.
- */
-export function renderLiveMirrorReservationMarker(binding: LiveMirrorReservationBinding): string {
-    return `<!-- adguard-filters-agent:live-reservation ${JSON.stringify(
-        parseLiveMirrorReservationBinding(binding),
     )} -->`;
 }
 
@@ -145,42 +94,6 @@ export function parseLiveMirrorMarker(body: string | null): LiveRunBinding | nul
     } catch (error) {
         if (error instanceof SyntaxError) {
             throw new Error('Live report marker must contain valid JSON.', { cause: error });
-        }
-        throw error;
-    }
-}
-
-/**
- * Parse a unique provisional reservation marker from an issue body.
- *
- * @param body - Current private lab issue body.
- * @returns Strict provisional binding or null when the issue is not a reservation.
- */
-export function parseLiveMirrorReservationMarker(
-    body: string | null,
-): LiveMirrorReservationBinding | null {
-    if (body === null) {
-        return null;
-    }
-    const matches = [
-        ...body.matchAll(
-            new RegExp(
-                LIVE_RESERVATION_MARKER_PATTERN.source,
-                LIVE_RESERVATION_MARKER_PATTERN.flags,
-            ),
-        ),
-    ];
-    if (matches.length === 0) {
-        return null;
-    }
-    if (matches.length !== 1) {
-        throw new Error('Live reservation marker must appear exactly once.');
-    }
-    try {
-        return parseLiveMirrorReservationBinding(JSON.parse(matches[0]?.[1]?.trim() ?? ''));
-    } catch (error) {
-        if (error instanceof SyntaxError) {
-            throw new Error('Live reservation marker must contain valid JSON.', { cause: error });
         }
         throw error;
     }

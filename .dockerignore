@@ -6,12 +6,12 @@ node_modules
 dist
 artifacts
 traces
-replays
 coverage
 tmp
-.benchmark/run
 .live/docker-output
-# `lab/`, `tests/`, `scripts/` and `benchmark/` are deliberately kept: the lab recipe (`Dockerfile`)
-# does an unqualified `COPY . .` and builds them, while nothing in either image reads `.sdd`.
+# `lab/`, `tests/` and `scripts/` are deliberately kept: the lab recipe (`Dockerfile`) does an
+# unqualified `COPY . .` and builds them. Nothing in either image reads `.sdd` or the golden e2e
+# case fixtures (screenshots, only `test:e2e` and the test suite read them).
 .sdd
+lab/benchmark/e2e/cases
 *.log

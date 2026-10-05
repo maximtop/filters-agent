@@ -34,18 +34,18 @@ import {
     requestedListsToRegistryIds,
     resolveAdguardListKey,
 } from '../environment/filter-list-ref';
-import { type CandidateReceipt } from '../local/evidence-route-contract';
-import { AdguardCliExecutorName } from './executor-name';
-import { readAdguardCliFilterList, type AdguardCliCatalogRow } from './adguard-cli-filter-list';
+import { type BaselineEditReceipt, type CandidateReceipt } from '../local/evidence-route-contract';
+import type { ExecutorName } from '../environment/executor-name';
+import { readProxyBlockerFilterList, type ProxyBlockerCatalogRow } from './catalog-table';
 import {
     describeDiagnosticError,
     recordPreflightDiagnostic,
 } from '../local/preflight-diagnostic-log';
 import {
-    prepareAdguardCliPublishedBaseline,
-    type AdguardCliBaselineHostPort,
-    type AdguardCliBaselineAction,
-} from './adguard-cli-published-baseline';
+    prepareProxyBlockerPublishedBaseline,
+    type ProxyBlockerBaselineHostPort,
+    type ProxyBlockerBaselineAction,
+} from './published-baseline';
 import { BrowserDisplayName } from '../types/browser-display-name';
 import { PhaseLabel } from '../types/validation';
 
@@ -279,7 +279,7 @@ interface CliPhaseObservation {
     /**
      * Catalog rows displayed after this phase's filter commands ran.
      */
-    rows: readonly AdguardCliCatalogRow[] | null;
+    rows: readonly ProxyBlockerCatalogRow[] | null;
 
     /**
      * Catalog IDs displayed as enabled after those commands.
@@ -304,12 +304,12 @@ interface CliPhaseObservation {
     /**
      * Receipt the isolated installation returned for the applied candidate, when one was applied.
      */
-    candidateReceipt: AdguardCliCandidateReceipt | null;
+    candidateReceipt: ProxyBlockerCandidateReceipt | null;
 
     /**
      * Receipt the isolated installation returned for a replaced published line, when one was made.
      */
-    baselineEditReceipt: AdguardCliBaselineEditReceipt | null;
+    baselineEditReceipt: ProxyBlockerBaselineEditReceipt | null;
 }
 
 /**
@@ -319,7 +319,7 @@ interface CliCatalogState {
     /**
      * Every readable catalog row, in displayed order.
      */
-    rows: readonly AdguardCliCatalogRow[];
+    rows: readonly ProxyBlockerCatalogRow[];
 
     /**
      * Enabled catalog IDs, ascending, without the built-in user pseudo-row.
@@ -350,7 +350,7 @@ interface OpenCliLease {
 /**
  * Request for one controlled browser session bound to an established phase.
  */
-export interface AdguardCliPhaseSessionRequest {
+export interface ProxyBlockerPhaseSessionRequest {
     /**
      * Exact phase the session belongs to.
      */
@@ -365,7 +365,7 @@ export interface AdguardCliPhaseSessionRequest {
 /**
  * Controlled browser session opened for one phase.
  */
-export interface AdguardCliPhaseSession {
+export interface ProxyBlockerPhaseSession {
     /**
      * Common browser surface exposed to validators.
      */
@@ -381,39 +381,13 @@ export interface AdguardCliPhaseSession {
  * Receipt proving one exact candidate line is the only agent-authored content the installation
  * executes; the shape lives in the src-owned evidence-route contract.
  */
-export type AdguardCliCandidateReceipt = CandidateReceipt;
+export type ProxyBlockerCandidateReceipt = CandidateReceipt;
 
 /**
  * Receipt proving one exact published line was replaced or deleted inside the locked baseline and
- * nothing else.
+ * nothing else; the shape lives in the src-owned evidence-route contract.
  */
-export interface AdguardCliBaselineEditReceipt {
-    /**
-     * Official catalog ID whose attributed baseline resource carried the replaced line.
-     */
-    filterId: number;
-
-    /**
-     * SHA-256 of that resource before the replacement, which must be the digest locked at
-     * preparation.
-     */
-    beforeSha256: string;
-
-    /**
-     * SHA-256 of that resource after the replacement.
-     */
-    afterSha256: string;
-
-    /**
-     * Number of lines the mutation changed or deleted inside that resource.
-     */
-    replacedLineCount: number;
-
-    /**
-     * Number of configured filter sources beyond the official filter manager.
-     */
-    extraSourceCount: number;
-}
+export type ProxyBlockerBaselineEditReceipt = BaselineEditReceipt;
 
 /**
  * Official filtering state one established phase proved, retained for the next phase to match.
@@ -438,7 +412,12 @@ interface CliPhaseFilteringState {
 /**
  * Ports one CLI filtering environment needs beyond the already-prepared installation.
  */
-export interface AdguardCliEnvironmentOptions {
+export interface ProxyBlockerEnvironmentOptions {
+    /**
+     * Executor name the adapter reports as its kind: the blocker module's own.
+     */
+    executor: ExecutorName;
+
     /**
      * Exact engine version, reported as the actual product version; null when the executing build
      * does not know one.
@@ -459,7 +438,7 @@ export interface AdguardCliEnvironmentOptions {
     /**
      * Bounded command and storage boundary for the isolated installation.
      */
-    baselineHost: AdguardCliBaselineHostPort;
+    baselineHost: ProxyBlockerBaselineHostPort;
 
     /**
      * Open one browser session already routed through the CLI's loopback proxy.
@@ -467,7 +446,7 @@ export interface AdguardCliEnvironmentOptions {
      * @param request - Exact phase and canonical target URL.
      * @returns Ready session and its stable identity.
      */
-    createSession(request: AdguardCliPhaseSessionRequest): Promise<AdguardCliPhaseSession>;
+    createSession(request: ProxyBlockerPhaseSessionRequest): Promise<ProxyBlockerPhaseSession>;
 
     /**
      * Install exactly one agent-authored rule beside the locked official baseline and reload.
@@ -475,7 +454,7 @@ export interface AdguardCliEnvironmentOptions {
      * @param rule - Exact single candidate line.
      * @returns Receipt describing what the isolated installation now executes.
      */
-    applyCandidate?(rule: string): Promise<AdguardCliCandidateReceipt>;
+    applyCandidate?(rule: string): Promise<ProxyBlockerCandidateReceipt>;
 
     /**
      * Remove the agent-authored source and reload, leaving only the locked official baseline.
@@ -497,7 +476,7 @@ export interface AdguardCliEnvironmentOptions {
     applyBaselineEdit?(
         originalRule: string,
         replacementRule: string,
-    ): Promise<AdguardCliBaselineEditReceipt>;
+    ): Promise<ProxyBlockerBaselineEditReceipt>;
 
     /**
      * Delete one exact published line from the locked baseline and reload.
@@ -508,14 +487,15 @@ export interface AdguardCliEnvironmentOptions {
      * @param originalRule - Exact published line to delete.
      * @returns Receipt describing what the isolated installation now executes.
      */
-    applyBaselineRemoval?(originalRule: string): Promise<AdguardCliBaselineEditReceipt>;
+    applyBaselineRemoval?(originalRule: string): Promise<ProxyBlockerBaselineEditReceipt>;
 
     /**
      * Restore the locked published baseline bytes and reload.
      *
-     * @returns SHA-256 of the restored resource, which must equal the digest locked at preparation.
+     * @returns SHA-256 of the restored resource, which must equal the digest locked at preparation,
+     *   or null when no mutation was in effect.
      */
-    revokeBaselineEdit?(): Promise<string>;
+    revokeBaselineEdit?(): Promise<string | null>;
 
     /**
      * Optional deterministic clock seam.
@@ -554,8 +534,8 @@ export interface AdguardCliEnvironmentOptions {
  * official baseline, and it is refused unless the official catalog state is proven identical to the
  * baseline phase's, so the same attribution holds for the candidate.
  */
-export class AdguardCliEnvironmentAdapter implements FilteringEnvironmentAdapter {
-    readonly kind = AdguardCliExecutorName;
+export class ProxyBlockerEnvironmentAdapter implements FilteringEnvironmentAdapter {
+    readonly kind: ExecutorName;
 
     /**
      * Adapter-authored context derived from the verified installation and its browser family.
@@ -643,7 +623,8 @@ export class AdguardCliEnvironmentAdapter implements FilteringEnvironmentAdapter
      *
      * @param options - Verified installation identity, command, browser, and lifecycle seams.
      */
-    constructor(private readonly options: AdguardCliEnvironmentOptions) {
+    constructor(private readonly options: ProxyBlockerEnvironmentOptions) {
+        this.kind = options.executor;
         this.actualContext = {
             kind: this.kind,
             product: options.product ?? 'AdGuard CLI',
@@ -737,8 +718,8 @@ export class AdguardCliEnvironmentAdapter implements FilteringEnvironmentAdapter
         }
         // oxlint-disable-next-line unicorn/no-array-sort -- ES2023 toSorted is outside this target.
         const requestedFilterIds = [...resolvedRequestedIds].sort((left, right) => left - right);
-        const prepared = await prepareAdguardCliPublishedBaseline(
-            { requestedFilterIds, acquiredAt: this.now() },
+        const prepared = await prepareProxyBlockerPublishedBaseline(
+            { environment: this.kind, requestedFilterIds, acquiredAt: this.now() },
             this.options.baselineHost,
             this.fileSystem,
         );
@@ -1084,7 +1065,7 @@ export class AdguardCliEnvironmentAdapter implements FilteringEnvironmentAdapter
         const baseline = this.baselinePhaseState!;
         this.candidateApplied = true;
         try {
-            let receipt: AdguardCliCandidateReceipt;
+            let receipt: ProxyBlockerCandidateReceipt;
             try {
                 receipt = await this.options.applyCandidate!(rule);
             } catch (error) {
@@ -1178,7 +1159,7 @@ export class AdguardCliEnvironmentAdapter implements FilteringEnvironmentAdapter
         const baseline = this.baselinePhaseState!;
         this.baselineEditApplied = true;
         try {
-            let receipt: AdguardCliBaselineEditReceipt;
+            let receipt: ProxyBlockerBaselineEditReceipt;
             try {
                 receipt =
                     candidate.operation === CandidateOperation.Remove
@@ -1383,7 +1364,7 @@ export class AdguardCliEnvironmentAdapter implements FilteringEnvironmentAdapter
      */
     private async createPhaseSession(
         request: EnvironmentPhaseRequest,
-    ): Promise<AdguardCliPhaseSession> {
+    ): Promise<ProxyBlockerPhaseSession> {
         try {
             return await this.options.createSession({
                 phase: request.phase,
@@ -1402,7 +1383,7 @@ export class AdguardCliEnvironmentAdapter implements FilteringEnvironmentAdapter
      * @param filterId - Pinned official catalog ID.
      */
     private async runFilterAction(
-        action: Extract<AdguardCliBaselineAction, 'enable_filter' | 'disable_filter'>,
+        action: Extract<ProxyBlockerBaselineAction, 'enable_filter' | 'disable_filter'>,
         filterId: number,
     ): Promise<void> {
         try {
@@ -1426,7 +1407,7 @@ export class AdguardCliEnvironmentAdapter implements FilteringEnvironmentAdapter
             this.recordNativeFailure('list_command_failed', error);
             reject(CliPhaseRejection.CatalogUnreadable);
         }
-        const reading = readAdguardCliFilterList(stdout, (listRejection, observed) => {
+        const reading = readProxyBlockerFilterList(stdout, (listRejection, observed) => {
             recordPreflightDiagnostic('cli_phase', {
                 note: 'filter_list_unreadable',
                 listRejection,

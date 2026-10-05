@@ -151,28 +151,6 @@ export function parseLocalRunManifest(value: unknown): LocalRunManifest {
 }
 
 /**
- * Read one canonical locked-run file through the same no-follow, single-link boundary as manifest
- * verification.
- *
- * The allowlist is the locked run's own canonical set: a caller naming anything else is refused by
- * name rather than reaching the filesystem.
- *
- * @param outputPath - Canonical locked run directory.
- * @param fileName - Exact top-level canonical artifact name.
- * @returns Exact immutable artifact bytes.
- */
-export function readLockedRunArtifact(outputPath: string, fileName: string): Buffer {
-    if (
-        !LOCKED_RUN_TOP_LEVEL_PATHS.has(fileName) ||
-        fileName === 'artifacts' ||
-        fileName === LOCAL_RUN_OUTPUT_MARKER_NAME
-    ) {
-        throw new Error(`Unsupported locked run artifact: ${fileName}.`);
-    }
-    return readImmutableFile(join(outputPath, fileName), fileName);
-}
-
-/**
  * Derive a stable run identifier from the complete artifact digest set.
  *
  * @param artifacts - Canonical text artifact digests included in the run.

@@ -77,11 +77,6 @@ export const UnsafeUrlRefusal = {
 } as const;
 
 /**
- * Every UnsafeUrlRefusal value, for schemas and exhaustive listings.
- */
-export const UNSAFE_URL_REFUSAL_VALUES = Object.values(UnsafeUrlRefusal);
-
-/**
  * UnsafeUrlRefusal value.
  */
 export type UnsafeUrlRefusal = (typeof UnsafeUrlRefusal)[keyof typeof UnsafeUrlRefusal];

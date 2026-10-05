@@ -28,11 +28,6 @@ export const AgentRunMode = {
 } as const;
 
 /**
- * Every AgentRunMode value, for schemas and exhaustive listings.
- */
-export const AGENT_RUN_MODE_VALUES = Object.values(AgentRunMode);
-
-/**
  * AgentRunMode value.
  */
 export type AgentRunMode = (typeof AgentRunMode)[keyof typeof AgentRunMode];

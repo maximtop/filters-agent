@@ -23,8 +23,6 @@ export const BrowserDisplayName = {
     PlaywrightFirefox: 'Playwright Firefox',
 } as const;
 
-export const BROWSER_DISPLAY_NAME_VALUES = Object.values(BrowserDisplayName);
-
 /**
  * One canonical browser name recorded in an actual environment context.
  */

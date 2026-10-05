@@ -48,11 +48,6 @@ export const BacklogSkipKind = {
 export type BacklogSkipKind = (typeof BacklogSkipKind)[keyof typeof BacklogSkipKind];
 
 /**
- * Every BacklogSkipKind value, for exhaustive skip tallies.
- */
-export const BACKLOG_SKIP_KIND_VALUES: readonly BacklogSkipKind[] = Object.values(BacklogSkipKind);
-
-/**
  * The visited issues one run skipped before taking them, keyed by why each was left behind.
  */
 export type BacklogSkipTally = Record<BacklogSkipKind, number[]>;

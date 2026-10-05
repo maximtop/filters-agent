@@ -6,8 +6,6 @@ export const BrowserLaunchBoundary = {
     PageSetup: 'page_setup',
 } as const;
 
-export const BROWSER_LAUNCH_BOUNDARY_VALUES = Object.values(BrowserLaunchBoundary);
-
 /**
  * One browser launch boundary.
  */
@@ -21,8 +19,6 @@ export const SettingsFailureReason = {
     SettingsLimitsExceeded: 'settings_limits_exceeded',
     SettingsApplyFailed: 'settings_apply_failed',
 } as const;
-
-export const SETTINGS_FAILURE_REASON_VALUES = Object.values(SettingsFailureReason);
 
 /**
  * One settings failure reason.

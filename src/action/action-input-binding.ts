@@ -30,7 +30,6 @@ import {
 } from '../config/repository-identity';
 import type { AgentRunInputSources } from '../entry/entry-inputs';
 import { BrowserExtensionExecutorName } from '../environment/executor-name';
-import { ADGUARD_LICENSE_KEY_ENV } from '../adguard-cli/adguard-cli-proxy';
 import { GITHUB_WORKSPACE_VAR, workspaceArtifactsDefault } from './container-context';
 
 /**
@@ -184,10 +183,9 @@ const AgentActionInputName = {
     llmVisionMaxOutputTokens: 'llmVisionMaxOutputTokens',
 
     /**
-     * The `adguardLicenseKey` input; lands in the `ADGUARD_LICENSE_KEY` environment variable the
-     * AdGuard CLI executor activates the CLI with. Only a run that enables that executor reads it.
+     * The `blockerModules` input naming the manifests of the blocker modules the run plugs in.
      */
-    adguardLicenseKey: 'adguardLicenseKey',
+    blockerModules: 'blockerModules',
 } as const;
 
 /**
@@ -212,7 +210,6 @@ const AGENT_ACTION_INPUT_ENV_VAR: Partial<Record<AgentActionInputName, string>> 
     [AgentActionInputName.llmContextWindowTokens]: LLM_CONTEXT_WINDOW_TOKENS_VAR,
     [AgentActionInputName.llmMaxOutputTokens]: LLM_MAX_OUTPUT_TOKENS_VAR,
     [AgentActionInputName.llmVisionMaxOutputTokens]: LLM_VISION_MAX_OUTPUT_TOKENS_VAR,
-    [AgentActionInputName.adguardLicenseKey]: ADGUARD_LICENSE_KEY_ENV,
 };
 
 /**
@@ -237,7 +234,19 @@ export interface AgentActionBinding {
      * base of the artifacts default and the root the `artifacts-dir` output relativizes against.
      */
     workspaceDir: string;
+
+    /**
+     * Paths of the blocker module manifests the workflow plugs in, relative to the workspace or
+     * absolute, in the order given; empty when it plugs in none.
+     */
+    blockerModulePaths: string[];
 }
+
+/**
+ * Separator between manifest paths in the `blockerModules` input: commas or line breaks, so a
+ * workflow may list one per line in a YAML block scalar.
+ */
+const MODULE_PATH_SEPARATOR = /[,\n]/u;
 
 /**
  * The `INPUT_` environment key of one action input, the same mapping GitHub Actions applies:
@@ -397,8 +406,8 @@ export function mapAgentRunSources(
         backlogWallClockBudgetMs: numericActionInput(
             readActionInput(actionEnv, AgentActionInputName.backlogWallClockBudgetMs),
         ),
-        // The action registers executors a workflow opts into (the AdGuard CLI needs a licence),
-        // so an unset input locks the browser extension alone instead of every registration.
+        // The action registers executors a workflow plugs in through blocker modules, so an unset
+        // input locks the browser extension alone instead of every registration.
         executors:
             readActionInput(actionEnv, AgentActionInputName.executors) ??
             BrowserExtensionExecutorName,
@@ -424,5 +433,12 @@ export function mapAgentRunSources(
         }
     }
 
-    return { sources, envAdditions, workspaceDir };
+    const blockerModulePaths = (
+        readActionInput(actionEnv, AgentActionInputName.blockerModules) ?? ''
+    )
+        .split(MODULE_PATH_SEPARATOR)
+        .map((path) => path.trim())
+        .filter((path) => path.length > 0);
+
+    return { sources, envAdditions, workspaceDir, blockerModulePaths };
 }

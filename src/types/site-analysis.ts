@@ -96,11 +96,6 @@ export const FindingSchema = v.object({
 export type FindingType = (typeof FindingType)[keyof typeof FindingType];
 
 /**
- * The location of a finding.
- */
-export type FindingLocation = v.InferOutput<typeof FindingLocationSchema>;
-
-/**
  * A single finding about an ad, tracker, annoyance, anti-adblock measure, or suspicious element.
  */
 export type Finding = v.InferOutput<typeof FindingSchema>;

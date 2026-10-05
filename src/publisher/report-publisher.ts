@@ -92,11 +92,6 @@ export const ReportPublishAction = {
 } as const;
 
 /**
- * Every ReportPublishAction value, for schemas and exhaustive listings.
- */
-export const REPORT_PUBLISH_ACTION_VALUES = Object.values(ReportPublishAction);
-
-/**
  * ReportPublishAction value.
  */
 export type ReportPublishAction = (typeof ReportPublishAction)[keyof typeof ReportPublishAction];
@@ -110,11 +105,6 @@ export const ReportPublishErrorKind = {
      */
     CommentBodyTooLarge: 'comment-body-too-large',
 } as const;
-
-/**
- * Every ReportPublishErrorKind value, for schemas and exhaustive listings.
- */
-export const REPORT_PUBLISH_ERROR_KIND_VALUES = Object.values(ReportPublishErrorKind);
 
 /**
  * ReportPublishErrorKind value.
