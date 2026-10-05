@@ -85,13 +85,14 @@ A module ships a manifest beside its code:
     "executor": "my_proxy",
     "selectionGuidance": "Which reports this blocker verifies, in prose the model reads.",
     "command": ["node", "./module.mjs"],
-    "env": ["MY_PROXY_LICENSE_KEY"]
+    "env": ["MY_PROXY_LICENSE_KEY"],
+    "optionalEnv": ["MY_PROXY_CACHED_STATE"]
 }
 ```
 
 `command` words starting with `./` resolve against the manifest's directory. The module receives
-`PATH`, `HOME`, `LANG`, `TMPDIR`, the variables `env` lists, and `FILTERS_AGENT_BLOCKER_WORKSPACE`,
-a private directory for its files. It must write nothing but protocol lines to stdout, and stop
+`PATH`, `HOME`, `LANG`, `TMPDIR`, the variables `env` lists, the variables `optionalEnv` lists that
+are set, and `FILTERS_AGENT_BLOCKER_WORKSPACE`, a private directory for its files. It must write nothing but protocol lines to stdout, and stop
 whatever it holds when its stdin closes.
 
 To plug a module in:
@@ -124,10 +125,38 @@ release, checks its checksum and AdGuard's signature, and installs it with the m
       # ...the rest of the inputs as in the example workflow
 ```
 
-Each run activates the licence on one device and resets it when it ends, so two parallel runs
-hold two devices; uncomment the `concurrency` block in the example workflow to run one job at a
-time. A run killed before its reset (a cancelled job, a runner lost mid-run) leaves its device
-bound; unlink it in your AdGuard account if activations start to fail.
+Without a seed, each run activates the licence on one device and resets it when it ends, so two
+parallel runs hold two devices. A run killed before its reset (a cancelled job, a runner lost
+mid-run) leaves its device bound; unlink it in your AdGuard account if activations start to fail.
+
+A seed lets parallel runs share one device. Activate the licence once in a manually dispatched
+workflow on the default branch:
+
+```yaml
+name: Seed the AdGuard CLI home
+on: workflow_dispatch
+permissions:
+    contents: read
+jobs:
+    seed:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: maximtop/filters-agent/adguard-cli@main
+              env:
+                  ADGUARD_LICENSE_KEY: ${{ secrets.ADGUARD_LICENSE_KEY }}
+              with:
+                  seedHome: 'true'
+```
+
+It saves the activated CLI home to the repository's Actions cache. From then on the setup step
+restores the newest seed and the module starts from it without activating or resetting anything.
+The `homeRestored` output says whether it did. Seed again after a CLI release bump, or after
+GitHub evicts the cache (seven days without a run). Each seed binds one more device; unlink the old
+one in your AdGuard account.
+
+The seed holds licence state, and any workflow in the repository can restore it from the cache,
+including one started by a pull request from a fork. Do not seed in a repository whose workflows
+run code from pull requests.
 
 ### How a rule gets applied between phases
 
@@ -294,6 +323,7 @@ so it is worth re-reading this table after an upgrade.
 | `llmContextWindowTokens` | No | Context window of the reasoning model, in tokens. The default (1048576) is the window of the model the agent was tuned on; state your own model's window when it differs. |
 | `llmMaxOutputTokens` | No | Completion cap sent with the reasoning model's requests, in tokens; defaults to 384000. Set it to your model's own limit when that is lower. |
 | `llmVisionMaxOutputTokens` | No | Completion cap sent with the vision model's requests, in tokens; defaults to 384000. A gateway that routes by the requested cap finds no endpoint for a vision model whose own limit is lower, so set it whenever `llmVisionModel` names a different model (65536 for `google/gemini-3.8-flash`). |
+| `llmRequestMaxAttempts` | No | Total attempts per LLM request when the provider fails transiently (a 5xx, a timeout, a response cut off mid-stream), 1 to 3; defaults to 2. Raise it to 3 for a gateway that drops responses more than once in a row. |
 | `llmProviderRouting` | No | JSON routing preferences for an OpenRouter-compatible gateway, sent as the `provider` object on every request — for example `{"ignore":["Together"]}` to route around a faulting upstream provider. Plain configuration, not a secret; leave it unset for a gateway that does not understand the field. |
 
 ### Outputs

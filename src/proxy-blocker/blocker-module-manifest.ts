@@ -1,8 +1,9 @@
 /**
  * The manifest a blocker module ships beside its code: the executor it registers, the routing
- * guidance the model reads, the command that starts it, and the environment variables it needs. A
- * workflow plugs a module in by naming its manifest; the action reads the manifest, registers the
- * executor, and starts the module per run with exactly the variables the manifest lists.
+ * guidance the model reads, the command that starts it, and the environment variables it needs or
+ * can use. A workflow plugs a module in by naming its manifest; the action reads the manifest,
+ * registers the executor, and starts the module per run with exactly the variables the manifest
+ * lists.
  *
  * A manifest comes from whatever repository the action runs in, so it is validated here, once.
  */
@@ -38,6 +39,9 @@ export const BlockerModuleManifestSchema = v.strictObject({
     selectionGuidance: v.pipe(v.string(), v.nonEmpty(), v.maxLength(MAX_GUIDANCE_LENGTH)),
     command: v.pipe(v.array(v.pipe(v.string(), v.nonEmpty())), v.minLength(1)),
     env: v.array(v.pipe(v.string(), v.regex(ENV_NAME))),
+    // Variables passed when the step sets them and left out otherwise, such as a cached state the
+    // module falls back from.
+    optionalEnv: v.optional(v.array(v.pipe(v.string(), v.regex(ENV_NAME))), []),
 });
 
 /**
@@ -118,8 +122,34 @@ function resolveCommandWord(word: string, directory: string): string {
 }
 
 /**
- * Enable one loaded module for a run: each issue starts its own module process with the base
- * environment, the variables the manifest lists, and its private workspace.
+ * The environment one module process starts with: the base variables, the variables the manifest
+ * lists that the environment sets, and the private workspace.
+ *
+ * @param module - The loaded module.
+ * @param environment - The environment the variables are taken from.
+ * @param workspaceDir - The process's private workspace.
+ * @returns The process environment.
+ */
+export function blockerModuleProcessEnvironment(
+    module: LoadedBlockerModule,
+    environment: Readonly<Record<string, string | undefined>>,
+    workspaceDir: string,
+): Record<string, string> {
+    const passed = [...BASE_ENVIRONMENT, ...module.manifest.env, ...module.manifest.optionalEnv];
+    return {
+        ...Object.fromEntries(
+            passed.flatMap((name) => {
+                const value = environment[name];
+                return value === undefined ? [] : [[name, value]];
+            }),
+        ),
+        [BLOCKER_WORKSPACE_ENV]: workspaceDir,
+    };
+}
+
+/**
+ * Enable one loaded module for a run: each issue starts its own module process with the environment
+ * `blockerModuleProcessEnvironment` builds.
  *
  * @param module - The loaded module.
  * @param environment - The environment the variables are taken from.
@@ -134,21 +164,13 @@ export function enableBlockerModule(
     const [command, ...args] = module.manifest.command.map((word) =>
         resolveCommandWord(word, module.directory),
     );
-    const passed = [...BASE_ENVIRONMENT, ...module.manifest.env];
     return {
         executor: module.manifest.executor,
         startBlocker: (workspaceDir: string): BlockerContract =>
             spawnBlockerProcess({
                 command: command!,
                 args,
-                env: {
-                    ...Object.fromEntries(
-                        passed
-                            .filter((name) => environment[name] !== undefined)
-                            .map((name) => [name, environment[name]]),
-                    ),
-                    [BLOCKER_WORKSPACE_ENV]: workspaceDir,
-                },
+                env: blockerModuleProcessEnvironment(module, environment, workspaceDir),
                 logger,
             }),
     };

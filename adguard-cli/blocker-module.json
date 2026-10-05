@@ -7,5 +7,8 @@
     ],
     "env": [
         "ADGUARD_LICENSE_KEY"
+    ],
+    "optionalEnv": [
+        "ADGUARD_CLI_HOME_ARCHIVE"
     ]
 }
