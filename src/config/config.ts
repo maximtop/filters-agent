@@ -61,6 +61,12 @@ export const LLM_MAX_OUTPUT_TOKENS_VAR = 'LLM_MAX_OUTPUT_TOKENS';
 export const LLM_VISION_MAX_OUTPUT_TOKENS_VAR = 'LLM_VISION_MAX_OUTPUT_TOKENS';
 
 /**
+ * Environment variable carrying the total provider attempts per request. The one place this name is
+ * spelled; the action's `llmRequestMaxAttempts` input binding imports it.
+ */
+export const LLM_REQUEST_MAX_ATTEMPTS_VAR = 'LLM_REQUEST_MAX_ATTEMPTS';
+
+/**
  * Environment variable carrying the GitHub API token every GitHub-reading seam authenticates with,
  * report comments included. The one place this name is spelled; the action's `githubToken` input
  * binding imports it instead of respelling it.
@@ -334,7 +340,8 @@ function buildRawCoreConfig(env: Record<string, string | undefined>): Record<str
             requestTimeoutMs:
                 parseOptionalNumber(env.LLM_REQUEST_TIMEOUT_MS) ?? DEFAULT_REQUEST_TIMEOUT_MS,
             requestMaxAttempts:
-                parseOptionalNumber(env.LLM_REQUEST_MAX_ATTEMPTS) ?? DEFAULT_REQUEST_MAX_ATTEMPTS,
+                parseOptionalNumber(env[LLM_REQUEST_MAX_ATTEMPTS_VAR]) ??
+                DEFAULT_REQUEST_MAX_ATTEMPTS,
             // Passed through raw: an unknown level must reach the picklist and fail the load
             // loudly. Coercing a typo to the default here would leave the operator believing a
             // level is in force that no request ever carries — the exact drift this field exists

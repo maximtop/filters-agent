@@ -19,6 +19,7 @@ import {
     LLM_MAX_OUTPUT_TOKENS_VAR,
     LLM_MODEL_VAR,
     LLM_PROVIDER_ROUTING_VAR,
+    LLM_REQUEST_MAX_ATTEMPTS_VAR,
     LLM_VISION_MAX_OUTPUT_TOKENS_VAR,
     LLM_VISION_MODEL_VAR,
 } from '../config/config';
@@ -183,6 +184,13 @@ const AgentActionInputName = {
     llmVisionMaxOutputTokens: 'llmVisionMaxOutputTokens',
 
     /**
+     * The `llmRequestMaxAttempts` input; lands in the `LLM_REQUEST_MAX_ATTEMPTS` environment
+     * variable. A gateway that drops responses mid-stream more than once in a row ends the run
+     * without an answer at the default bound, so such a workflow raises it.
+     */
+    llmRequestMaxAttempts: 'llmRequestMaxAttempts',
+
+    /**
      * The `blockerModules` input naming the manifests of the blocker modules the run plugs in.
      */
     blockerModules: 'blockerModules',
@@ -210,6 +218,7 @@ const AGENT_ACTION_INPUT_ENV_VAR: Partial<Record<AgentActionInputName, string>> 
     [AgentActionInputName.llmContextWindowTokens]: LLM_CONTEXT_WINDOW_TOKENS_VAR,
     [AgentActionInputName.llmMaxOutputTokens]: LLM_MAX_OUTPUT_TOKENS_VAR,
     [AgentActionInputName.llmVisionMaxOutputTokens]: LLM_VISION_MAX_OUTPUT_TOKENS_VAR,
+    [AgentActionInputName.llmRequestMaxAttempts]: LLM_REQUEST_MAX_ATTEMPTS_VAR,
 };
 
 /**

@@ -129,6 +129,12 @@ inputs:
             limit is lower, so set it whenever llmVisionModel names a different model (65536 for
             google/gemini-3.8-flash).
         required: false
+    llmRequestMaxAttempts:
+        description: >-
+            Total attempts per LLM request when the provider fails transiently (a 5xx, a timeout, a
+            response cut off mid-stream), 1 to 3; defaults to 2. Raise it to 3 for a gateway that
+            drops responses more than once in a row.
+        required: false
     llmProviderRouting:
         description: >-
             JSON routing preferences for an OpenRouter-compatible gateway, sent as the `provider`
