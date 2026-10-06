@@ -48,6 +48,7 @@ import {
     type BrowserFallbackReason,
 } from './browser-fallback-reason';
 import { BrowserMode, BROWSER_MODE_VALUES } from './browser-mode';
+import { RepositoryLintNoteSchema } from './repository-lint';
 import {
     AgentTerminationReason,
     AGENT_TERMINATION_REASON_VALUES,
@@ -901,6 +902,9 @@ const FixRunResultInvariantsSchema = v.pipe(
             ),
         ),
         candidateVisualReview: v.optional(CandidateVisualReviewSchema),
+        // What the repository's own lint command said about the published candidate, only when it
+        // flagged it or could not run; it decides nothing and reaches the report alone.
+        repositoryLint: v.optional(RepositoryLintNoteSchema),
         artifactPaths: FixRunArtifactPathsSchema,
         reasoning: v.string(),
         repository: v.nullable(v.string()),

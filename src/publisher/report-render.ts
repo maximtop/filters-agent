@@ -32,6 +32,8 @@ import type { MissingInformationEntry } from '../types/missing-information';
 import { renderVersionUpdateHint } from './report-version-decision';
 import type { ReportTemplateValues } from './report-template';
 import { composeListPlace, type ReportRepositoryEdit } from './report-list-place';
+import { composeRepositoryLint } from './report-repository-lint';
+import type { RepositoryLintNote } from '../types/repository-lint';
 import { renderUntrustedRuleCodeSpan, renderUntrustedText } from './untrusted-text';
 
 /**
@@ -289,6 +291,12 @@ export interface ReportRunResultInput {
     candidateForReview?: ReportCandidateForReview;
 
     /**
+     * What the repository's own lint command said about the published rule, when it objected or
+     * could not run.
+     */
+    repositoryLint?: RepositoryLintNote;
+
+    /**
      * The parts of the runner-bound vision review the report speaks to: whether the verified
      * candidate left advertising layout behind, and what the review still saw on the page after a
      * candidate it did not verify.
@@ -399,6 +407,11 @@ export interface ReportOutcomeSummary {
      * Host-authored note rendered under the rule, when the verified review left one to make.
      */
     ruleNote?: string;
+
+    /**
+     * The repository lint note for the rule, when the lint objected or could not run.
+     */
+    repositoryLint?: RepositoryLintNote;
 
     /**
      * The unverified candidate an analysis-only run asks a reviewer to look at, absent when the run
@@ -664,6 +677,7 @@ export function summarizeReportOutcome(
         ...(result.candidatePatch && result.candidateVisualReview?.adLayoutResidue === 'present'
             ? { ruleNote: LEFTOVER_LAYOUT_NOTE }
             : {}),
+        ...(result.repositoryLint === undefined ? {} : { repositoryLint: result.repositoryLint }),
         ...(result.candidateForReview === undefined
             ? {}
             : { candidateForReview: result.candidateForReview }),
@@ -709,6 +723,7 @@ export function buildReportTemplateValues(summary: ReportOutcomeSummary): Report
             summary.ruleNote === undefined
                 ? renderUntrustedRuleCodeSpan(summary.rule)
                 : `${renderUntrustedRuleCodeSpan(summary.rule)}\n\n${summary.ruleNote}`,
+        repositoryLint: composeRepositoryLint(summary.repositoryLint),
         candidateForReview: composeCandidateForReview(summary.candidateForReview),
         stillVisible: composeStillVisible(summary.remainingInstances),
         executor: summary.executor,

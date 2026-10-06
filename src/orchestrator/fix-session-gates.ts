@@ -221,7 +221,9 @@ export interface FixSessionToolsOptions {
  *
  * A sole-executor run never advertises `select_environment`: its executor was locked at
  * construction, so the choice tool would offer a decision the model cannot make, and a routing
- * check recognizes that deterministic acceptance right away.
+ * check recognizes that deterministic acceptance right away. Likewise a run whose repository
+ * configured no lint command never advertises `lint_rule`: the registry decides it once, at
+ * construction, and no later lifecycle step could make the tool usable.
  *
  * @param options - The registry the session dispatches into, the routing-check flag, and any
  *   per-run description overrides.
@@ -250,6 +252,7 @@ export function buildFixSessionTools(
     // the start (multi-executor set) or never offers the choice (sole executor locked at
     // construction). Every other unregistered surface name waits behind the environment lock.
     const soleExecutorRun = !registered.has(ToolName.SelectEnvironment);
+    const lintOffered = registered.has(ToolName.LintRule);
     if (options.routingCheck && soleExecutorRun) {
         onSelectionAccepted();
     }
@@ -270,7 +273,10 @@ export function buildFixSessionTools(
         : { [ToolName.LookupRuleGuidance]: SESSION_GATED_STUBS[ToolName.LookupRuleGuidance] };
     const stubNames = new Set(Object.keys(stubStates));
     const inputs: AdaptedToolInput[] = FIX_SESSION_SURFACE.filter(
-        (name) => !stubNames.has(name) && !(name === ToolName.SelectEnvironment && soleExecutorRun),
+        (name) =>
+            !stubNames.has(name) &&
+            !(name === ToolName.SelectEnvironment && soleExecutorRun) &&
+            !(name === ToolName.LintRule && !lintOffered),
     ).map((name) => {
         if (TOOL_GUIDANCE[name] === undefined) {
             throw new Error(`No usage guidance for fix session tool '${name}'.`);

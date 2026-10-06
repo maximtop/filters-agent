@@ -12,7 +12,6 @@ import { RuleType } from '../types/rule-proposal';
 import { candidateScopeProblem, normalizeScopeDomain } from './candidate-scope';
 import type { DeclaredPlacementSet } from '../types/declared-placement';
 import { planRepositoryEdit } from '../repo/repository-edit';
-import { lintRule } from '../rules/aglint-linter';
 import { parseSafeCssInjectionRule } from '../rules/safe-css-injection';
 
 /**
@@ -195,17 +194,10 @@ export function enforceCandidateSafety(
             throw new CandidateSafetyError(SINGLE_LINE_RULE_MESSAGE);
         }
 
-        const lint = lintRule(proposal.rule, { repoRoot: options.checkoutPath });
-        if (!lint.valid) {
-            throw new CandidateSafetyError(
-                `Candidate failed deterministic lint: ${lint.problems
-                    .map((problem) => problem.code)
-                    .join(', ')}`,
-            );
-        }
-        // AGLint carries no notion of the validator-owned CSS safety subset, so the old lint's
-        // applicability check lives here as its own invariant: a candidate the validator could
-        // never apply in phase C must not reach the publisher.
+        // No syntax lint gates here: the in-browser phases already proved the blocker accepts and
+        // applies the rule, and the repository's own lint command, when the run has one, only
+        // annotates the report. What stays is the validator-owned CSS safety subset: a candidate
+        // the validator could never apply in phase C must not reach the publisher.
         const normalized = normalizeRule(proposal.rule);
         if (
             normalized.cssInjectionBody !== undefined &&

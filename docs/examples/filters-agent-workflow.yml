@@ -2,18 +2,16 @@
 # `.github/workflows/` to connect it — see ../../README.md for the full connection steps.
 #
 # This file is a template, not active configuration, which is why it lives in docs/examples/
-# rather than .github/workflows/: nobody labels issues here, so an `issues: labeled` trigger left
-# active in this repository would simply never fire.
+# rather than .github/workflows/: left active here, it would analyze this repository's own issues.
 name: 'filters-agent'
 
 on:
-    # `labeled`, not `opened`: every run is a paid LLM call, so a run only starts on a label a
-    # maintainer adds themselves, deliberately, rather than on every issue anyone opens. GitHub
-    # cannot filter by label name in this block — `labeled` fires for any label — so the job below
-    # re-checks it.
+    # Every new issue gets a run. Each run is a paid LLM call; to run only on issues a maintainer
+    # picks, replace `opened` with `labeled` and label an issue `filters-agent` to start a run.
+    # GitHub cannot filter by label name in this block, so the job below checks it.
     issues:
         types:
-            - labeled
+            - opened
     workflow_dispatch:
         inputs:
             issueNumber:
@@ -22,8 +20,9 @@ on:
                 type: string
 
 # The report comment posts from the workflow token. `contents: write` lets the run commit the
-# before and after screenshots of a verified rule to the `filters-agent-screenshots` branch, which
-# the comment shows them from; with `contents: read` the comment posts without them.
+# before and after screenshots of a verified rule to a branch of this repository (the
+# `screenshotsBranch` input, `filters-agent-screenshots` by default), which the comment shows them
+# from; with `contents: read` the comment posts without them.
 permissions:
     contents: write
     issues: write
@@ -37,8 +36,9 @@ permissions:
 
 jobs:
     analyze:
-        # Manual dispatch always runs; an issue event runs only for the label this workflow owns.
-        if: ${{ github.event_name == 'workflow_dispatch' || github.event.label.name == 'filters-agent' }}
+        # A new issue and a manual dispatch always run; a label event runs only for the label this
+        # workflow owns.
+        if: ${{ github.event.action != 'labeled' || github.event.label.name == 'filters-agent' }}
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v6
@@ -46,6 +46,13 @@ jobs:
                   # The action takes its own token, so dropping the checkout credential keeps it out of
                   # .git/config in the mounted workspace, where run commands could read it.
                   persist-credentials: false
+
+            # Optional: install the repository's own linter so the action can run it over each
+            # candidate rule (see lintCommand below and README, "Lint with your repository's
+            # linter"). The action's container sees the workspace, so node_modules installed here
+            # is what the command finds.
+            # - name: Install the repository's linter
+            #   run: npm ci
 
             # @v1 follows every v1.x.y release; pin @v1.2.3 to stay on one release, or use @main for
             # what is not released yet.
@@ -79,6 +86,10 @@ jobs:
                   # secrets go in this step's env.
                   # blockerModules: .filters-agent/my-proxy/blocker-module.json
                   # executors: browser_extension,my_proxy
+                  # Optional: the repository's own lint command, run in the checkout over each
+                  # candidate rule with the candidate file's path appended. A failure adds a note
+                  # to the report and never stops the rule; unset runs no lint.
+                  # lintCommand: npx aglint
                   # The label event carries the issue number directly; a manual dispatch carries it
                   # as the issueNumber input instead.
                   issueNumber: ${{ github.event.issue.number || inputs.issueNumber }}

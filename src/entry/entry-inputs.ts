@@ -93,10 +93,21 @@ export interface AgentRunInputSources {
     model?: string | undefined;
 
     /**
+     * The repository's own lint command line (e.g. `npx aglint`); absent or blank runs no lint.
+     */
+    lintCommand?: string | undefined;
+
+    /**
      * Publish nothing for the whole run. Flips only posting off: GitHub reads may still need the
      * token, and a token accompanying the flag is accepted, not an error.
      */
     noComment?: boolean | undefined;
+
+    /**
+     * Branch the report's before and after screenshots are committed to; absent or blank falls back
+     * to `DEFAULT_REPORT_SCREENSHOTS_BRANCH`.
+     */
+    screenshotsBranch?: string | undefined;
 
     /**
      * Comma-separated GitHub author-association names trusted to change a backlog issue's revision
@@ -156,6 +167,7 @@ const BacklogModeSchema = v.strictObject({
 const CommentPolicySchema = v.strictObject({
     enabled: v.boolean(),
     token: v.optional(v.string()),
+    screenshotsBranch: v.string(),
 });
 
 /**
@@ -189,6 +201,7 @@ export const AgentRunInputsSchema = v.strictObject({
     executors: v.optional(v.array(v.string())),
     instructionPath: v.optional(v.string()),
     artifactsDir: v.optional(v.string()),
+    lintCommand: v.optional(v.pipe(v.string(), v.minLength(1))),
     issueSnapshotPath: v.optional(v.string()),
     actionsRunUrl: v.optional(v.string()),
     comments: CommentPolicySchema,
@@ -270,6 +283,11 @@ export interface AgentRunCommentPolicy {
      * GitHub reads may still need it.
      */
     token?: string;
+
+    /**
+     * Branch the report's before and after screenshots are committed to.
+     */
+    screenshotsBranch: string;
 }
 
 /**
@@ -319,6 +337,12 @@ export interface AgentRunInputs {
      * mandatory for backlog runs.
      */
     artifactsDir?: string;
+
+    /**
+     * The repository's own lint command line, run in the checkout over each candidate rule; absent
+     * runs no lint.
+     */
+    lintCommand?: string;
 
     /**
      * Exported issue snapshot path; a snapshot-sourced issue needs no GitHub read.

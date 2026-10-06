@@ -16,12 +16,12 @@ import type { Octokit } from '@octokit/rest';
 import type { Logger } from '../logger/logger';
 
 /**
- * Branch of the analyzed repository that receives the screenshots.
+ * Branch of the analyzed repository that receives the screenshots when the workflow names none.
  *
  * A branch of its own keeps the binary uploads out of the filter lists' history, and deleting it
  * prunes the whole set.
  */
-export const REPORT_SCREENSHOTS_BRANCH = 'filters-agent-screenshots';
+export const DEFAULT_REPORT_SCREENSHOTS_BRANCH = 'filters-agent-screenshots';
 
 /**
  * Display width of each screenshot in the comment, in pixels.
@@ -82,6 +82,11 @@ export interface HostReportScreenshotsInput {
     issueNumber: number;
 
     /**
+     * Branch the pair is committed to.
+     */
+    branch: string;
+
+    /**
      * PNG of the page without the rule.
      */
     before: Buffer;
@@ -128,19 +133,21 @@ interface BranchHead {
  * @param octokit - Authenticated GitHub API client.
  * @param owner - Repository owner.
  * @param repo - Repository name.
+ * @param branch - The screenshots branch.
  * @returns The branch head, or null before the first upload created the branch.
  */
 async function readBranchHead(
     octokit: Octokit,
     owner: string,
     repo: string,
+    branch: string,
 ): Promise<BranchHead | null> {
     let commitSha: string;
     try {
         const { data } = await octokit.rest.git.getRef({
             owner,
             repo,
-            ref: `heads/${REPORT_SCREENSHOTS_BRANCH}`,
+            ref: `heads/${branch}`,
         });
         commitSha = data.object.sha;
     } catch (error) {
@@ -167,7 +174,7 @@ export async function hostReportScreenshots(
     octokit: Octokit,
     input: HostReportScreenshotsInput,
 ): Promise<HostedReportScreenshots> {
-    const { owner, repo } = input;
+    const { owner, repo, branch } = input;
     const directory = `issues/${String(input.issueNumber)}`;
     const beforePath = `${directory}/before.png`;
     const afterPath = `${directory}/after.png`;
@@ -184,7 +191,7 @@ export async function hostReportScreenshots(
     const afterBlob = await blobSha(input.after);
 
     for (let attempt = 1; ; attempt += 1) {
-        const head = await readBranchHead(octokit, owner, repo);
+        const head = await readBranchHead(octokit, owner, repo, branch);
         const { data: tree } = await octokit.rest.git.createTree({
             owner,
             repo,
@@ -197,7 +204,8 @@ export async function hostReportScreenshots(
         const { data: commit } = await octokit.rest.git.createCommit({
             owner,
             repo,
-            message: `Screenshots for #${String(input.issueNumber)}`,
+            // No `#` before the number: GitHub would add this commit to the issue's timeline.
+            message: `Screenshots for issue ${String(input.issueNumber)}`,
             tree: tree.sha,
             parents: head === null ? [] : [head.commitSha],
         });
@@ -206,14 +214,14 @@ export async function hostReportScreenshots(
                 await octokit.rest.git.createRef({
                     owner,
                     repo,
-                    ref: `refs/heads/${REPORT_SCREENSHOTS_BRANCH}`,
+                    ref: `refs/heads/${branch}`,
                     sha: commit.sha,
                 });
             } else {
                 await octokit.rest.git.updateRef({
                     owner,
                     repo,
-                    ref: `heads/${REPORT_SCREENSHOTS_BRANCH}`,
+                    ref: `heads/${branch}`,
                     sha: commit.sha,
                     force: false,
                 });
@@ -275,7 +283,7 @@ export async function renderHostedReportScreenshots(
     } catch (error) {
         if ((error as HttpFailure).status === PERMISSION_REFUSAL_STATUS) {
             logger.warn(
-                { issueNumber: input.issueNumber, branch: REPORT_SCREENSHOTS_BRANCH },
+                { issueNumber: input.issueNumber, branch: input.branch },
                 'the report posts without screenshots: grant the workflow `contents: write` to ' +
                     'host them',
             );

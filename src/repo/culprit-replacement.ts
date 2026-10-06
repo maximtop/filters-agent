@@ -1,17 +1,4 @@
-import { lintRule } from '../rules/aglint-linter';
-import { normalizeRule, RuleKind, type NormalizedRule } from './rule-normalizer';
-
-/**
- * Options for the single-actionable-rule predicate.
- */
-interface SingleActionableRuleOptions {
-    /**
-     * Root of the repository whose AGLint configuration governs the lint; omitted means AGLint's
-     * defaults, which the pure `describe*` descriptors use by design (their callers accepted the
-     * same rule under the checkout config one gate above).
-     */
-    repoRoot?: string;
-}
+import { isSingleLineRule, normalizeRule, RuleKind, type NormalizedRule } from './rule-normalizer';
 
 /**
  * The domain scope one exact culprit-rule replacement can affect.
@@ -33,27 +20,36 @@ const ACTIONABLE_KINDS: ReadonlySet<NormalizedRule['kind']> = new Set([
 ]);
 
 /**
- * Decide whether a line is one well-formed rule that can take part in a correction.
+ * Whether a normalized rule carries anything after its syntax: a cosmetic or scriptlet body, or a
+ * network pattern or modifier. A line that ends at its separator (`a.example##`) matches nothing,
+ * so it can neither be corrected nor serve as a correction.
  *
- * `lintRule` accepts a comment as valid, so the kind check rather than the lint result is what
- * refuses a line that is not an actionable rule at all. Exported so the culprit-edit gate refuses a
- * malformed line on exactly the terms this predicate would, rather than on a second definition that
- * could drift from it.
+ * @param rule - The normalized actionable rule.
+ * @returns Whether the rule has a body.
+ */
+function hasRuleBody(rule: NormalizedRule): boolean {
+    if (rule.kind === RuleKind.Network) {
+        return (rule.urlPattern ?? '').length > 0 || rule.modifiers.length > 0;
+    }
+    return (rule.selector ?? '').length > 0;
+}
+
+/**
+ * Decide whether a line is one well-formed rule that can take part in a correction: a single line
+ * of an actionable kind with a body. Whether the blocker accepts the rule is not decided here — the
+ * in-browser phases prove that — only whether the line is a rule at all. Exported so the
+ * culprit-edit gate refuses a malformed line on exactly the terms this predicate would, rather than
+ * on a second definition that could drift from it.
  *
  * @param rule - Raw candidate or repository line.
- * @param options - Optional repository root to lint under the checkout's AGLint configuration.
  * @returns Whether the line is a single actionable rule.
  */
-export function isSingleActionableRule(
-    rule: string,
-    options?: SingleActionableRuleOptions,
-): boolean {
-    return (
-        rule.length > 0 &&
-        !/[\r\n]/u.test(rule) &&
-        lintRule(rule, { repoRoot: options?.repoRoot }).valid &&
-        ACTIONABLE_KINDS.has(normalizeRule(rule).kind)
-    );
+export function isSingleActionableRule(rule: string): boolean {
+    if (!isSingleLineRule(rule)) {
+        return false;
+    }
+    const normalized = normalizeRule(rule);
+    return ACTIONABLE_KINDS.has(normalized.kind) && hasRuleBody(normalized);
 }
 
 /**

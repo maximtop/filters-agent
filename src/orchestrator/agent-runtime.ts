@@ -10,6 +10,7 @@ import type { NormalizedSafeInteractionPlan } from '../environment/safe-interact
 import { revealStepsRepairGuidance } from '../environment/interaction-replay';
 import type { SingleShotClient } from '../pi/single-shot-types';
 import { ToolRegistry } from '../agent/tool-registry';
+import type { RepositoryLintCommand } from '../rules/repository-lint-command';
 import { createToolRegistry } from '../agent/tool-factory';
 import type { FinishFixValidationRejection } from '../types/terminal-rejection';
 import {
@@ -376,6 +377,11 @@ export interface AgentRuntimeOptions {
      * the `kind` tag.
      */
     knowledgeGuidanceSource?: RuleGuidanceSource;
+
+    /**
+     * The repository's own lint command, when the run has one; it enables `lint_rule`.
+     */
+    repositoryLint?: RepositoryLintCommand;
 
     /**
      * The run instruction loaded at run start, when this run carries one. Its application contract
@@ -1342,6 +1348,9 @@ export class AgentRuntime {
                     reportedDomain: reportedDomainFromAllowedTargets(options.allowedTargetUrls),
                 },
                 knowledgeGuidance: options.knowledgeGuidanceSource,
+                ...(options.repositoryLint === undefined
+                    ? {}
+                    : { repositoryLint: options.repositoryLint }),
             });
         }
         const registry = new ToolRegistry();

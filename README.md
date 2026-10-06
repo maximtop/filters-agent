@@ -39,14 +39,19 @@ When it runs against an issue, `filters-agent`:
    instruction takes. The same file is also how a repository that stays on the built-in extension
    points the run at its own filter guidance: see
    [An instruction that only adds guidance](#an-instruction-that-only-adds-guidance).
-4. Label an issue `filters-agent` (or run the workflow manually with an issue number) to start a
-   run.
+4. Open an issue: the example workflow runs on every new issue. Each run is a paid LLM call; to
+   run only on issues a maintainer picks, switch the workflow's trigger from `opened` to `labeled`
+   as its comment describes, and label an issue `filters-agent` to start a run. Either way, you can
+   run the workflow manually with an issue number.
 5. The report appears as a comment on the issue, unless the issue no longer needs one: it is
    closed, a commit or pull request of your repository references it, a maintainer (see
    `trustedRoles`) commented or is assigned, or the report for its current text is already there.
    The run checks this before it spends anything, and again right before it posts. For a verified
-   rule the report shows the page without and with the rule; the images live on the
-   `filters-agent-screenshots` branch, which is why the example workflow grants `contents: write`.
+   rule the report shows the page without and with the rule. GitHub has no API to attach an image
+   to a comment, so the run commits the images to a branch of your repository, named by the
+   `screenshotsBranch` input (`filters-agent-screenshots` by default), which is why the example
+   workflow grants `contents: write`. With `contents: read` the report posts without the images
+   and the run log says which permission is missing.
    The full run — report, traces, screenshots — is uploaded as a workflow artifact; find it on the workflow run's Summary page. Preparation steps in an instruction run inside the action image, which provides `curl`, `jq`, `node`, `git` and `unzip`.
 
 Releases are tagged `vX.Y.Z`, and `v1` follows the latest 1.x release; the example uses `@v1`.
@@ -115,8 +120,17 @@ To plug a module in:
 
 The `adguard-cli/` directory of this repository is a ready module: it verifies the rule through
 [AdGuard CLI](https://github.com/AdguardTeam/AdGuardCLI) running as a filtering proxy in front of
-the browser, the way a desktop AdGuard user sees the page. Its setup step downloads the pinned CLI
-release, checks its checksum and AdGuard's signature, and installs it with the module:
+the browser, the way a desktop AdGuard user sees the page. With both executors enabled, the agent
+picks AdGuard CLI for reports from AdGuard for Windows, Mac and the mobile apps, and the extension
+for reports from the AdGuard Browser Extension.
+
+To connect it:
+
+1. Add your AdGuard licence key as the repository secret `ADGUARD_LICENSE_KEY`.
+2. Add the setup step below before the action. It downloads the pinned CLI release, checks its
+   checksum and AdGuard's signature, and installs it with the module.
+3. Pass the licence in the action step's `env:`, the step's `manifest` output as `blockerModules`,
+   and add `adguard_cli` to `executors`:
 
 ```yaml
 - name: Install the AdGuard CLI module
@@ -165,6 +179,17 @@ one in your AdGuard account.
 The seed holds licence state, and any workflow in the repository can restore it from the cache,
 including one started by a pull request from a fork. Do not seed in a repository whose workflows
 run code from pull requests.
+
+The setup step's inputs and outputs:
+
+| Name | Kind | Description |
+| --- | --- | --- |
+| `path` | Input | Workspace-relative directory the module is installed into; defaults to `.filters-agent/adguard-cli`. |
+| `releaseUrl` | Input | AdGuard CLI release archive to install; defaults to the pinned release. Change it together with `releaseSha256`. |
+| `releaseSha256` | Input | SHA-256 of the release archive. |
+| `seedHome` | Input | `'true'` activates the licence once and saves the seed instead of preparing a run. |
+| `manifest` | Output | Workspace-relative path of the module manifest; pass it as `blockerModules`. |
+| `homeRestored` | Output | `'true'` when the run restored a seed. |
 
 ### How a rule gets applied between phases
 
@@ -278,6 +303,43 @@ run at start, naming the instruction.
 The two uBlock Origin examples declare the placement uAssets uses, so a repository that copies one
 in gets the current year's filters file and a preceding comment holding the issue URL.
 
+### Lint with your repository's linter
+
+The action bundles no linter. The browser phases prove that a rule works; your repository's own
+linter adds your policy on top — excluded rules, platforms, modifiers. Set `lintCommand` to the
+command your repository lints its lists with, and install the linter in a step before the action.
+For AGLint:
+
+```yaml
+- uses: actions/checkout@v6
+  with:
+      persist-credentials: false
+
+- name: Install the repository's linter
+  run: npm ci
+
+- name: Analyze the issue
+  uses: maximtop/filters-agent@v1
+  with:
+      lintCommand: npx aglint
+      # ...the rest of the inputs as in the example workflow
+```
+
+For each candidate the action writes the rule to a temporary file in the directory of the list it
+goes into, so a directory-scoped linter configuration applies. It runs the command through `sh` in
+the checkout with that file's checkout-relative path as the last argument, then deletes the file.
+Exit code 0 means clean. Any other exit code, a command that cannot start, or one still running
+after 60 seconds adds a `## Repository lint` section to the report with the command's output (its
+first 4 KiB). The lint never stops a rule. The agent runs the same command on its drafts through
+its `lint_rule` tool. Without `lintCommand`, nothing is linted and the report says nothing about
+it.
+
+The command runs inside the action's container, not on the runner. The container mounts the
+workspace and provides Node.js 24 with `npm` and `npx`, plus `git`, `curl`, `jq` and `unzip`. A
+linter installed into the workspace, as above, runs there; a tool installed on the runner outside
+the workspace does not. The command gets none of the run's secrets: its environment holds only a
+minimal set such as `PATH`, `HOME`, the locale and the temporary-directory variables.
+
 ### What the report can say
 
 A `## Report template` section in your instruction replaces the built-in comment, and it is filled
@@ -292,6 +354,7 @@ template can carry a heading for a case that rarely happens.
 | `{{versionUpdateHint}}` | That the reporter's blocker version is behind and the defect does not reproduce on the current one. |
 | `{{symptom}}` | Whether the reported defect reproduced, and what the run saw. |
 | `{{rule}}` | The verified rule, as a code span. |
+| `{{repositoryLint}}` | What the repository's `lintCommand` said about that rule — its exit code and output — when it flagged the rule or could not run. Empty when it passed or no `lintCommand` is set. |
 | `{{candidateForReview}}` | The rule an analysis-only run found and could not verify, with why. |
 | `{{stillVisible}}` | What the vision review still saw on the page after that rule — the locations the reporter named that it did not fix. Empty for a verified rule, since one leftover instance is what rejects a candidate. |
 | `{{executor}}`, `{{executorVersion}}` | The blocker the run actually drove, and its version. |
@@ -326,6 +389,8 @@ so it is worth re-reading this table after an upgrade.
 | `artifactsDir` | No | Directory the run writes its artifacts to; defaults to `filters-agent-artifacts/artifacts` under the checkout. |
 | `model` | No | Reasoning-model slug overriding the LLM runtime's configured model. |
 | `noComment` | No | `'true'` skips posting the report as an issue comment; the report is still written to the artifacts directory. |
+| `screenshotsBranch` | No | Branch the before and after screenshots of a verified rule are committed to, so the report comment can show them; defaults to `filters-agent-screenshots`. Needs the `contents: write` permission; without it the report posts without screenshots. |
+| `lintCommand` | No | Your repository's own lint command line, for example `npx aglint`. Each candidate rule is linted with it in the checkout; a failure adds a note to the report and never stops the rule. Unset runs no lint. See [Lint with your repository's linter](#lint-with-your-repositorys-linter). |
 | `checkoutPath` | No | Path of the analyzed checkout; defaults to the runner's `GITHUB_WORKSPACE`. |
 | `githubToken` | No | GitHub API token the run reads issues with; in practice mandatory in every run, since the action only serves GitHub-read modes — a missing token fails the job named, even together with `noComment`. |
 | `llmBaseUrl` | Yes | OpenAI-compatible API base URL of the LLM provider. |

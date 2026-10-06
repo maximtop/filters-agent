@@ -439,6 +439,16 @@ async function runInsideWorkspace(
         artifactsDir: request.artifactsDir,
         model: request.model,
         instruction: instruction ?? undefined,
+        // The lint runs in the checkout the workflow gave the run, not the disposable clone: only
+        // there did the workflow install the repository's own dependencies, the linter among them.
+        ...(request.lintCommand === undefined
+            ? {}
+            : {
+                  repositoryLint: {
+                      command: request.lintCommand,
+                      checkoutRoot: request.checkoutPath ?? prepared.checkoutPath,
+                  },
+              }),
         agentRuntime: { executors: request.executors },
         ...(request.config.agentInvestigationBudgetMs !== undefined
             ? { maxDurationMs: request.config.agentInvestigationBudgetMs }
@@ -558,6 +568,7 @@ async function runInsideWorkspace(
                                               owner: slug.owner,
                                               repo: slug.repo,
                                               issueNumber: request.issueNumber,
+                                              branch: request.screenshotsBranch,
                                               before: readFileSync(screenshots.before),
                                               after: readFileSync(screenshots.after),
                                           },

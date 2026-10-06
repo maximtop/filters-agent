@@ -131,6 +131,10 @@ itself rather than the lists.
 
 {{rule}}
 
+### Repository lint
+
+{{repositoryLint}}
+
 ### Candidate for review
 
 {{candidateForReview}}

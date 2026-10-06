@@ -95,6 +95,7 @@ import {
     symptomFromTerminal,
 } from './agentic-run-evidence';
 import { completeFixResultAfterEnvironmentCleanup } from './fix-environment-lifecycle';
+import { lintPublishedCandidate } from '../rules/repository-lint-command';
 
 /**
  * Run one complete model-owned lifecycle from issue intake through browser verification.
@@ -338,6 +339,9 @@ export async function runAgenticFixCore(
                 // One dispatch, two branches: an instruction source replaces the KnowledgeBase
                 // behind lookup_rule_guidance for the whole run.
                 knowledgeGuidanceSource: resolveRuleGuidanceSource(options),
+                ...(options.repositoryLint === undefined
+                    ? {}
+                    : { repositoryLint: options.repositoryLint }),
                 // Rendered once above and handed to every consumer: the placement tool answers
                 // with it, the safety gate plans against it, and the published patch writes it.
                 ...(declaredPlacement === undefined ? {} : { declaredPlacement }),
@@ -827,6 +831,16 @@ export async function runAgenticFixCore(
                     ).length ?? 0,
             });
             finalResult = { ...finalResult, verificationStatus: VerificationStatus.Partial };
+        }
+        // The repository's own linter has the last word on the published candidate, in the report
+        // only: a run without a lint command or without a candidate says nothing about lint.
+        const repositoryLint = await lintPublishedCandidate(
+            options.repositoryLint,
+            finalResult.candidatePatch,
+            logger,
+        );
+        if (repositoryLint !== undefined) {
+            finalResult = { ...finalResult, repositoryLint };
         }
         const parsed = v.safeParse(FixRunResultSchema, finalResult);
         if (!parsed.success) {

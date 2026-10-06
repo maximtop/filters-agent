@@ -49,9 +49,6 @@ RUN apt-get update \
     && rm -rf /tmp/git-proof /tmp/git-clone /tmp/git-proof.zip
 
 COPY package.json pnpm-lock.yaml tsconfig.json tsconfig.test.json ./
-# `pnpm install` applies the patches `package.json` declares under `patches/` and fails without
-# them, so they travel with the manifests, ahead of the install layer.
-COPY patches/ ./patches/
 
 # No `pnpm store prune` here on purpose: node_modules lives on the layer while the store rides
 # the cache mount, so cross-filesystem imports fall back to copies, every store file keeps

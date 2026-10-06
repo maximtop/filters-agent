@@ -11,6 +11,7 @@
 import { GITHUB_TOKEN_VAR, type CoreConfig, loadCoreConfig } from '../config/config';
 import { ConfigError } from '../config/config-error';
 import { buildActionsRunUrl } from '../config/publisher-config';
+import { DEFAULT_REPORT_SCREENSHOTS_BRANCH } from '../publisher/report-screenshots';
 import {
     optionalEnvValue,
     REPOSITORY_PATH_VAR,
@@ -151,16 +152,19 @@ function nameMissingReadTokenMessage(reason: string): string {
  *
  * @param env - Environment source supplied by the caller.
  * @param noComment - Whether publishing is disabled.
+ * @param screenshotsBranch - Branch named for the screenshots, or undefined for the default.
  * @returns The comment policy.
  */
 function resolveCommentPolicy(
     env: Readonly<Record<string, string | undefined>>,
     noComment: boolean,
+    screenshotsBranch: string | undefined,
 ): AgentRunCommentPolicy {
     const token = optionalEnvValue(env[GITHUB_TOKEN_VAR]);
     return {
         enabled: !noComment && token !== undefined,
         ...(token !== undefined ? { token } : {}),
+        screenshotsBranch: screenshotsBranch?.trim() || DEFAULT_REPORT_SCREENSHOTS_BRANCH,
     };
 }
 
@@ -400,7 +404,11 @@ export function resolveAgentRunInputs(
         problems.push(backlogWallClockBudgetMsBound);
     }
 
-    const comments = resolveCommentPolicy(env, sources.noComment === true);
+    const comments = resolveCommentPolicy(
+        env,
+        sources.noComment === true,
+        sources.screenshotsBranch,
+    );
     const readsGitHubIssue = backlogRequested || (issueNumber !== undefined && !snapshotGiven);
     if (readsGitHubIssue && comments.token === undefined) {
         problems.push(
@@ -420,6 +428,10 @@ export function resolveAgentRunInputs(
     const model =
         sources.model !== undefined && sources.model.trim().length > 0
             ? sources.model.trim()
+            : undefined;
+    const lintCommand =
+        sources.lintCommand !== undefined && sources.lintCommand.trim().length > 0
+            ? sources.lintCommand.trim()
             : undefined;
     const actionsRunUrl = buildActionsRunUrl(env);
     const maxRevisionsPerWindow =
@@ -452,6 +464,7 @@ export function resolveAgentRunInputs(
             ? { instructionPath: sources.instructionPath }
             : {}),
         ...(sources.artifactsDir !== undefined ? { artifactsDir: sources.artifactsDir } : {}),
+        ...(lintCommand !== undefined ? { lintCommand } : {}),
         ...(snapshotGiven ? { issueSnapshotPath: sources.issueSnapshotPath } : {}),
         ...(actionsRunUrl !== undefined ? { actionsRunUrl } : {}),
         comments,

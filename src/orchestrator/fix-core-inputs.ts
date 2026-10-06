@@ -12,6 +12,7 @@ import type { SingleShotClient } from '../pi/single-shot-types';
 import type { RunUsageCollector } from '../pi/usage-collector';
 import type { AgentRunArtifacts } from '../types/agent-run-artifacts';
 import type { IssueFacts } from '../types/issue-facts';
+import type { RepositoryLintCommand } from '../rules/repository-lint-command';
 import { type AgentRuntimeDependencies } from './agent-runtime';
 import type { ExecutorDependenciesByName } from './filtering-executors';
 import { IssueAttachmentKind } from '../types/issue-attachment-kind';
@@ -174,6 +175,13 @@ export interface FixCoreOptions {
      * `{{instructionContext}}` fill through `runFixSession`.
      */
     instruction?: LoadedInstruction;
+
+    /**
+     * The repository's own lint command, when the run has one: offered to the model as `lint_rule`
+     * and run once more over the published candidate, whose objection the report carries as a note.
+     * It never decides anything; absent, no lint runs at all.
+     */
+    repositoryLint?: RepositoryLintCommand;
 
     /**
      * Enables the single model-driven runtime. Omit only for compatibility tests. The run's

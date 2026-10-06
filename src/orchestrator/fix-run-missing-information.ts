@@ -2,22 +2,16 @@
  * The missing-information harvest: the post-seal read over the delivered-frontier observations that
  * turns the run's recorded gaps into the capped `FixRunResult.missingInformation` block.
  *
- * Three channels carry the same record shape, in role (plan Decisions 3/6): the model-owned
- * `report_missing_information` tool result — the primary channel for agent-discovered gaps — the
- * deterministic not-linked guidance notice, whose tool result embeds the subject/detail the run
- * harvests even when the model never calls the tool, and the `lint_rule` syntax-only fallback
- * result, which records that no repository AGLint configuration was found and only syntax was
- * checked.
+ * Two channels carry the same record shape, in role (plan Decisions 3/6): the model-owned
+ * `report_missing_information` tool result — the primary channel for agent-discovered gaps — and
+ * the deterministic not-linked guidance notice, whose tool result embeds the subject/detail the run
+ * harvests even when the model never calls the tool.
  */
 import * as v from 'valibot';
 import type { Logger } from 'pino';
 import type { AgentObservation } from '../types/agent-run-artifacts';
 import { ToolName } from '../agent/tool-names';
 import { RuleGuidanceNotice } from '../knowledge/instruction-serving';
-import {
-    LINT_CONFIGURATION_FALLBACK_VALUES,
-    type LintConfigurationFallback,
-} from '../rules/lint-fallback';
 import {
     MAX_MISSING_INFORMATION_ENTRIES,
     MissingInformationEntrySchema,
@@ -89,29 +83,6 @@ function entryFromGuidanceNotice(
 }
 
 /**
- * Read the missing-information record a `lint_rule` result carries when the repository's AGLint
- * configuration did not govern the lint as written — none was found, or the pinned AGLint rejected
- * it and the strip retry reduced it.
- *
- * @param result - The redacted structured tool result.
- * @returns The validated entry when the result carries a declared fallback marker and a well-formed
- *   record.
- */
-function entryFromLintFallback(
-    result: Record<string, unknown>,
-): MissingInformationEntry | undefined {
-    const fallback = result.fallback;
-    if (typeof fallback !== 'object' || fallback === null) {
-        return undefined;
-    }
-    const kind = (fallback as Record<string, unknown>).kind as LintConfigurationFallback;
-    if (!LINT_CONFIGURATION_FALLBACK_VALUES.includes(kind)) {
-        return undefined;
-    }
-    return entryFromNestedRecord(result.missingInformation);
-}
-
-/**
  * Collect the run's recorded missing-information records from the delivered observations.
  *
  * The collection parses both channels, keeps the first of identical subjects in dispatch order, and
@@ -132,8 +103,6 @@ export function collectMissingInformation(
             entry = entryFromReportResult(observation.result);
         } else if (observation.tool === ToolName.LookupRuleGuidance) {
             entry = entryFromGuidanceNotice(observation.result);
-        } else if (observation.tool === ToolName.LintRule) {
-            entry = entryFromLintFallback(observation.result);
         }
         if (!entry || seenSubjects.has(entry.subject)) {
             continue;

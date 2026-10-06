@@ -96,7 +96,14 @@ export const TOOL_GUIDANCE: Readonly<Record<string, string>> = {
     [ToolName.PolicyCheck]:
         'Checks whether filter policy allows rule generation (first-party ads, paywalls, German anti-adblock). Returns propose_close, needs_human_review, or allow_rule_generation with cited reasons.',
     [ToolName.LintRule]:
-        "Validates a filter rule's syntax. Returns valid (boolean) and an array of problems with severity, code, and message.",
+        "Runs the repository's own lint command over one candidate rule, which checks it against " +
+        "the repository's own policy (excluded rules, platforms, modifiers). Pass the rule and " +
+        '`filePath`, the repository path of the list file it goes into as `search_rules` reports ' +
+        'it: the rule is linted from that directory, under the configuration governing that list. ' +
+        'Returns `status` (`clean`, `problems` or `not_run`), the `exitCode` and the bounded ' +
+        '`output`. On `problems`, read the output, revise the rule and lint it again before ' +
+        '`apply_rule`. On `not_run`, `detail` says why; continue without the lint. The browser ' +
+        'phases, not this tool, prove the rule works.',
     [ToolName.OpenPage]:
         'Navigates the browser to a URL. Retries up to 3 times on failure. Returns page URL, title, and status code.',
     [ToolName.StabilizePage]:
@@ -176,7 +183,7 @@ export const TOOL_GUIDANCE: Readonly<Record<string, string>> = {
     [ToolName.GetDetail]:
         'Retrieves a byte-bounded filtered slice of a persisted artifact by ID. Use when a tool result says "Use get_detail() to inspect slices" — pass the artifact ID and optional filter (key path, limit) to inspect large results like DOM, HAR, ad-slot facts, or evaluate_js results.',
     [ToolName.FinishFix]:
-        'Finishes a fix run with one typed FixOutcome: the typed decision the operator publishes, or the analysis-only report of what blocked a rule. An analysis-only outcome carries `candidateForReview` when a rule passed lint and `apply_rule` did not reject it but no review confirmed it — the rule, the list file chosen for it, and why it stayed unverified. This is the only terminal channel of a fix run. Call exactly once, when the evidence verdict is established. A submission that fails validation is returned with the errors; correct and resubmit.',
+        'Finishes a fix run with one typed FixOutcome: the typed decision the operator publishes, or the analysis-only report of what blocked a rule. An analysis-only outcome carries `candidateForReview` when `apply_rule` did not reject a rule but no review confirmed it — the rule, the list file chosen for it, and why it stayed unverified. This is the only terminal channel of a fix run. Call exactly once, when the evidence verdict is established. A submission that fails validation is returned with the errors; correct and resubmit.',
     [ToolName.SubmitAnalysis]:
         'Submits the complete analysis of the issue. This is the only terminal channel of an analyze run. Call exactly once, when the investigation is finished and the report is final. A submission that fails validation is returned with the errors; correct and resubmit.',
     [ToolName.SubmitReplayVerdict]:
@@ -222,7 +229,9 @@ export const TOOL_PARAMETER_SCHEMAS: Readonly<
         evidenceRefs: v.array(v.string()),
         problemType: ProblemTypeSchema,
     }),
-    [ToolName.LintRule]: v.object({ rule: v.string() }),
+
+    // ── Repository lint command present ─────────────────────────────────────
+    [ToolName.LintRule]: v.object({ rule: v.string(), filePath: v.string() }),
 
     // ── Filters checkout present ────────────────────────────────────────────
     [ToolName.SearchRules]: v.object({

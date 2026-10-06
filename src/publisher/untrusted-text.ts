@@ -160,3 +160,38 @@ export function renderUntrustedRuleCodeSpan(rule: string): string {
         flattened.startsWith('`') || flattened.endsWith('`') ? ` ${flattened} ` : flattened;
     return `${fence}${padded}${fence}`;
 }
+
+/**
+ * The shortest fence CommonMark accepts for a fenced code block.
+ */
+const MIN_CODE_FENCE_LENGTH = 3;
+
+/**
+ * Control characters dropped from a code block: every C0/C1 control except the tab and the line
+ * feed that give the block its layout.
+ */
+const CODE_BLOCK_CONTROL_PATTERN = /[^\P{Cc}\t\n]/gu;
+
+/**
+ * Render untrusted multi-line text — a command's output — as a fenced code block that cannot be
+ * broken out of.
+ *
+ * Inside a fenced block GitHub reads nothing as Markdown or HTML, so mentions, links and tags stay
+ * inert without escaping. The one way out is a line holding the fence itself, so the fence is one
+ * backtick longer than the longest backtick run in the text. Line endings are normalized and
+ * control characters other than tab and newline are dropped, so terminal escape sequences cannot
+ * survive.
+ *
+ * @param text - Untrusted multi-line text, already bounded by its producer.
+ * @returns The fenced block, or the empty string when the text is blank.
+ */
+export function renderUntrustedCodeBlock(text: string): string {
+    const cleaned = text.replace(/\r\n?/gu, '\n').replace(CODE_BLOCK_CONTROL_PATTERN, '').trimEnd();
+    if (cleaned.trim().length === 0) {
+        return '';
+    }
+    const longestBacktickRun =
+        cleaned.match(/`+/gu)?.reduce((max, run) => Math.max(max, run.length), 0) ?? 0;
+    const fence = '`'.repeat(Math.max(MIN_CODE_FENCE_LENGTH, longestBacktickRun + 1));
+    return `${fence}\n${cleaned}\n${fence}`;
+}

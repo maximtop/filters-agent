@@ -135,6 +135,11 @@ export interface DefaultSingleIssueRequest {
     commentsEnabled: boolean;
 
     /**
+     * Branch the report's before and after screenshots are committed to.
+     */
+    screenshotsBranch: string;
+
+    /**
      * Reasoning-model override.
      */
     model?: string | undefined;
@@ -148,6 +153,12 @@ export interface DefaultSingleIssueRequest {
      * Run instruction path overriding the checkout default probe.
      */
     instructionPath?: string | undefined;
+
+    /**
+     * The repository's own lint command line; run in `checkoutPath` (the checkout the workflow
+     * installed the linter into), falling back to the disposable filters clone; absent runs none.
+     */
+    lintCommand?: string | undefined;
 
     /**
      * Directory every trace and browser artifact is written to.

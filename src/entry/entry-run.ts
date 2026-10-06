@@ -270,12 +270,14 @@ function perIssueRequest(
             : {}),
         token: inputs.comments.token,
         commentsEnabled: inputs.comments.enabled,
+        screenshotsBranch: inputs.comments.screenshotsBranch,
         ...(inputs.model !== undefined ? { model: inputs.model } : {}),
         ...(inputs.executors !== undefined ? { executors: inputs.executors } : {}),
         ...(inputs.instructionPath !== undefined
             ? { instructionPath: inputs.instructionPath }
             : {}),
         ...(inputs.actionsRunUrl !== undefined ? { actionsRunUrl: inputs.actionsRunUrl } : {}),
+        ...(inputs.lintCommand !== undefined ? { lintCommand: inputs.lintCommand } : {}),
         // Threaded so the fetch, the extraction, and the revision digest computed over the fetch's
         // own comments all apply the one policy backlog selection resolved (see entry-run.ts's own
         // cast rationale below, next to the identical trustedRoles threading for selection).

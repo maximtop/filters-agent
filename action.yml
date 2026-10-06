@@ -87,6 +87,19 @@ inputs:
             'true' skips posting the report as an issue comment; the report is still written to the
             artifacts directory.
         required: false
+    screenshotsBranch:
+        description: >-
+            Branch the before and after screenshots of a verified rule are committed to, so the
+            report comment can show them; defaults to filters-agent-screenshots. Needs the
+            `contents: write` permission; without it the report posts without screenshots.
+        required: false
+    lintCommand:
+        description: >-
+            The repository's own lint command line, for example 'npx aglint'. The action writes each
+            candidate rule to a temporary file in the directory of its target list and runs the
+            command in the checkout with that file's path appended; a failure only adds a note to
+            the report. Install the linter in a step before the action. Unset runs no lint.
+        required: false
     checkoutPath:
         description: >-
             Path of the analyzed checkout; defaults to the runner's GITHUB_WORKSPACE.

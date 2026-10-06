@@ -8,8 +8,9 @@ import { registerAnalyzeScreenshotTool, type VisionToolOptions } from './analyze
 import { registerBrowserTools, type BrowserToolOptions } from './browser-tool-bindings';
 import { registerGetDetailTool } from './get-detail-tool';
 import { generatePlacementMap } from '../repo/placement-map';
-import { normalizeRule } from '../repo/rule-normalizer';
-import { LintConfigurationFallback } from '../rules/lint-fallback';
+import { createLogger } from '../logger/logger';
+import { isSingleLineRule } from '../repo/rule-normalizer';
+import { runRepositoryLint, type RepositoryLintCommand } from '../rules/repository-lint-command';
 import * as v from 'valibot';
 import { TraceArtifactStore, type IArtifactStore } from '../tracer/artifact-store';
 import { ProblemTypeSchema } from '../types/issue-facts';
@@ -90,6 +91,12 @@ export interface ToolRegistryOptions {
      * checkout as before, keeping the single-walk rule under every caller.
      */
     placementMap?: PlacementMap;
+
+    /**
+     * The repository's own lint command, when the run has one; enables `lint_rule`, which runs it
+     * over a candidate. Absent, no lint tool is offered.
+     */
+    repositoryLint?: RepositoryLintCommand;
 }
 
 /**
@@ -189,25 +196,13 @@ function resolveArtifactStore(
 }
 
 /**
- * The missing-information subject naming each AGLint configuration fallback; the detail carries the
- * loader's own note. The harvest keeps the first of identical subjects, so the two fallbacks get
- * distinct subjects rather than collapsing into one entry, and the record is total over the kinds
- * so a new fallback cannot ship without one.
- */
-const LINT_FALLBACK_MISSING_INFORMATION_SUBJECTS: Record<LintConfigurationFallback, string> = {
-    [LintConfigurationFallback.NoRepositoryConfig]:
-        'AGLint linted rule syntax without a repository configuration',
-    [LintConfigurationFallback.StrippedRepositoryConfig]:
-        'AGLint linted under a reduced repository configuration',
-};
-
-/**
  * Create a ToolRegistry pre-populated with all agent tools.
  *
- * Always registers three pure tools: `fetch_issue`, `policy_check`, `lint_rule`. When
- * `checkoutPath` is provided, additionally registers `search_rules` against the checkout. When
- * `browserTools` is provided, additionally registers browser evidence and validation tools. If
- * vision configuration is present, it also registers `analyze_screenshot`.
+ * Always registers two pure tools: `fetch_issue` and `policy_check`. When the run binds the
+ * repository's own lint command, registers `lint_rule` over it. When `checkoutPath` is provided,
+ * additionally registers `search_rules` against the checkout. When `browserTools` is provided,
+ * additionally registers browser evidence and validation tools. If vision configuration is present,
+ * it also registers `analyze_screenshot`.
  *
  * This factory eliminates duplicated registration between `main.ts` (analyze handler) and
  * `replay-runner.ts` (Finding 2).
@@ -349,55 +344,46 @@ export async function createToolRegistry(options: ToolRegistryOptions): Promise<
         },
     });
 
-    // ── lint_rule (always) ─────────────────────────────────────────────────
-    registry.register({
-        definition: {
-            type: 'function',
-            function: {
-                name: ToolName.LintRule,
-                description:
-                    'Validate filter rule syntax. Returns valid, parsedKind, problems, and deterministic correction guidance.',
-                parameters: registeredParameters(ToolName.LintRule),
+    // ── lint_rule (only with the repository's own lint command) ────────────
+    const repositoryLint = options.repositoryLint;
+    if (repositoryLint !== undefined) {
+        const lintLogger = createLogger();
+        registry.register({
+            definition: {
+                type: 'function',
+                function: {
+                    name: ToolName.LintRule,
+                    description:
+                        "Run the repository's own lint command over a candidate rule placed in " +
+                        'the directory of the list file it goes into. Returns status, exitCode and ' +
+                        'the bounded output.',
+                    parameters: registeredParameters(ToolName.LintRule),
+                },
             },
-        },
-        handler: async (args) => {
-            const guidanceRequirement = requireGuidanceBeforeCandidate();
-            if (guidanceRequirement) {
-                return guidanceRequirement;
-            }
-            const { lintRule, CSS_WITH_SCRIPTLET_SEPARATOR_CODE } =
-                await import('../rules/aglint-linter');
-            if (typeof args.rule !== 'string' || args.rule.trim().length === 0) {
-                return { error: 'Invalid input: rule must be a non-empty string' };
-            }
-            const lintResult = lintRule(args.rule, { repoRoot: checkoutPath });
-            const hasCssWithScriptletSeparator = lintResult.problems.some(
-                (problem) => problem.code === CSS_WITH_SCRIPTLET_SEPARATOR_CODE,
-            );
-            return {
-                ...lintResult,
-                parsedKind: normalizeRule(args.rule).kind,
-                deterministicGuidance: hasCssWithScriptletSeparator
-                    ? [
-                          'Use #$# for CSS injection, then call lint_rule and apply_rule again. Do not use #%# or #?# for CSS resizing.',
-                      ]
-                    : [],
-                // A configuration fallback reaches the run evidence and the report through the
-                // missing-information channel the harvest reads.
-                ...(lintResult.fallback !== undefined
-                    ? {
-                          missingInformation: {
-                              subject:
-                                  LINT_FALLBACK_MISSING_INFORMATION_SUBJECTS[
-                                      lintResult.fallback.kind
-                                  ],
-                              detail: lintResult.fallback.message,
-                          },
-                      }
-                    : {}),
-            };
-        },
-    });
+            handler: async (args) => {
+                const guidanceRequirement = requireGuidanceBeforeCandidate();
+                if (guidanceRequirement) {
+                    return guidanceRequirement;
+                }
+                if (typeof args.rule !== 'string' || args.rule.trim().length === 0) {
+                    return { error: 'Invalid input: rule must be a non-empty string' };
+                }
+                if (!isSingleLineRule(args.rule)) {
+                    return { error: 'Invalid input: rule must be a single line' };
+                }
+                if (typeof args.filePath !== 'string' || args.filePath.trim().length === 0) {
+                    return { error: 'Invalid input: filePath must be a non-empty string' };
+                }
+                return {
+                    ...(await runRepositoryLint(
+                        repositoryLint,
+                        { rule: args.rule, filePath: args.filePath },
+                        lintLogger,
+                    )),
+                };
+            },
+        });
+    }
 
     // ── Checkout-dependent tools ───────────────────────────────────────────
     if (checkoutPath) {
