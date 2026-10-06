@@ -11,6 +11,7 @@
 import { GITHUB_TOKEN_VAR, type CoreConfig, loadCoreConfig } from '../config/config';
 import { ConfigError } from '../config/config-error';
 import { buildActionsRunUrl } from '../config/publisher-config';
+import { parseExcludedLabels } from '../github/issue-label-exclusion';
 import { DEFAULT_REPORT_SCREENSHOTS_BRANCH } from '../publisher/report-screenshots';
 import {
     optionalEnvValue,
@@ -433,6 +434,7 @@ export function resolveAgentRunInputs(
         sources.lintCommand !== undefined && sources.lintCommand.trim().length > 0
             ? sources.lintCommand.trim()
             : undefined;
+    const excludedLabels = parseExcludedLabels(sources.excludedLabels);
     const actionsRunUrl = buildActionsRunUrl(env);
     const maxRevisionsPerWindow =
         typeof maxRevisionsPerWindowBound === 'number' ? maxRevisionsPerWindowBound : undefined;
@@ -465,6 +467,7 @@ export function resolveAgentRunInputs(
             : {}),
         ...(sources.artifactsDir !== undefined ? { artifactsDir: sources.artifactsDir } : {}),
         ...(lintCommand !== undefined ? { lintCommand } : {}),
+        ...(excludedLabels.length > 0 ? { excludedLabels } : {}),
         ...(snapshotGiven ? { issueSnapshotPath: sources.issueSnapshotPath } : {}),
         ...(actionsRunUrl !== undefined ? { actionsRunUrl } : {}),
         comments,

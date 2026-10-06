@@ -156,7 +156,7 @@ export async function postMinimalOutcomeReport(
                 reportAuthorLogin,
                 body,
             },
-            request.trustedRoles,
+            request,
             logger,
         );
         return { body, publication };

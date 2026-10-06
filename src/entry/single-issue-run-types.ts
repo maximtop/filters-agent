@@ -178,6 +178,12 @@ export interface DefaultSingleIssueRequest {
      * `DEFAULT_TRUSTED_ROLES` at the fetch and extraction seams.
      */
     trustedRoles?: readonly TrustedRole[] | undefined;
+
+    /**
+     * Labels the run never processes: an issue carrying one is skipped before intake extraction,
+     * and a report stays unposted when one is added while the run works. Absent excludes none.
+     */
+    excludedLabels?: readonly string[] | undefined;
 }
 
 /**

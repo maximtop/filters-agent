@@ -79,6 +79,11 @@ const AgentActionInputName = {
     limit: 'limit',
 
     /**
+     * The `excludedLabels` input naming the issue labels the run never processes.
+     */
+    excludedLabels: 'excludedLabels',
+
+    /**
      * The `trustedRoles` input naming the backlog's trusted-association set.
      */
     trustedRoles: 'trustedRoles',
@@ -432,6 +437,7 @@ export function mapAgentRunSources(
         ),
         backlog: booleanActionInput(readActionInput(actionEnv, AgentActionInputName.backlog)),
         limit: numericActionInput(readActionInput(actionEnv, AgentActionInputName.limit)),
+        excludedLabels: readActionInput(actionEnv, AgentActionInputName.excludedLabels),
         trustedRoles: readActionInput(actionEnv, AgentActionInputName.trustedRoles),
         maxRevisionsPerWindow: numericActionInput(
             readActionInput(actionEnv, AgentActionInputName.maxRevisionsPerWindow),

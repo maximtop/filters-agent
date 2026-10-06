@@ -328,44 +328,39 @@ async function runInsideWorkspace(
         );
     }
 
-    if (request.commentsEnabled) {
-        // Checked before intake extraction, the run's first paid call: a revision that already
-        // carries its report, or an issue the publication guard silences, has nothing to post.
-        let skip: PreRunSkip | null;
-        try {
-            const client =
-                dependencies.octokit ??
-                createOctokit({ owner: slug.owner, repo: slug.repo, token: request.token ?? '' });
-            skip = await checkIssueBeforeRun(
-                client,
-                {
-                    slug,
-                    issueNumber: request.issueNumber,
-                    revisionDigest,
-                    reportAuthorLogin: await resolveReportAuthorLogin(client, logger),
-                    trustedRoles: request.trustedRoles,
-                },
-                logger,
-            );
-        } catch (error) {
-            logCaughtError(logger, 'pre-run issue check', error, {
+    // Checked before intake extraction, the run's first paid call: an issue with an excluded label,
+    // a revision that already carries its report, or an issue the guard silences has nothing to do.
+    let skip: PreRunSkip | null;
+    try {
+        skip = await checkIssueBeforeRun(
+            {
+                slug,
                 issueNumber: request.issueNumber,
-            });
-            return failedResult(
-                request.issueNumber,
-                DefaultSingleIssueFailure.IssueUnavailable,
-                (error as Error).message,
-            );
-        }
-        if (skip !== null) {
-            return {
-                kind: DefaultSingleIssueResultKind.Skipped,
-                issueNumber: request.issueNumber,
-                reason: skip.reason,
-                publication: skip.publication,
-                artifactsDir: request.artifactsDir,
-            };
-        }
+                revisionDigest,
+                issueLabels: rawIssue.labels,
+                commentsEnabled: request.commentsEnabled,
+                token: request.token,
+                settings: request,
+            },
+            dependencies.octokit,
+            logger,
+        );
+    } catch (error) {
+        logCaughtError(logger, 'pre-run issue check', error, { issueNumber: request.issueNumber });
+        return failedResult(
+            request.issueNumber,
+            DefaultSingleIssueFailure.IssueUnavailable,
+            (error as Error).message,
+        );
+    }
+    if (skip !== null) {
+        return {
+            kind: DefaultSingleIssueResultKind.Skipped,
+            issueNumber: request.issueNumber,
+            reason: skip.reason,
+            publication: skip.publication,
+            artifactsDir: request.artifactsDir,
+        };
     }
 
     const usageCollector = createRunUsageCollector();
@@ -585,7 +580,7 @@ async function runInsideWorkspace(
                               ),
                       }),
             },
-            request.trustedRoles,
+            request,
             logger,
         );
         return {

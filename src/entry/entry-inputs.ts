@@ -110,6 +110,11 @@ export interface AgentRunInputSources {
     screenshotsBranch?: string | undefined;
 
     /**
+     * Comma-separated issue labels the run never processes; absent or blank excludes none.
+     */
+    excludedLabels?: string | undefined;
+
+    /**
      * Comma-separated GitHub author-association names trusted to change a backlog issue's revision
      * (e.g. `OWNER,MEMBER`); absent falls back to `QUEUE_DEFAULTS.trustedRoles` at dispatch.
      * Backlog mode only.
@@ -202,6 +207,7 @@ export const AgentRunInputsSchema = v.strictObject({
     instructionPath: v.optional(v.string()),
     artifactsDir: v.optional(v.string()),
     lintCommand: v.optional(v.pipe(v.string(), v.minLength(1))),
+    excludedLabels: v.optional(v.pipe(v.array(v.pipe(v.string(), v.minLength(1))), v.minLength(1))),
     issueSnapshotPath: v.optional(v.string()),
     actionsRunUrl: v.optional(v.string()),
     comments: CommentPolicySchema,
@@ -343,6 +349,12 @@ export interface AgentRunInputs {
      * runs no lint.
      */
     lintCommand?: string;
+
+    /**
+     * Issue labels the run never processes, in a single issue and in the backlog alike; absent
+     * excludes none.
+     */
+    excludedLabels?: string[];
 
     /**
      * Exported issue snapshot path; a snapshot-sourced issue needs no GitHub read.

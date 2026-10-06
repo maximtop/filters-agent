@@ -2,18 +2,25 @@
  * Publication guard: whether a report may still be posted on an issue as it stands now.
  *
  * A bot comment on an issue that is closed, that a fix already references, or that a maintainer is
- * already handling only adds noise, so the guard names the reason to stay silent. It is a pure
- * decision over a snapshot `github/issue-publication-facts.ts` reads; the repository, the trusted
- * roles and the in-progress labels come from the caller.
+ * already handling only adds noise, so the guard names the reason to stay silent. An issue that
+ * carries a label the run excludes gets no report either, even when the label came while the run
+ * worked. It is a pure decision over a snapshot `github/issue-publication-facts.ts` reads; the
+ * repository, the trusted roles and both label sets come from the caller.
  */
 
 import { isGithubBotAccount } from '../github/fetch-issue';
+import { excludedIssueLabels } from '../github/issue-label-exclusion';
 import { IssueState } from '../types/issue-state';
 
 /**
  * Reasons the guard keeps a report silent.
  */
 export const PublicationSilence = {
+    /**
+     * The issue carries a label the run excludes.
+     */
+    ExcludedLabel: 'excluded_label',
+
     /**
      * The issue is closed.
      */
@@ -54,6 +61,11 @@ export interface PublicationGuardPolicy {
      * Labels a maintainer applies when they pick an issue up; empty when the repository has none.
      */
     inProgressLabels: readonly string[];
+
+    /**
+     * Labels the run never reports on; empty when the run excludes none.
+     */
+    excludedLabels: readonly string[];
 
     /**
      * Logins whose comments never count as engagement: the reporting identity itself, when it is a
@@ -389,30 +401,49 @@ function engagementSignals(facts: IssuePublicationFacts, policy: PublicationGuar
 }
 
 /**
+ * Describe every label on the issue the run excludes.
+ *
+ * @param issueLabels - Labels the issue carries.
+ * @param excludedLabels - Labels the run never reports on.
+ * @returns One signal sentence per excluded label the issue carries.
+ */
+export function exclusionSignals(
+    issueLabels: readonly string[],
+    excludedLabels: readonly string[],
+): string[] {
+    return excludedIssueLabels(issueLabels, excludedLabels).map(
+        (label) => `labelled "${label}", which the run excludes`,
+    );
+}
+
+/**
  * Decide whether a report may still be posted, given the issue as it stands now.
  *
- * The first matching rule names the reason - closed, then a fix referenced, then a maintainer
- * engaged - while every signal found is returned, so a log or notice shows the whole picture and
- * not only the rule that fired.
+ * The first matching rule names the reason - an excluded label, then closed, then a fix referenced,
+ * then a maintainer engaged - while every signal found is returned, so a log or notice shows the
+ * whole picture and not only the rule that fired.
  *
  * @param facts - Issue snapshot read right before the decision.
- * @param policy - Repository, trusted roles and in-progress labels to measure against.
+ * @param policy - Repository, trusted roles and both label sets to measure against.
  * @returns The reason to stay silent with every signal, or no reason and no signals.
  */
 export function decidePublication(
     facts: IssuePublicationFacts,
     policy: PublicationGuardPolicy,
 ): PublicationDecision {
+    const excluded = exclusionSignals(facts.labels, policy.excludedLabels);
     const closed = closedSignals(facts);
     const fixes = fixSignals(facts, policy.repository);
     const engaged = engagementSignals(facts, policy);
     const reason =
-        closed.length > 0
-            ? PublicationSilence.IssueClosed
-            : fixes.length > 0
-              ? PublicationSilence.FixReferenced
-              : engaged.length > 0
-                ? PublicationSilence.MaintainerEngaged
-                : null;
-    return { reason, signals: [...closed, ...fixes, ...engaged] };
+        excluded.length > 0
+            ? PublicationSilence.ExcludedLabel
+            : closed.length > 0
+              ? PublicationSilence.IssueClosed
+              : fixes.length > 0
+                ? PublicationSilence.FixReferenced
+                : engaged.length > 0
+                  ? PublicationSilence.MaintainerEngaged
+                  : null;
+    return { reason, signals: [...excluded, ...closed, ...fixes, ...engaged] };
 }

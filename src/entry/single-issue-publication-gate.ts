@@ -1,17 +1,21 @@
 /**
  * The two checks that keep a per-issue run from posting a report nobody needs.
  *
- * Before the run pays for intake and investigation: a report for this issue revision already
- * posted, or an issue the publication guard silences (closed, a fix referenced, a maintainer on
- * it), ends the run as a skip. Right before posting: the guard runs again, since a maintainer can
- * act during the run. Both read only GitHub; neither writes.
+ * Before the run pays for intake and investigation: an issue with a label the run excludes, a
+ * report for this issue revision already posted, or an issue the publication guard silences
+ * (closed, a fix referenced, a maintainer on it), ends the run as a skip. Right before posting: the
+ * guard runs again, since a maintainer can act during the run, an excluded label included. Both
+ * read only GitHub; neither writes.
  */
 
 import type { Octokit } from '@octokit/rest';
+import { createOctokit } from '../github/fetch-issue';
 import { readIssuePublicationFacts } from '../github/issue-publication-facts';
+import { resolveReportAuthorLogin } from '../github/report-author-identity';
 import type { Logger } from '../logger/logger';
 import {
     decidePublication,
+    exclusionSignals,
     type PublicationDecision,
     type PublicationGuardPolicy,
 } from '../publisher/publication-guard';
@@ -25,6 +29,21 @@ import { TRUSTED_ROLE_VALUES, type TrustedRole } from '../queue/queue-inputs';
 import type { RepositorySlug } from '../types/repository-slug';
 
 /**
+ * The run's own settings the guard measures an issue against.
+ */
+export interface PublicationGuardSettings {
+    /**
+     * The run's trusted roles, or undefined for the default set.
+     */
+    trustedRoles?: readonly TrustedRole[] | undefined;
+
+    /**
+     * Labels the run never reports on, or undefined when it excludes none.
+     */
+    excludedLabels?: readonly string[] | undefined;
+}
+
+/**
  * Build the guard policy for the repository the run reports to.
  *
  * The repository's own maintainers are the run's trusted roles; no in-progress label is assumed,
@@ -32,19 +51,20 @@ import type { RepositorySlug } from '../types/repository-slug';
  * as a maintainer's comment, even when they post from a maintainer's token.
  *
  * @param slug - Repository the run reports to.
- * @param trustedRoles - The run's trusted roles, or undefined for the default set.
+ * @param settings - The run's trusted roles and excluded labels.
  * @param reportAuthorLogin - The GitHub login the run's reports post as.
  * @returns The guard policy.
  */
 export function publicationGuardPolicy(
     slug: RepositorySlug,
-    trustedRoles: readonly TrustedRole[] | undefined,
+    settings: PublicationGuardSettings,
     reportAuthorLogin: string,
 ): PublicationGuardPolicy {
     return {
         repository: `${slug.owner}/${slug.repo}`,
-        trustedRoles: trustedRoles ?? TRUSTED_ROLE_VALUES,
+        trustedRoles: settings.trustedRoles ?? TRUSTED_ROLE_VALUES,
         inProgressLabels: [],
+        excludedLabels: settings.excludedLabels ?? [],
         ignoredAuthors: [reportAuthorLogin],
     };
 }
@@ -108,35 +128,63 @@ export interface PreRunCheckInput {
     revisionDigest: string;
 
     /**
-     * The GitHub login authoritative for the run's own report markers.
+     * Labels the issue carried when the run read it.
      */
-    reportAuthorLogin: string;
+    issueLabels: readonly string[];
 
     /**
-     * The run's trusted roles, or undefined for the default set.
+     * Whether the run posts reports; a run that posts none has no report to dedupe or silence.
      */
-    trustedRoles: readonly TrustedRole[] | undefined;
+    commentsEnabled: boolean;
+
+    /**
+     * GitHub token the guard reads through.
+     */
+    token: string | undefined;
+
+    /**
+     * The run's trusted roles and excluded labels.
+     */
+    settings: PublicationGuardSettings;
 }
 
 /**
  * Decide whether a run should stop before intake extraction.
  *
- * @param client - Authenticated GitHub API client.
- * @param input - Issue, revision, the run's identity and trusted roles.
+ * The excluded labels are read from the issue the run already holds, so they stop the run even when
+ * it posts nothing: the point is never to open the reported page, not only to stay silent.
+ *
+ * @param input - Issue, revision, the run's comment policy and guard settings.
+ * @param octokit - GitHub API client, or undefined to build one from the token.
  * @param logger - Run logger; the guard's signals are logged when it silences.
  * @returns The skip, or null when the run should go on.
  */
 export async function checkIssueBeforeRun(
-    client: Octokit,
     input: PreRunCheckInput,
+    octokit: Octokit | undefined,
     logger: Logger,
 ): Promise<PreRunSkip | null> {
+    const excluded = exclusionSignals(input.issueLabels, input.settings.excludedLabels ?? []);
+    if (excluded.length > 0) {
+        logger.info(
+            { issueNumber: input.issueNumber, signals: excluded },
+            'an excluded label skips the run',
+        );
+        return { reason: `The issue needs no report: ${excluded.join('; ')}.`, publication: null };
+    }
+    if (!input.commentsEnabled) {
+        return null;
+    }
+    const client =
+        octokit ??
+        createOctokit({ owner: input.slug.owner, repo: input.slug.repo, token: input.token ?? '' });
+    const reportAuthorLogin = await resolveReportAuthorLogin(client, logger);
     const reported = await findRevisionReport(client, {
         owner: input.slug.owner,
         repo: input.slug.repo,
         issueNumber: input.issueNumber,
         revisionDigest: input.revisionDigest,
-        reportAuthorLogin: input.reportAuthorLogin,
+        reportAuthorLogin,
     });
     if (reported !== null) {
         return {
@@ -144,7 +192,7 @@ export async function checkIssueBeforeRun(
             publication: reported,
         };
     }
-    const policy = publicationGuardPolicy(input.slug, input.trustedRoles, input.reportAuthorLogin);
+    const policy = publicationGuardPolicy(input.slug, input.settings, reportAuthorLogin);
     const silence = await readSilence(client, input.slug, input.issueNumber, policy);
     if (silence !== null) {
         logger.info(
@@ -164,18 +212,18 @@ export async function checkIssueBeforeRun(
  *
  * @param client - Authenticated GitHub API client.
  * @param input - The report publication.
- * @param trustedRoles - The run's trusted roles, or undefined for the default set.
+ * @param settings - The run's trusted roles and excluded labels.
  * @param logger - Run logger; the guard's signals are logged when it silences.
  * @returns The publication, or null when the guard kept the report silent.
  */
 export async function publishGuardedReport(
     client: Octokit,
     input: ReportPublishInput,
-    trustedRoles: readonly TrustedRole[] | undefined,
+    settings: PublicationGuardSettings,
     logger: Logger,
 ): Promise<ReportPublishResult | null> {
     const slug = { owner: input.owner, repo: input.repo };
-    const policy = publicationGuardPolicy(slug, trustedRoles, input.reportAuthorLogin);
+    const policy = publicationGuardPolicy(slug, settings, input.reportAuthorLogin);
     const silence = await readSilence(client, slug, input.issueNumber, policy);
     if (silence !== null) {
         logger.info(

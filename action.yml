@@ -34,6 +34,13 @@ inputs:
             job, each a paid LLM run; the loop also stops at its wall-clock budget (default 5 h 30
             min, overridable by an input) so one job stays under GitHub's 6-hour cap.
         required: false
+    excludedLabels:
+        description: >-
+            Comma-separated issue labels the action never processes, for example 'NSFW'. An issue
+            carrying one is skipped before its page is opened, in the single-issue and the backlog
+            mode alike, and a report stays unposted when such a label is added during the run.
+            Labels compare case-insensitively; unset excludes none.
+        required: false
     trustedRoles:
         description: >-
             Comma-separated GitHub author associations trusted to change a backlog issue's revision,

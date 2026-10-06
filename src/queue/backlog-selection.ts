@@ -1,3 +1,4 @@
+import { excludedIssueLabels } from '../github/issue-label-exclusion';
 import { parseReportRevisionMarker } from '../publisher/report-publisher';
 import {
     BacklogIssueComment,
@@ -40,6 +41,11 @@ export const BacklogSkipKind = {
      * history is read.
      */
     NarrowedOut: 'narrowed_out',
+
+    /**
+     * The issue carries a label the run excludes; its history is never read.
+     */
+    ExcludedLabel: 'excluded_label',
 } as const;
 
 /**
@@ -90,6 +96,7 @@ function emptySkipTally(): BacklogSkipTally {
         [BacklogSkipKind.AlreadyReported]: [],
         [BacklogSkipKind.RevisionBudgetHit]: [],
         [BacklogSkipKind.NarrowedOut]: [],
+        [BacklogSkipKind.ExcludedLabel]: [],
     };
 }
 
@@ -239,11 +246,11 @@ function issueVerdictOf(history: BacklogIssueHistory, inputs: QueueInputs): Issu
  * Select the issues one backlog run processes.
  *
  * Contract: the open-issue listing is requested page by page, starting at page 1, and the run
- * visits the summaries in newest-first order, taking at most `maxIssuesPerRun` issues. The
- * instruction's narrowing decides on summaries alone before any history read; every surviving
- * summary has its history read and its due-for-processing verdict derived statelessly. The moment
- * the take limit holds, no further page is requested — later issues are left for the next run and
- * appear in neither list. A page is followed by the next only while it reports more.
+ * visits the summaries in newest-first order, taking at most `maxIssuesPerRun` issues. The excluded
+ * labels and the instruction's narrowing decide on summaries alone before any history read; every
+ * surviving summary has its history read and its due-for-processing verdict derived statelessly.
+ * The moment the take limit holds, no further page is requested — later issues are left for the
+ * next run and appear in neither list. A page is followed by the next only while it reports more.
  *
  * The listed summary is what a history read is asked for, not an issue number: the listing already
  * carries every issue-level fact the derivation reads, so a visited issue never costs a second
@@ -265,6 +272,10 @@ export async function selectBacklogIssues(
         for (const summary of summaries) {
             if (taken.length >= inputs.maxIssuesPerRun) {
                 break;
+            }
+            if (excludedIssueLabels(summary.labels, inputs.excludedLabels).length > 0) {
+                skipped[BacklogSkipKind.ExcludedLabel].push(summary.issueNumber);
+                continue;
             }
             const narrowedOut = narrowedOutKindOf(summary, inputs.narrowing, inputs.capturedAt);
             if (narrowedOut !== null) {

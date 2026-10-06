@@ -278,6 +278,7 @@ function perIssueRequest(
             : {}),
         ...(inputs.actionsRunUrl !== undefined ? { actionsRunUrl: inputs.actionsRunUrl } : {}),
         ...(inputs.lintCommand !== undefined ? { lintCommand: inputs.lintCommand } : {}),
+        ...(inputs.excludedLabels !== undefined ? { excludedLabels: inputs.excludedLabels } : {}),
         // Threaded so the fetch, the extraction, and the revision digest computed over the fetch's
         // own comments all apply the one policy backlog selection resolved (see entry-run.ts's own
         // cast rationale below, next to the identical trustedRoles threading for selection).
@@ -405,6 +406,7 @@ async function runBacklogEntry(
                     capturedAt,
                     reportAuthorLogin,
                     narrowing,
+                    excludedLabels: inputs.excludedLabels,
                     // Already validated as a member of TRUSTED_ROLE_VALUES by the single
                     // remaining AgentRunInputsSchema parse in assertValidatedInputs, above every
                     // seam this dispatch reaches; AgentRunInputs itself types queue.trustedRoles

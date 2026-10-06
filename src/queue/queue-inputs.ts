@@ -84,6 +84,7 @@ export const QueueInputsSchema = v.strictObject({
     revisionWindowMs: v.pipe(v.number(), v.integer(), v.minValue(1)),
     trustedRoles: v.array(v.picklist(TRUSTED_ROLE_VALUES)),
     narrowing: v.optional(IssueSelectionNarrowingSchema),
+    excludedLabels: v.array(v.string()),
     capturedAt: v.pipe(v.string(), v.isoTimestamp()),
     // No static default exists for this one (unlike every other field here): it is the run's own
     // resolved GitHub identity (see `github/report-author-identity.ts`), so the caller must resolve
@@ -132,6 +133,7 @@ export function applyQueueDefaults(inputs: Partial<QueueInputs>): DefaultedQueue
         revisionWindowMs: inputs.revisionWindowMs ?? QUEUE_DEFAULTS.revisionWindowMs,
         trustedRoles: inputs.trustedRoles ?? [...QUEUE_DEFAULTS.trustedRoles],
         narrowing: inputs.narrowing,
+        excludedLabels: inputs.excludedLabels ?? [],
         capturedAt: inputs.capturedAt,
         reportAuthorLogin: inputs.reportAuthorLogin,
     };

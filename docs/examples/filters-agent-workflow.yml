@@ -98,6 +98,9 @@ jobs:
                   # candidate rule with the candidate file's path appended. A failure adds a note
                   # to the report and never stops the rule; unset runs no lint.
                   # lintCommand: npx aglint
+                  # Optional: issue labels the agent never processes. Such an issue is skipped before
+                  # its page is opened, so no screenshot of it is ever committed.
+                  # excludedLabels: NSFW
                   # The label event carries the issue number directly; a manual dispatch carries it
                   # as the issueNumber input instead.
                   issueNumber: ${{ github.event.issue.number || inputs.issueNumber }}

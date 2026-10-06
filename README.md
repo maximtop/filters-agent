@@ -46,11 +46,14 @@ When it runs against an issue, `filters-agent`:
    instruction takes. The same file is also how a repository that stays on the built-in extension
    points the run at its own filter guidance: see
    [An instruction that only adds guidance](#an-instruction-that-only-adds-guidance).
-4. Open an issue: the example workflow runs on every new issue. Each run is a paid LLM call; to
+4. Optional: list the labels of issues the agent must never open, such as reports about adult
+   sites, in the `excludedLabels` input. Such an issue is skipped before the run opens its page
+   or commits a screenshot.
+5. Open an issue: the example workflow runs on every new issue. Each run is a paid LLM call; to
    run only on issues a maintainer picks, switch the workflow's trigger from `opened` to `labeled`
    as its comment describes, and label an issue `filters-agent` to start a run. Either way, you can
    run the workflow manually with an issue number.
-5. The report appears as a comment on the issue, unless the issue no longer needs one: it is
+6. The report appears as a comment on the issue, unless the issue no longer needs one: it is
    closed, a commit or pull request of your repository references it, a maintainer (see
    `trustedRoles`) commented or is assigned, or the report for its current text is already there.
    The run checks this before it spends anything, and again right before it posts. An issue the
@@ -452,6 +455,7 @@ so it is worth re-reading this table after an upgrade.
 | `issueNumber` | No | Number of the issue to analyze; selecting it runs the single-issue mode. |
 | `backlog` | No | `'true'` analyzes the repository's open-issue backlog instead of a single issue. |
 | `limit` | No | Maximum number of backlog issues analyzed per run; unset means up to 50 issues in one job, each a paid LLM run; the loop also stops at its wall-clock budget (default 5h 30m, overridable by an input) so one job stays under GitHub's 6-hour cap. |
+| `excludedLabels` | No | Comma-separated issue labels the action never processes, for example `NSFW`. An issue carrying one is skipped before its page is opened, in the single-issue and the backlog mode alike, and a report stays unposted when such a label is added during the run. Labels compare case-insensitively; unset excludes none. |
 | `trustedRoles` | No | Comma-separated GitHub author associations trusted to change a backlog issue's revision, and whose comment on an issue means a maintainer is already on it; defaults to `OWNER,MEMBER,COLLABORATOR`. |
 | `maxRevisionsPerWindow` | No | Maximum revision-marked reports one backlog issue may receive inside the rolling `revisionWindowMs` window; defaults to the queue's revision budget. |
 | `revisionWindowMs` | No | Length of the rolling window the revision budget counts against, in milliseconds; defaults to the queue's revision window (24 hours). |
