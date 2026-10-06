@@ -77,8 +77,8 @@ jobs:
                   llmMaxOutputTokens: '<completion cap in tokens>'
                   # Required when the vision model differs from the reasoning model: its own
                   # completion cap. A gateway that routes by the requested cap finds no endpoint
-                  # for a model whose own limit is lower.
-                  # llmVisionMaxOutputTokens: '<vision completion cap in tokens>'
+                  # for a model whose own limit is lower. Remove it when both slugs name one model.
+                  llmVisionMaxOutputTokens: '<vision completion cap in tokens>'
                   # Optional: 'off' for a reasoning model slug that does not reason, so no
                   # reasoning parameter is sent; defaults to 'high'.
                   # llmReasoningEffort: 'off'
@@ -104,6 +104,9 @@ jobs:
                   # The label event carries the issue number directly; a manual dispatch carries it
                   # as the issueNumber input instead.
                   issueNumber: ${{ github.event.issue.number || inputs.issueNumber }}
+                  # A label or a manual dispatch comes from a maintainer, who is often the assignee:
+                  # force the report then, so a maintainer on the issue does not silence it.
+                  force: ${{ github.event_name == 'workflow_dispatch' || github.event.action == 'labeled' }}
                   # repository, checkoutPath and artifactsDir are not passed: the binding falls back to
                   # the runner's GITHUB_REPOSITORY and GITHUB_WORKSPACE. Inside the action's container
                   # the default artifacts directory is filters-agent-artifacts/artifacts under the

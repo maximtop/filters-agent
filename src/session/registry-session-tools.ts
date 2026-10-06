@@ -399,14 +399,14 @@ export const SESSION_GATED_STUBS: Readonly<Record<string, ToolGateState>> = {
             'this mode locks the environment before the session from the fetched issue; ' +
             'there is nothing for the model to select',
         remedy:
-            'Adopt the runner-locked environment and continue with the policy check and ' +
-            'evidence tools. Do not call select_environment.',
+            "Adopt the runner-locked environment and continue with the repository's policy and " +
+            'the evidence tools. Do not call select_environment.',
     },
     [ToolName.LookupRuleGuidance]: {
         cause: ToolGateCause.NotApplicable,
         reason:
-            'this run has no rule-guidance session; the pinned KnowledgeBase and policy ' +
-            'instructions are fixed in the task document',
+            'this run has no rule-guidance session; the policy and knowledge it works from are ' +
+            'stated in the task document',
         remedy:
             'Proceed to candidate work using the documented policy and knowledge. Do not call ' +
             'lookup_rule_guidance.',

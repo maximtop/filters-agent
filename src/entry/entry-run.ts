@@ -279,6 +279,10 @@ function perIssueRequest(
         ...(inputs.actionsRunUrl !== undefined ? { actionsRunUrl: inputs.actionsRunUrl } : {}),
         ...(inputs.lintCommand !== undefined ? { lintCommand: inputs.lintCommand } : {}),
         ...(inputs.excludedLabels !== undefined ? { excludedLabels: inputs.excludedLabels } : {}),
+        // Only a single-issue run is forced: the backlog mode has no maintainer behind each issue.
+        ...(inputs.mode.kind === AgentRunMode.SingleIssue && inputs.mode.force === true
+            ? { force: true }
+            : {}),
         // Threaded so the fetch, the extraction, and the revision digest computed over the fetch's
         // own comments all apply the one policy backlog selection resolved (see entry-run.ts's own
         // cast rationale below, next to the identical trustedRoles threading for selection).
@@ -309,7 +313,7 @@ async function runSingleIssueEntry(
     // filter report, so the run exits zero exactly like a fully processed one. A processed outcome
     // whose locked runResult itself sealed failed (for example environment_unavailable after a
     // failed extension download or preparation command) is not success either: the report and
-    // artifacts still land (single-issue-run.ts keeps writing and posting them), but the job that
+    // artifacts still land (single-issue-run.ts writes them, posting nothing), but the job that
     // ran nothing useful must not go green.
     const succeeded =
         (outcome.kind === DefaultSingleIssueResultKind.Processed &&

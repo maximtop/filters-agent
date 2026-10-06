@@ -6,10 +6,9 @@
  * it in through the same dispatch seam, so hosting swaps without touching the entry again.
  *
  * Every sealed outcome — a full run, a skip, or a failure once the run's revision digest is known —
- * writes its report artifacts and, when comments are enabled, posts the short report with its
- * revision marker; a durable marker is what lets backlog selection stop retaking an issue that only
- * ever skips or fails (see `single-issue-run-artifacts.ts` and
- * `single-issue-run-outcome-report.ts`).
+ * writes its report artifacts. Only a finding is posted: a skip, a failure, or a run that could not
+ * investigate the report posts nothing, and in backlog mode is retaken by the next run (see
+ * `single-issue-run-artifacts.ts` and `single-issue-run-outcome-report.ts`).
  */
 
 import { readFileSync } from 'node:fs';
@@ -50,9 +49,11 @@ import { resolveReportTemplate } from '../publisher/report-template';
 import { decideVersionUpdate } from '../publisher/report-version-decision';
 import { writeRunReportArtifacts } from './single-issue-run-artifacts';
 import {
+    isSilentRunStatus,
     logCaughtError,
-    postMinimalOutcomeReport,
-    renderMinimalOutcomeReport,
+    logUnpostedOutcome,
+    MinimalOutcome,
+    renderUnpostedOutcomeReport,
 } from './single-issue-run-outcome-report';
 import {
     checkIssueBeforeRun,
@@ -376,21 +377,17 @@ async function runInsideWorkspace(
         });
     } catch (error) {
         logCaughtError(logger, 'intake extraction', error, { issueNumber: request.issueNumber });
-        // A failure past this point already knows the revision digest, so the durable marker still
-        // records the attempt — otherwise backlog selection would retake this issue every run.
-        const { body } = await postMinimalOutcomeReport(
+        // Never posted: the reason is the provider's raw error, nothing the issue needs. The
+        // rendered body is the run's human-readable record of the failure, so it still lands in
+        // the artifacts directory.
+        const body = renderUnpostedOutcomeReport(
             request,
             logger,
-            revisionDigest,
             instruction?.content,
             prepared.provenance.commit,
-            'Intake extraction failed',
+            MinimalOutcome.IntakeFailed,
             (error as Error).message,
-            dependencies,
         );
-        // Persisted the same way the adjacent failure paths do: with `noComment`, the rendered
-        // body is the only surviving record of what would have posted, and the action's own
-        // description promises it lands in the artifacts directory regardless of comment policy.
         writeRunReportArtifacts(request.artifactsDir, body);
         return failedResult(
             request.issueNumber,
@@ -399,18 +396,15 @@ async function runInsideWorkspace(
         );
     }
     if (intake.kind === IntakeExtractionKind.Skipped) {
-        logger.info(
-            { issueNumber: request.issueNumber, reason: intake.reason },
-            'intake extraction skipped the issue',
-        );
         // Never posted: the issue needs no comment saying the run passed it by, and on a busy
         // repository such comments are most of what the action would write. The reason stays in
-        // the log above and the artifacts below; without a marker, a backlog run rereads the issue.
-        const body = renderMinimalOutcomeReport(
+        // the log and the artifacts; without a marker, a backlog run rereads the issue.
+        const body = renderUnpostedOutcomeReport(
             request,
+            logger,
             instruction?.content,
             prepared.provenance.commit,
-            'Issue skipped',
+            MinimalOutcome.Skipped,
             intake.reason,
         );
         writeRunReportArtifacts(request.artifactsDir, body, {
@@ -470,15 +464,13 @@ async function runInsideWorkspace(
         );
     } catch (error) {
         logCaughtError(logger, 'investigation', error, { issueNumber: request.issueNumber });
-        const { body } = await postMinimalOutcomeReport(
+        const body = renderUnpostedOutcomeReport(
             request,
             logger,
-            revisionDigest,
             instruction?.content,
             prepared.provenance.commit,
-            'The investigation failed',
+            MinimalOutcome.InvestigationFailed,
             (error as Error).message,
-            dependencies,
         );
         writeRunReportArtifacts(request.artifactsDir, body, reportPayload);
         return failedResult(
@@ -527,7 +519,11 @@ async function runInsideWorkspace(
         usageSummary: usageCollector.summary(),
     });
 
-    if (!request.commentsEnabled || request.slug === null) {
+    const silent = isSilentRunStatus(runResult.runStatus);
+    if (silent) {
+        logUnpostedOutcome(logger, request.issueNumber, summary.outcome, summary.outcomeReason);
+    }
+    if (!request.commentsEnabled || request.slug === null || silent) {
         return {
             kind: DefaultSingleIssueResultKind.Processed,
             issueNumber: request.issueNumber,

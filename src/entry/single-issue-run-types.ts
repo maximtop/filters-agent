@@ -32,9 +32,8 @@ export const DefaultSingleIssueResultKind = {
     Processed: 'processed',
 
     /**
-     * The issue is not a filter report; intake extraction skipped it. A skip is a successful
-     * outcome — it exits zero and, when comments are enabled, still posts the short report so
-     * backlog selection gains a durable marker and never retakes the issue for this revision.
+     * The issue is not a filter report, or needs no report; the run skipped it. A skip is a
+     * successful outcome — it exits zero and posts no comment.
      */
     Skipped: 'skipped',
 
@@ -184,6 +183,14 @@ export interface DefaultSingleIssueRequest {
      * and a report stays unposted when one is added while the run works. Absent excludes none.
      */
     excludedLabels?: readonly string[] | undefined;
+
+    /**
+     * A maintainer triggered the run, by label or by a manual dispatch, and so asked for the
+     * report: an assignee or a maintainer's comment does not silence it, before the run or before
+     * posting. A closed issue, a fix referenced, an excluded label and a report already posted for
+     * this revision still do. Absent leaves every silence in place.
+     */
+    force?: boolean | undefined;
 }
 
 /**

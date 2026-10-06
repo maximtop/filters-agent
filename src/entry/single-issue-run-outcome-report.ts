@@ -1,18 +1,17 @@
 /**
- * The short report of a sealed outcome that never reached a locked `FixRunResult` — a skip, or a
- * failure once the run's revision digest was already computed — rendered for the artifacts and, for
- * a failure, posted best-effort.
+ * Which sealed outcomes of the default single-issue engine are posted, and the short report of one
+ * that never reached a locked `FixRunResult` — a skip, or a failure once the run's revision digest
+ * was already computed — rendered for the artifacts.
  *
- * Backlog selection's dedupe and revision budget only see a comment's marker; without one, a
- * repeatedly failing issue is retaken on every run, paying for a new attempt each time. Posting a
- * failure closes that gap the same way a fully processed run's report does. A skip is never posted:
- * it is not a finding the issue needs, and its retake costs one intake call. Also carries the
- * shared "log the caught error in full before mapping or swallowing it" helper every catch in the
- * default single-issue engine uses.
+ * Only a finding a maintainer can act on is posted. A skip, an intake or investigation failure
+ * (whose reason is the raw provider or runtime error, not anything about the issue), and a sealed
+ * run that could not investigate the report post nothing: their report lands in the artifacts and
+ * the log names the outcome. Without a posted comment such an issue carries no revision marker, so
+ * in backlog mode the next backlog run retakes it. Also carries the shared "log the caught error in
+ * full before mapping or swallowing it" helper every catch in the default single-issue engine
+ * uses.
  */
 
-import { createOctokit } from '../github/fetch-issue';
-import { resolveReportAuthorLogin } from '../github/report-author-identity';
 import type { Logger } from '../logger/logger';
 import {
     buildReportTemplateValues,
@@ -20,13 +19,89 @@ import {
     type ReportOutcomeSummary,
 } from '../publisher/report-render';
 import { withReportFooter } from '../publisher/report-footer';
-import type { ReportPublishResult } from '../publisher/report-publisher';
 import { resolveReportTemplate } from '../publisher/report-template';
-import { publishGuardedReport } from './single-issue-publication-gate';
-import type {
-    DefaultSingleIssueDependencies,
-    DefaultSingleIssueRequest,
-} from './single-issue-run-types';
+import { FixRunStatus } from '../types/fix-run-result';
+import type { DefaultSingleIssueRequest } from './single-issue-run-types';
+
+/**
+ * The outcome line of a short report that has no locked run result to label it.
+ */
+export const MinimalOutcome = {
+    /**
+     * Intake extraction judged the issue not a filter report.
+     */
+    Skipped: 'Issue skipped',
+
+    /**
+     * Intake extraction threw before it reached a verdict.
+     */
+    IntakeFailed: 'Intake extraction failed',
+
+    /**
+     * The investigation threw before it sealed a run result.
+     */
+    InvestigationFailed: 'The investigation failed',
+} as const;
+
+/**
+ * MinimalOutcome value.
+ */
+export type MinimalOutcome = (typeof MinimalOutcome)[keyof typeof MinimalOutcome];
+
+/**
+ * Whether a sealed run with each status keeps its report off the issue. Total over `FixRunStatus`,
+ * so a new status is a compile error until it is decided here.
+ *
+ * A silent status is not a finding a maintainer can act on: the run could not investigate the
+ * report at all (an unsupported product, a missing capability or browser) or broke down around it
+ * (cleanup, an unrecoverable failure). Posted, such a report only tells the reporter the agent
+ * failed. Every other status says something about the reported defect and is posted.
+ */
+const SILENT_RUN_STATUSES: Record<FixRunStatus, boolean> = {
+    [FixRunStatus.AlreadyFixedCurrent]: false,
+    [FixRunStatus.FixedUpstreamPendingExtension]: false,
+    [FixRunStatus.FixedInSourcePendingPublication]: false,
+    [FixRunStatus.PatchProposed]: false,
+    [FixRunStatus.NotReproduced]: false,
+    [FixRunStatus.ConfigurationSpecific]: false,
+    [FixRunStatus.AnalysisOnly]: false,
+    [FixRunStatus.TargetUrlUnavailable]: false,
+    [FixRunStatus.UnsupportedProductCase]: true,
+    [FixRunStatus.CapabilityLimited]: true,
+    [FixRunStatus.BrowserUnavailable]: true,
+    [FixRunStatus.CleanupFailed]: true,
+    [FixRunStatus.Failed]: true,
+};
+
+/**
+ * Decide whether a sealed run keeps its report off the issue.
+ *
+ * @param runStatus - The status the run sealed with.
+ * @returns True when the report goes to the artifacts only.
+ */
+export function isSilentRunStatus(runStatus: FixRunStatus): boolean {
+    return SILENT_RUN_STATUSES[runStatus];
+}
+
+/**
+ * Log, in one line, an outcome whose report is kept off the issue.
+ *
+ * @param logger - Diagnostics sink.
+ * @param issueNumber - Issue the run processed.
+ * @param outcome - Human outcome line, the same the rendered report carries.
+ * @param reason - Detail explaining the outcome.
+ */
+export function logUnpostedOutcome(
+    logger: Logger,
+    issueNumber: number,
+    outcome: string,
+    reason: string,
+): void {
+    logger.info(
+        { issueNumber, reason },
+        `${outcome}: no comment posted, the report is in the artifacts`,
+    );
+}
 
 /**
  * Log one caught error in full — message, stack, and cause — before it is mapped to a typed failure
@@ -48,36 +123,23 @@ export function logCaughtError(
 }
 
 /**
- * The rendered body and publication outcome of one minimal-outcome report attempt.
- */
-export interface MinimalOutcomeReport {
-    /**
-     * The exact rendered Markdown body, minus the hidden revision marker.
-     */
-    body: string;
-
-    /**
-     * The publication action and identity, or null when comments are disabled or the best-effort
-     * publish attempt itself failed.
-     */
-    publication: ReportPublishResult | null;
-}
-
-/**
- * Render the minimal short report for an outcome that has no locked run result.
+ * Render the short report of an outcome that has no locked run result and is never posted, and log
+ * in one line that it was not.
  *
  * @param request - The per-issue request.
+ * @param logger - Diagnostics sink.
  * @param instructionContent - Loaded run instruction content, for the report template.
  * @param filtersCommit - Commit of the filter lists the run prepared, for the report footer.
- * @param outcomeLabel - Human outcome line (e.g. "Issue skipped", "Intake extraction failed").
+ * @param outcomeLabel - Human outcome line.
  * @param outcomeReason - Detail explaining the outcome.
- * @returns The rendered Markdown body, minus the hidden revision marker.
+ * @returns The rendered Markdown body for the artifacts.
  */
-export function renderMinimalOutcomeReport(
+export function renderUnpostedOutcomeReport(
     request: DefaultSingleIssueRequest,
+    logger: Logger,
     instructionContent: string | undefined,
     filtersCommit: string,
-    outcomeLabel: string,
+    outcomeLabel: MinimalOutcome,
     outcomeReason: string,
 ): string {
     const template = resolveReportTemplate(instructionContent).template;
@@ -94,76 +156,9 @@ export function renderMinimalOutcomeReport(
         missingInformation: [],
         artifactsLink: request.actionsRunUrl ?? '',
     };
+    logUnpostedOutcome(logger, request.issueNumber, outcomeLabel, outcomeReason);
     return withReportFooter(
         renderReportComment(template, buildReportTemplateValues(summary)),
         filtersCommit,
     );
-}
-
-/**
- * Render, and when comments are enabled attempt to post, the minimal short report for a failure
- * that has no locked run result.
- *
- * Never throws: a publication failure here is logged and a null publication is returned, since this
- * best-effort comment is not the run's own purpose — the caller already has its own seal (the
- * failure it is separately reporting).
- *
- * @param request - The per-issue request.
- * @param logger - Diagnostics sink.
- * @param revisionDigest - The computed revision identity to bind the marker to.
- * @param instructionContent - Loaded run instruction content, for the report template.
- * @param filtersCommit - Commit of the filter lists the run prepared, for the report footer.
- * @param outcomeLabel - Human outcome line (e.g. "Intake extraction failed").
- * @param outcomeReason - Detail explaining the outcome.
- * @param dependencies - Injectable seams; only the prebuilt GitHub client is read.
- * @returns The rendered report body and the publication result, or a null publication when comments
- *   are disabled, the publication guard kept the report silent, or the best-effort publish attempt
- *   itself failed.
- */
-export async function postMinimalOutcomeReport(
-    request: DefaultSingleIssueRequest,
-    logger: Logger,
-    revisionDigest: string,
-    instructionContent: string | undefined,
-    filtersCommit: string,
-    outcomeLabel: string,
-    outcomeReason: string,
-    dependencies: Pick<DefaultSingleIssueDependencies, 'octokit'>,
-): Promise<MinimalOutcomeReport> {
-    const body = renderMinimalOutcomeReport(
-        request,
-        instructionContent,
-        filtersCommit,
-        outcomeLabel,
-        outcomeReason,
-    );
-    if (!request.commentsEnabled || request.slug === null) {
-        return { body, publication: null };
-    }
-    const slug = request.slug;
-    try {
-        const client =
-            dependencies.octokit ??
-            createOctokit({ owner: slug.owner, repo: slug.repo, token: request.token ?? '' });
-        const reportAuthorLogin = await resolveReportAuthorLogin(client, logger);
-        const publication = await publishGuardedReport(
-            client,
-            {
-                owner: slug.owner,
-                repo: slug.repo,
-                issueNumber: request.issueNumber,
-                revisionDigest,
-                reportAuthorLogin,
-                body,
-            },
-            request,
-            logger,
-        );
-        return { body, publication };
-    } catch (error) {
-        logCaughtError(logger, 'minimal outcome report publication', error, {
-            issueNumber: request.issueNumber,
-        });
-        return { body, publication: null };
-    }
 }

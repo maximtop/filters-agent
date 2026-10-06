@@ -4,8 +4,9 @@
  * A bot comment on an issue that is closed, that a fix already references, or that a maintainer is
  * already handling only adds noise, so the guard names the reason to stay silent. An issue that
  * carries a label the run excludes gets no report either, even when the label came while the run
- * worked. It is a pure decision over a snapshot `github/issue-publication-facts.ts` reads; the
- * repository, the trusted roles and both label sets come from the caller.
+ * worked. A run a maintainer triggered may set the maintainer silence aside, never the others. It
+ * is a pure decision over a snapshot `github/issue-publication-facts.ts` reads; the repository, the
+ * trusted roles and both label sets come from the caller.
  */
 
 import { isGithubBotAccount } from '../github/fetch-issue';
@@ -446,4 +447,40 @@ export function decidePublication(
                   ? PublicationSilence.MaintainerEngaged
                   : null;
     return { reason, signals: [...excluded, ...closed, ...fixes, ...engaged] };
+}
+
+/**
+ * What a forced run makes of the guard's decision.
+ */
+export interface ForcedPublicationDecision {
+    /**
+     * The decision the run acts on, with the maintainer-engaged silence lifted.
+     */
+    decision: PublicationDecision;
+
+    /**
+     * The maintainer signals the force overrode; empty when it overrode none.
+     */
+    overridden: readonly string[];
+}
+
+/**
+ * Decide for a run a maintainer triggered themselves — by label or by a manual dispatch — and so
+ * asked for the report: a maintainer on the issue no longer silences it. A closed issue, a fix
+ * referenced and an excluded label still do.
+ *
+ * @param facts - Issue snapshot read right before the decision.
+ * @param policy - Repository, trusted roles and both label sets to measure against.
+ * @returns The decision, and the maintainer signals the force overrode.
+ */
+export function decideForcedPublication(
+    facts: IssuePublicationFacts,
+    policy: PublicationGuardPolicy,
+): ForcedPublicationDecision {
+    const decision = decidePublication(facts, policy);
+    if (decision.reason !== PublicationSilence.MaintainerEngaged) {
+        return { decision, overridden: [] };
+    }
+    // The maintainer rule fires last, so every signal of a decision it names is a maintainer's.
+    return { decision: { reason: null, signals: [] }, overridden: decision.signals };
 }

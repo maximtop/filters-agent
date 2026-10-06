@@ -129,6 +129,11 @@ const AgentActionInputName = {
     noComment: 'noComment',
 
     /**
+     * The `force` input letting a maintainer-triggered run report on an issue a maintainer is on.
+     */
+    force: 'force',
+
+    /**
      * The `screenshotsBranch` input naming the branch the report's screenshots are committed to.
      */
     screenshotsBranch: 'screenshotsBranch',
@@ -457,6 +462,7 @@ export function mapAgentRunSources(
         artifactsDir: artifactsDirSource(actionEnv, workspaceDir),
         model: readActionInput(actionEnv, AgentActionInputName.model),
         noComment: booleanActionInput(readActionInput(actionEnv, AgentActionInputName.noComment)),
+        force: booleanActionInput(readActionInput(actionEnv, AgentActionInputName.force)),
         screenshotsBranch: readActionInput(actionEnv, AgentActionInputName.screenshotsBranch),
         lintCommand: readActionInput(actionEnv, AgentActionInputName.lintCommand),
     };

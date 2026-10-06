@@ -37,8 +37,11 @@ When it runs against an issue, `filters-agent`:
    that does not reason, also set `llmReasoningEffort: 'off'`. The agent is developed and tested
    on DeepSeek V4 Flash for reasoning (context window 1048576, completion cap 384000) and Gemini
    3.7 Flash for screenshots (completion cap 65536).
-3. Optional: if your users run something other than the built-in AdGuard Browser Extension, add
-   `.github/filters-agent/AGENTS.md` to your repository describing that blocker. See
+3. Add `.github/filters-agent/AGENTS.md` to your repository. It holds your filter policy — which
+   reports close without a rule, see [Your own rules for the agent](#your-own-rules-for-the-agent);
+   without it the agent proposes a rule for every report. It also links your guidance documents,
+   and describes your blocker when your users run something other than the built-in AdGuard
+   Browser Extension. See
    [`docs/modules/browser-with-extension.md`](docs/modules/browser-with-extension.md) for how the
    module drives a browser extension, and the example instructions in
    [`src/prompts/documents/instructions/`](src/prompts/documents/instructions/) — specifically
@@ -52,13 +55,16 @@ When it runs against an issue, `filters-agent`:
 5. Open an issue: the example workflow runs on every new issue. Each run is a paid LLM call; to
    run only on issues a maintainer picks, switch the workflow's trigger from `opened` to `labeled`
    as its comment describes, and label an issue `filters-agent` to start a run. Either way, you can
-   run the workflow manually with an issue number.
+   run the workflow manually with an issue number. A label or manual run should pass `force`, as the
+   example workflow does, so an issue a maintainer is already on still gets the report.
 6. The report appears as a comment on the issue, unless the issue no longer needs one: it is
    closed, a commit or pull request of your repository references it, a maintainer (see
-   `trustedRoles`) commented or is assigned, or the report for its current text is already there.
+   `trustedRoles`) commented or is assigned (unless the run is forced), or the report for its
+   current text is already there.
    The run checks this before it spends anything, and again right before it posts. An issue the
-   run skips because it is not a filter report, or names no page, gets no comment either; the
-   reason is in the run log and the uploaded artifact. For a verified
+   run skips because it is not a filter report, or names no page, gets no comment either, and
+   neither does a run that fails or cannot investigate the report (an unsupported product, no
+   usable browser); the reason is in the run log and the uploaded artifact. For a verified
    rule the report shows the page without and with the rule. GitHub has no API to attach an image
    to a comment, so the run commits the images to a branch of your repository, named by the
    `screenshotsBranch` input (`filters-agent-screenshots` by default), which is why the example
@@ -327,9 +333,8 @@ Two limits apply:
 - Some `##` headings carry a function: a heading containing `preparation`, `application`,
   `verification`, `selection`, `which issues` or `report template` is read as that part of the
   instruction. Name your rules' heading something else, such as `## Maintainer rules`.
-- Each linked document role binds one document. Linking your own policy document replaces the
-  AdGuard filter policy rather than adding to it, so rules that extend it belong in the instruction
-  text.
+- Each linked document role binds one document: link one policy document, and put the rules that
+  extend it in the instruction text.
 
 The instruction, without its linked documents, is capped at 16 000 characters; a longer one fails
 the run at start rather than being cut.
@@ -466,6 +471,7 @@ so it is worth re-reading this table after an upgrade.
 | `artifactsDir` | No | Directory the run writes its artifacts to; defaults to `filters-agent-artifacts/artifacts` under the checkout. |
 | `model` | No | Reasoning-model slug overriding the LLM runtime's configured model. |
 | `noComment` | No | `'true'` skips posting the report as an issue comment; the report is still written to the artifacts directory. |
+| `force` | No | `'true'` for a run a maintainer triggered, by label or by a manual dispatch: a maintainer's comment or an assignee on the issue no longer skips the run or keeps the report silent. A closed issue, a fix referenced, an excluded label and a report already posted for the issue's current text still do. The backlog mode ignores it. |
 | `screenshotsBranch` | No | Branch the before and after screenshots of a verified rule are committed to, so the report comment can show them; defaults to `filters-agent-screenshots`. Needs the `contents: write` permission; without it the report posts without screenshots. |
 | `lintCommand` | No | Your repository's own lint command line, for example `npx aglint`. Each candidate rule is linted with it in the checkout; a failure adds a note to the report and never stops the rule. Unset runs no lint. See [Lint with your repository's linter](#lint-with-your-repositorys-linter). |
 | `checkoutPath` | No | Path of the analyzed checkout; defaults to the runner's `GITHUB_WORKSPACE`. |

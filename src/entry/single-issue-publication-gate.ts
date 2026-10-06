@@ -5,7 +5,8 @@
  * report for this issue revision already posted, or an issue the publication guard silences
  * (closed, a fix referenced, a maintainer on it), ends the run as a skip. Right before posting: the
  * guard runs again, since a maintainer can act during the run, an excluded label included. Both
- * read only GitHub; neither writes.
+ * read only GitHub; neither writes. A forced run — one a maintainer triggered — passes both checks
+ * on an issue a maintainer is on, and only on that.
  */
 
 import type { Octokit } from '@octokit/rest';
@@ -14,6 +15,7 @@ import { readIssuePublicationFacts } from '../github/issue-publication-facts';
 import { resolveReportAuthorLogin } from '../github/report-author-identity';
 import type { Logger } from '../logger/logger';
 import {
+    decideForcedPublication,
     decidePublication,
     exclusionSignals,
     type PublicationDecision,
@@ -41,6 +43,11 @@ export interface PublicationGuardSettings {
      * Labels the run never reports on, or undefined when it excludes none.
      */
     excludedLabels?: readonly string[] | undefined;
+
+    /**
+     * Whether a maintainer triggered the run, so a maintainer on the issue does not silence it.
+     */
+    force?: boolean | undefined;
 }
 
 /**
@@ -76,6 +83,8 @@ export function publicationGuardPolicy(
  * @param slug - Repository the run reports to.
  * @param issueNumber - Issue the run reports on.
  * @param policy - Guard policy for the repository.
+ * @param force - Whether a maintainer triggered the run.
+ * @param logger - Run logger; the maintainer signals a forced run overrides are logged.
  * @returns The decision with its reason, or null when nothing stands in the way.
  */
 async function readSilence(
@@ -83,13 +92,25 @@ async function readSilence(
     slug: RepositorySlug,
     issueNumber: number,
     policy: PublicationGuardPolicy,
+    force: boolean,
+    logger: Logger,
 ): Promise<PublicationDecision | null> {
     const facts = await readIssuePublicationFacts(client, {
         owner: slug.owner,
         repo: slug.repo,
         issueNumber,
     });
-    const decision = decidePublication(facts, policy);
+    if (!force) {
+        const decision = decidePublication(facts, policy);
+        return decision.reason === null ? null : decision;
+    }
+    const { decision, overridden } = decideForcedPublication(facts, policy);
+    if (overridden.length > 0) {
+        logger.info(
+            { issueNumber, signals: overridden },
+            'force overrides a maintainer already on the issue',
+        );
+    }
     return decision.reason === null ? null : decision;
 }
 
@@ -143,7 +164,7 @@ export interface PreRunCheckInput {
     token: string | undefined;
 
     /**
-     * The run's trusted roles and excluded labels.
+     * The run's trusted roles, excluded labels and force.
      */
     settings: PublicationGuardSettings;
 }
@@ -193,7 +214,14 @@ export async function checkIssueBeforeRun(
         };
     }
     const policy = publicationGuardPolicy(input.slug, input.settings, reportAuthorLogin);
-    const silence = await readSilence(client, input.slug, input.issueNumber, policy);
+    const silence = await readSilence(
+        client,
+        input.slug,
+        input.issueNumber,
+        policy,
+        input.settings.force === true,
+        logger,
+    );
     if (silence !== null) {
         logger.info(
             { issueNumber: input.issueNumber, reason: silence.reason, signals: silence.signals },
@@ -212,7 +240,7 @@ export async function checkIssueBeforeRun(
  *
  * @param client - Authenticated GitHub API client.
  * @param input - The report publication.
- * @param settings - The run's trusted roles and excluded labels.
+ * @param settings - The run's trusted roles, excluded labels and force.
  * @param logger - Run logger; the guard's signals are logged when it silences.
  * @returns The publication, or null when the guard kept the report silent.
  */
@@ -224,7 +252,14 @@ export async function publishGuardedReport(
 ): Promise<ReportPublishResult | null> {
     const slug = { owner: input.owner, repo: input.repo };
     const policy = publicationGuardPolicy(slug, settings, input.reportAuthorLogin);
-    const silence = await readSilence(client, slug, input.issueNumber, policy);
+    const silence = await readSilence(
+        client,
+        slug,
+        input.issueNumber,
+        policy,
+        settings.force === true,
+        logger,
+    );
     if (silence !== null) {
         logger.info(
             { issueNumber: input.issueNumber, reason: silence.reason, signals: silence.signals },

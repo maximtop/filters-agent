@@ -104,6 +104,12 @@ export interface AgentRunInputSources {
     noComment?: boolean | undefined;
 
     /**
+     * Report even on an issue a maintainer is already on: the run was triggered by a maintainer.
+     * Applies to the single-issue mode only; the backlog mode ignores it.
+     */
+    force?: boolean | undefined;
+
+    /**
      * Branch the report's before and after screenshots are committed to; absent or blank falls back
      * to `DEFAULT_REPORT_SCREENSHOTS_BRANCH`.
      */
@@ -155,6 +161,7 @@ export interface AgentRunInputSources {
 const SingleIssueModeSchema = v.strictObject({
     kind: v.literal(AgentRunMode.SingleIssue),
     issueNumber: v.pipe(v.number(), v.integer(), v.minValue(1)),
+    force: v.optional(v.boolean()),
 });
 
 /**
@@ -227,6 +234,12 @@ export interface SingleIssueRunModeSelection {
      * The issue number to process.
      */
     issueNumber: number;
+
+    /**
+     * A maintainer triggered the run, so a maintainer already on the issue does not silence its
+     * report; absent leaves that silence in place.
+     */
+    force?: boolean;
 }
 
 /**

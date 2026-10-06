@@ -460,7 +460,12 @@ export function resolveAgentRunInputs(
                 ? backlogLimit === undefined
                     ? { kind: AgentRunMode.Backlog }
                     : { kind: AgentRunMode.Backlog, limit: backlogLimit }
-                : { kind: AgentRunMode.SingleIssue, issueNumber: issueNumber! },
+                : {
+                      kind: AgentRunMode.SingleIssue,
+                      issueNumber: issueNumber!,
+                      // The backlog mode ignores force, like the single-issue mode ignores limit.
+                      ...(sources.force === true ? { force: true } : {}),
+                  },
         ...(executorSet.names !== undefined ? { executors: [...executorSet.names] } : {}),
         ...(sources.instructionPath !== undefined
             ? { instructionPath: sources.instructionPath }
