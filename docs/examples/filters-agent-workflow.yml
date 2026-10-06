@@ -47,11 +47,11 @@ jobs:
                   # .git/config in the mounted workspace, where run commands could read it.
                   persist-credentials: false
 
-            # A released tag (for example @v1) replaces @main once one exists; @main tracks the
-            # action's default branch.
+            # @v1 follows every v1.x.y release; pin @v1.2.3 to stay on one release, or use @main for
+            # what is not released yet.
             - name: Analyze the issue
               id: agent
-              uses: maximtop/filters-agent@main
+              uses: maximtop/filters-agent@v1
               with:
                   # Mandatory in every run: the action only serves GitHub-read modes, and the report
                   # comment posts through this token (the issues: write permission above).

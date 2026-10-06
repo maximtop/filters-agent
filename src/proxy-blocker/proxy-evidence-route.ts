@@ -9,7 +9,10 @@ import type {
     BlockerFilterList,
     BlockerRoute,
 } from '../blocker-contract/blocker-contract';
-import { followBlockedRequests } from '../blocker-contract/blocked-requests';
+import {
+    followBlockedRequests,
+    type BlockedRequestsFollower,
+} from '../blocker-contract/blocked-requests';
 import { watchPageEvidence } from '../blocker-contract/page-evidence';
 import type { AppliedRulesLog } from '../environment/applied-rules';
 import type { Logger } from '../logger/logger';
@@ -169,6 +172,8 @@ export function createProxyBlockerEvidenceRoute(
     let listReplacement: BlockerFilterList | null = null;
     let lockedReplacedSha256: string | null = null;
     let baselineHost: ProxyBlockerBaselineHost | null = null;
+    // Every session's blocked-request follower, stopped before the blocker.
+    const followers: BlockedRequestsFollower[] = [];
 
     // The baseline host owns this directory alone: it is the agent's own record of the catalog
     // phases enable lists from, and it must not mix with anything the blocker writes.
@@ -390,6 +395,13 @@ export function createProxyBlockerEvidenceRoute(
                 });
                 const { CloakBrowserEngine } = await import('../browser/cloakbrowser-engine');
                 const sessionLog = await input.blocker.log(null);
+                const follower = followBlockedRequests(
+                    input.blocker,
+                    sessionLog.cursor,
+                    revision,
+                    request.logger,
+                );
+                followers.push(follower);
                 return await createSession({
                     engine: new CloakBrowserEngine(),
                     logger: request.logger,
@@ -400,12 +412,7 @@ export function createProxyBlockerEvidenceRoute(
                     strictRoute,
                     strictRouteTargetUrl: request.targetUrl,
                     strictRouteAcceptProxyAuthority: interception?.leafIssuedByExpectedCa === true,
-                    engineBlockedRequests: followBlockedRequests(
-                        input.blocker,
-                        sessionLog.cursor,
-                        revision,
-                        request.logger,
-                    ),
+                    engineBlockedRequests: follower.read,
                 });
             } catch (error) {
                 if (error instanceof EvidenceRouteError) {
@@ -515,6 +522,10 @@ export function createProxyBlockerEvidenceRoute(
         },
 
         async stop(): Promise<void> {
+            // The followers stop first: once the blocker is gone their reads could only fail.
+            for (const follower of followers.splice(0)) {
+                follower.stop();
+            }
             await input.blocker.stop();
             route = null;
             port = null;

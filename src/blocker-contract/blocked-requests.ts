@@ -17,20 +17,37 @@ import { BlockerEventKind, type BlockerContract } from './blocker-contract';
 const REFRESH_INTERVAL_MS = 250;
 
 /**
+ * The blocked requests of one browser session, followed until the route stops them.
+ */
+export interface BlockedRequestsFollower {
+    /**
+     * Read the blocked request URLs seen so far, refreshing in the background.
+     *
+     * @returns The URLs.
+     */
+    read: () => ReadonlySet<string>;
+
+    /**
+     * Stop following, before the blocker itself stops, so its shutdown is not read as a failure.
+     */
+    stop: () => void;
+}
+
+/**
  * Follow the requests a blocker stops for one browser session.
  *
  * @param blocker - The blocker the session rides.
  * @param cursor - Log cursor taken when the session launched.
  * @param revision - Blocker revision the session launched at.
  * @param logger - Run logger for a read that failed.
- * @returns Synchronous reader of the blocked request URLs seen so far.
+ * @returns The follower: a synchronous reader and its stop.
  */
 export function followBlockedRequests(
     blocker: BlockerContract,
     cursor: string,
     revision: number,
     logger: Logger,
-): () => ReadonlySet<string> {
+): BlockedRequestsFollower {
     const blocked = new Set<string>();
     let next = cursor;
     let inFlight: Promise<void> | null = null;
@@ -79,8 +96,14 @@ export function followBlockedRequests(
     // The timer must not keep a finished run alive.
     timer.unref();
 
-    return () => {
-        refresh();
-        return blocked;
+    return {
+        read: () => {
+            refresh();
+            return blocked;
+        },
+        stop: () => {
+            ended = true;
+            clearInterval(timer);
+        },
     };
 }

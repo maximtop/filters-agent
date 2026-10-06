@@ -49,6 +49,9 @@ When it runs against an issue, `filters-agent`:
    `filters-agent-screenshots` branch, which is why the example workflow grants `contents: write`.
    The full run — report, traces, screenshots — is uploaded as a workflow artifact; find it on the workflow run's Summary page. Preparation steps in an instruction run inside the action image, which provides `curl`, `jq`, `node`, `git` and `unzip`.
 
+Releases are tagged `vX.Y.Z`, and `v1` follows the latest 1.x release; the example uses `@v1`.
+Pin a full version to stay on one release.
+
 Every job builds the action's own Docker image from scratch, including two browsers, before it
 can start — expect it to add several minutes ahead of the actual analysis.
 
@@ -118,10 +121,10 @@ release, checks its checksum and AdGuard's signature, and installs it with the m
 ```yaml
 - name: Install the AdGuard CLI module
   id: adguard-cli
-  uses: maximtop/filters-agent/adguard-cli@main
+  uses: maximtop/filters-agent/adguard-cli@v1
 
 - name: Analyze the issue
-  uses: maximtop/filters-agent@main
+  uses: maximtop/filters-agent@v1
   env:
       ADGUARD_LICENSE_KEY: ${{ secrets.ADGUARD_LICENSE_KEY }}
   with:
@@ -146,7 +149,7 @@ jobs:
     seed:
         runs-on: ubuntu-latest
         steps:
-            - uses: maximtop/filters-agent/adguard-cli@main
+            - uses: maximtop/filters-agent/adguard-cli@v1
               env:
                   ADGUARD_LICENSE_KEY: ${{ secrets.ADGUARD_LICENSE_KEY }}
               with:
