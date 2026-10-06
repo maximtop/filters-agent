@@ -161,6 +161,10 @@ list file; the user-filters file the run verified against is the in-browser appl
 
 {{missingInformation}}
 
+### Screenshots
+
+{{screenshots}}
+
 ### Artifacts
 
 {{artifactsLink}}

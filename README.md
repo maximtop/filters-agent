@@ -13,8 +13,8 @@ When it runs against an issue, `filters-agent`:
 3. Proposes a candidate filter rule and verifies it against that extension — the action reads the
    extension's own state back after applying the rule, rather than trusting its own report of what
    it did.
-4. Posts a short report as a comment on the issue, and uploads the full run (report, traces,
-   screenshots) as a workflow artifact.
+4. Posts a short report as a comment on the issue, with the page before and after a verified rule,
+   and uploads the full run (report, traces, screenshots) as a workflow artifact.
 
 ## Requirements
 
@@ -41,8 +41,13 @@ When it runs against an issue, `filters-agent`:
    [An instruction that only adds guidance](#an-instruction-that-only-adds-guidance).
 4. Label an issue `filters-agent` (or run the workflow manually with an issue number) to start a
    run.
-5. The report appears as a comment on the issue. The full run — report, traces, screenshots — is
-   uploaded as a workflow artifact; find it on the workflow run's Summary page. Preparation steps in an instruction run inside the action image, which provides `curl`, `jq`, `node`, `git` and `unzip`.
+5. The report appears as a comment on the issue, unless the issue no longer needs one: it is
+   closed, a commit or pull request of your repository references it, a maintainer (see
+   `trustedRoles`) commented or is assigned, or the report for its current text is already there.
+   The run checks this before it spends anything, and again right before it posts. For a verified
+   rule the report shows the page without and with the rule; the images live on the
+   `filters-agent-screenshots` branch, which is why the example workflow grants `contents: write`.
+   The full run — report, traces, screenshots — is uploaded as a workflow artifact; find it on the workflow run's Summary page. Preparation steps in an instruction run inside the action image, which provides `curl`, `jq`, `node`, `git` and `unzip`.
 
 Every job builds the action's own Docker image from scratch, including two browsers, before it
 can start — expect it to add several minutes ahead of the actual analysis.
@@ -290,7 +295,11 @@ template can carry a heading for a case that rarely happens.
 | `{{policyRationale}}` | Why the rule is allowed under the policy documents your instruction links. |
 | `{{listPlace}}` | The file the rule goes into, and where inside it. |
 | `{{missingInformation}}` | What the report would need to be actionable, when something is missing. |
+| `{{screenshots}}` | The page without and with the verified rule, side by side. Empty when no rule was verified, and when the workflow lacks `contents: write` (see the example workflow). |
 | `{{artifactsLink}}` | Link to the workflow run holding the full evidence. |
+
+Every report ends with a footer line outside the template: the filters commit the run analyzed,
+and that the comment was posted by a filters agent.
 
 A template that omits a placeholder simply never shows it; nothing fails. That also means a
 template written against an older version of this action silently loses whatever was added since,
@@ -304,7 +313,7 @@ so it is worth re-reading this table after an upgrade.
 | `issueNumber` | No | Number of the issue to analyze; selecting it runs the single-issue mode. |
 | `backlog` | No | `'true'` analyzes the repository's open-issue backlog instead of a single issue. |
 | `limit` | No | Maximum number of backlog issues analyzed per run; unset means up to 50 issues in one job, each a paid LLM run; the loop also stops at its wall-clock budget (default 5h 30m, overridable by an input) so one job stays under GitHub's 6-hour cap. |
-| `trustedRoles` | No | Comma-separated GitHub author associations trusted to change a backlog issue's revision; defaults to `OWNER,MEMBER,COLLABORATOR`. |
+| `trustedRoles` | No | Comma-separated GitHub author associations trusted to change a backlog issue's revision, and whose comment on an issue means a maintainer is already on it; defaults to `OWNER,MEMBER,COLLABORATOR`. |
 | `maxRevisionsPerWindow` | No | Maximum revision-marked reports one backlog issue may receive inside the rolling `revisionWindowMs` window; defaults to the queue's revision budget. |
 | `revisionWindowMs` | No | Length of the rolling window the revision budget counts against, in milliseconds; defaults to the queue's revision window (24 hours). |
 | `backlogWallClockBudgetMs` | No | Wall-clock budget for the whole backlog loop, in milliseconds; defaults to 5h 30m so one job stays under GitHub's 6-hour cap. The loop stops taking new issues once the remaining time can no longer fit one more issue's own investigation budget. |

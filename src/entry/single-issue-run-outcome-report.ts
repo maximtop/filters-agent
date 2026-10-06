@@ -17,8 +17,10 @@ import {
     renderReportComment,
     type ReportOutcomeSummary,
 } from '../publisher/report-render';
-import { publishReportOnce, type ReportPublishResult } from '../publisher/report-publisher';
+import { withReportFooter } from '../publisher/report-footer';
+import type { ReportPublishResult } from '../publisher/report-publisher';
 import { resolveReportTemplate } from '../publisher/report-template';
+import { publishGuardedReport } from './single-issue-publication-gate';
 import type {
     DefaultSingleIssueDependencies,
     DefaultSingleIssueRequest,
@@ -71,17 +73,20 @@ export interface MinimalOutcomeReport {
  * @param logger - Diagnostics sink.
  * @param revisionDigest - The computed revision identity to bind the marker to.
  * @param instructionContent - Loaded run instruction content, for the report template.
+ * @param filtersCommit - Commit of the filter lists the run prepared, for the report footer.
  * @param outcomeLabel - Human outcome line (e.g. "Issue skipped", "Intake extraction failed").
  * @param outcomeReason - Detail explaining the outcome.
  * @param dependencies - Injectable seams; only the prebuilt GitHub client is read.
  * @returns The rendered report body and the publication result, or a null publication when comments
- *   are disabled or the best-effort publish attempt itself failed.
+ *   are disabled, the publication guard kept the report silent, or the best-effort publish attempt
+ *   itself failed.
  */
 export async function postMinimalOutcomeReport(
     request: DefaultSingleIssueRequest,
     logger: Logger,
     revisionDigest: string,
     instructionContent: string | undefined,
+    filtersCommit: string,
     outcomeLabel: string,
     outcomeReason: string,
     dependencies: Pick<DefaultSingleIssueDependencies, 'octokit'>,
@@ -100,7 +105,10 @@ export async function postMinimalOutcomeReport(
         missingInformation: [],
         artifactsLink: request.actionsRunUrl ?? '',
     };
-    const body = renderReportComment(template, buildReportTemplateValues(summary));
+    const body = withReportFooter(
+        renderReportComment(template, buildReportTemplateValues(summary)),
+        filtersCommit,
+    );
     if (!request.commentsEnabled || request.slug === null) {
         return { body, publication: null };
     }
@@ -110,14 +118,19 @@ export async function postMinimalOutcomeReport(
             dependencies.octokit ??
             createOctokit({ owner: slug.owner, repo: slug.repo, token: request.token ?? '' });
         const reportAuthorLogin = await resolveReportAuthorLogin(client, logger);
-        const publication = await publishReportOnce(client, {
-            owner: slug.owner,
-            repo: slug.repo,
-            issueNumber: request.issueNumber,
-            revisionDigest,
-            reportAuthorLogin,
-            body,
-        });
+        const publication = await publishGuardedReport(
+            client,
+            {
+                owner: slug.owner,
+                repo: slug.repo,
+                issueNumber: request.issueNumber,
+                revisionDigest,
+                reportAuthorLogin,
+                body,
+            },
+            request.trustedRoles,
+            logger,
+        );
         return { body, publication };
     } catch (error) {
         logCaughtError(logger, 'minimal outcome report publication', error, {

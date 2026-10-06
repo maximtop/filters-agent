@@ -12,6 +12,7 @@
  * `single-issue-run-outcome-report.ts`).
  */
 
+import { readFileSync } from 'node:fs';
 import type { CoreConfig } from '../config/config';
 import { createOctokit, fetchIssue, type RawIssue } from '../github/fetch-issue';
 import { AUTOMATIC_UPSTREAM_PROMPT_TEXT_LIMITS } from '../github/prompt-safety';
@@ -42,11 +43,17 @@ import {
     renderReportComment,
     summarizeReportOutcome,
 } from '../publisher/report-render';
-import { publishReportOnce } from '../publisher/report-publisher';
+import { withReportFooter } from '../publisher/report-footer';
+import { renderHostedReportScreenshots } from '../publisher/report-screenshots';
 import { resolveReportTemplate } from '../publisher/report-template';
 import { decideVersionUpdate } from '../publisher/report-version-decision';
 import { writeRunReportArtifacts } from './single-issue-run-artifacts';
 import { logCaughtError, postMinimalOutcomeReport } from './single-issue-run-outcome-report';
+import {
+    checkIssueBeforeRun,
+    publishGuardedReport,
+    type PreRunSkip,
+} from './single-issue-publication-gate';
 import { fetchedIssueRevisionDigest } from './single-issue-revision-digest';
 import { materializedSnapshotIssue } from './single-issue-snapshot-materialization';
 import { runFixCore } from '../orchestrator/fix-core';
@@ -316,6 +323,46 @@ async function runInsideWorkspace(
         );
     }
 
+    if (request.commentsEnabled) {
+        // Checked before intake extraction, the run's first paid call: a revision that already
+        // carries its report, or an issue the publication guard silences, has nothing to post.
+        let skip: PreRunSkip | null;
+        try {
+            const client =
+                dependencies.octokit ??
+                createOctokit({ owner: slug.owner, repo: slug.repo, token: request.token ?? '' });
+            skip = await checkIssueBeforeRun(
+                client,
+                {
+                    slug,
+                    issueNumber: request.issueNumber,
+                    revisionDigest,
+                    reportAuthorLogin: await resolveReportAuthorLogin(client, logger),
+                    trustedRoles: request.trustedRoles,
+                },
+                logger,
+            );
+        } catch (error) {
+            logCaughtError(logger, 'pre-run issue check', error, {
+                issueNumber: request.issueNumber,
+            });
+            return failedResult(
+                request.issueNumber,
+                DefaultSingleIssueFailure.IssueUnavailable,
+                (error as Error).message,
+            );
+        }
+        if (skip !== null) {
+            return {
+                kind: DefaultSingleIssueResultKind.Skipped,
+                issueNumber: request.issueNumber,
+                reason: skip.reason,
+                publication: skip.publication,
+                artifactsDir: request.artifactsDir,
+            };
+        }
+    }
+
     const usageCollector = createRunUsageCollector();
     let intake: ExtractedIntakeFacts;
     try {
@@ -336,6 +383,7 @@ async function runInsideWorkspace(
             logger,
             revisionDigest,
             instruction?.content,
+            prepared.provenance.commit,
             'Intake extraction failed',
             (error as Error).message,
             dependencies,
@@ -360,6 +408,7 @@ async function runInsideWorkspace(
             logger,
             revisionDigest,
             instruction?.content,
+            prepared.provenance.commit,
             'Issue skipped',
             intake.reason,
             dependencies,
@@ -415,6 +464,7 @@ async function runInsideWorkspace(
             logger,
             revisionDigest,
             instruction?.content,
+            prepared.provenance.commit,
             'The investigation failed',
             (error as Error).message,
             dependencies,
@@ -457,7 +507,9 @@ async function runInsideWorkspace(
             'version update hint stayed empty',
         );
     }
-    const body = renderReportComment(template, buildReportTemplateValues(summary));
+    const values = buildReportTemplateValues(summary);
+    const filtersCommit = prepared.provenance.commit;
+    const body = withReportFooter(renderReportComment(template, values), filtersCommit);
     writeRunReportArtifacts(request.artifactsDir, body, reportPayload, {
         runResult,
         artifacts: agentArtifacts.artifacts,
@@ -483,14 +535,42 @@ async function runInsideWorkspace(
                 token: request.token ?? '',
             });
         const reportAuthorLogin = await resolveReportAuthorLogin(client, logger);
-        const publication = await publishReportOnce(client, {
-            owner: slug.owner,
-            repo: slug.repo,
-            issueNumber: request.issueNumber,
-            revisionDigest,
-            reportAuthorLogin,
-            body,
-        });
+        const screenshots = runResult.artifactPaths.verifiedCandidateScreenshots;
+        const publication = await publishGuardedReport(
+            client,
+            {
+                owner: slug.owner,
+                repo: slug.repo,
+                issueNumber: request.issueNumber,
+                revisionDigest,
+                reportAuthorLogin,
+                body,
+                ...(screenshots === undefined
+                    ? {}
+                    : {
+                          finalizeBody: async () =>
+                              withReportFooter(
+                                  renderReportComment(template, {
+                                      ...values,
+                                      screenshots: await renderHostedReportScreenshots(
+                                          client,
+                                          {
+                                              owner: slug.owner,
+                                              repo: slug.repo,
+                                              issueNumber: request.issueNumber,
+                                              before: readFileSync(screenshots.before),
+                                              after: readFileSync(screenshots.after),
+                                          },
+                                          logger,
+                                      ),
+                                  }),
+                                  filtersCommit,
+                              ),
+                      }),
+            },
+            request.trustedRoles,
+            logger,
+        );
         return {
             kind: DefaultSingleIssueResultKind.Processed,
             issueNumber: request.issueNumber,

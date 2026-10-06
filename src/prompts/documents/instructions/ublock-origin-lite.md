@@ -159,6 +159,10 @@ only.
 
 {{missingInformation}}
 
+### Screenshots
+
+{{screenshots}}
+
 ### Artifacts
 
 {{artifactsLink}}

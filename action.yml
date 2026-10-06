@@ -36,7 +36,8 @@ inputs:
         required: false
     trustedRoles:
         description: >-
-            Comma-separated GitHub author associations trusted to change a backlog issue's revision;
+            Comma-separated GitHub author associations trusted to change a backlog issue's revision,
+            and whose comment on an issue keeps the report silent as a maintainer already on it;
             defaults to OWNER,MEMBER,COLLABORATOR.
         required: false
     maxRevisionsPerWindow:

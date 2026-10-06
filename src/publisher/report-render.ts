@@ -692,7 +692,9 @@ export function summarizeReportOutcome(
  * Build one report render's fill values from the projected outcome.
  *
  * Every fill is computed — model-adjacent text goes through the bounded untrusted renderer, while
- * host-owned fields (outcome labels, artifact links, repository paths) pass through as written.
+ * host-owned fields (outcome labels, artifact links, repository paths) pass through as written. The
+ * screenshots fill starts empty: the images get an address only once the publisher decides to post
+ * (see `report-screenshots.ts`).
  *
  * @param summary - Projected outcome summary.
  * @returns Fill values covering every key of `REPORT_TEMPLATE_FILL`.
@@ -717,6 +719,7 @@ export function buildReportTemplateValues(summary: ReportOutcomeSummary): Report
         missingInformation: (summary.missingInformation ?? [])
             .map(renderMissingInformationLine)
             .join('\n'),
+        screenshots: '',
     };
 }
 

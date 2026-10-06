@@ -164,6 +164,13 @@ export interface ReportPublishInput {
      * it was posted by this exact login.
      */
     reportAuthorLogin: string;
+
+    /**
+     * Produces the body actually posted, called only once no comment reports the revision; absent
+     * means `body` posts as is. It is the hook for content with a side effect of its own, such as
+     * hosted screenshots, so a run that reports nothing new writes nothing anywhere.
+     */
+    finalizeBody?: () => Promise<string>;
 }
 
 /**
@@ -263,46 +270,42 @@ function isOwnReportComment(author: string | null | undefined, reportAuthorLogin
 }
 
 /**
- * Publish the run's report once per issue revision.
+ * The issue and revision a report lookup searches for.
+ */
+export type RevisionReportTarget = Pick<
+    ReportPublishInput,
+    'owner' | 'repo' | 'issueNumber' | 'revisionDigest' | 'reportAuthorLogin'
+>;
+
+/**
+ * Find the comment that already reports one issue revision.
  *
- * The composed body (marker on the first line, Markdown report beneath) is size-guarded against
- * GitHub's comment limit before any API call. Existing comments are scanned one set-per-page at a
- * time (`per_page: 100`); the first comment authored by `input.reportAuthorLogin` whose parsed
- * marker digest equals the run's revision is the prior report and ends the scan — a marker on a
- * comment from any other author is never trusted, since anyone can post one on a public issue. Only
- * when no comment reports the revision is a new comment posted. Platform failures propagate
- * unswallowed — classifying them as infrastructure failures for the run is the caller's contract.
+ * Existing comments are scanned one set-per-page at a time (`per_page: 100`); the first comment
+ * authored by `target.reportAuthorLogin` whose parsed marker digest equals the revision is the
+ * prior report and ends the scan — a marker on a comment from any other author is never trusted,
+ * since anyone can post one on a public issue.
  *
  * @param octokit - Authenticated GitHub API client.
- * @param input - Target issue, revision digest, Markdown report body, and the run's own
- *   report-author login.
- * @returns The publication action and the comment identity for both outcomes.
+ * @param target - Issue, revision digest and the run's own report-author login.
+ * @returns The prior report as an `already_reported` result, or null when none reports the
+ *   revision.
  */
-export async function publishReportOnce(
+export async function findRevisionReport(
     octokit: Octokit,
-    input: ReportPublishInput,
-): Promise<ReportPublishResult> {
-    const revisionDigest = input.revisionDigest.toLowerCase();
-    const body = `${renderReportRevisionMarker({ schemaVersion: 1, revisionDigest })}\n${input.body}`;
-    if (body.length > MAX_COMMENT_BODY_CHARACTERS) {
-        throw new ReportPublishError(
-            ReportPublishErrorKind.CommentBodyTooLarge,
-            `Report comment body is ${body.length} characters; GitHub comments allow at most ` +
-                `${MAX_COMMENT_BODY_CHARACTERS}`,
-        );
-    }
-
+    target: RevisionReportTarget,
+): Promise<ReportPublishResult | null> {
+    const revisionDigest = target.revisionDigest.toLowerCase();
     let page = 1;
     while (true) {
         const response = await octokit.rest.issues.listComments({
-            owner: input.owner,
-            repo: input.repo,
-            issue_number: input.issueNumber,
+            owner: target.owner,
+            repo: target.repo,
+            issue_number: target.issueNumber,
             per_page: COMMENT_PAGE_SIZE,
             page,
         });
         for (const comment of response.data) {
-            if (!isOwnReportComment(comment.user?.login, input.reportAuthorLogin)) {
+            if (!isOwnReportComment(comment.user?.login, target.reportAuthorLogin)) {
                 continue;
             }
             const marker = parseReportRevisionMarker(comment.body ?? null);
@@ -315,16 +318,65 @@ export async function publishReportOnce(
             }
         }
         if (response.data.length < COMMENT_PAGE_SIZE) {
-            break;
+            return null;
         }
         page += 1;
     }
+}
 
+/**
+ * Compose the posted comment body: the hidden marker on the first line, the report beneath.
+ *
+ * @param revisionDigest - Canonical lowercase digest of the reported issue revision.
+ * @param body - Markdown report body without the marker.
+ * @returns The marker-plus-body comment text.
+ * @throws ReportPublishError When the composed body exceeds GitHub's comment limit.
+ */
+function composeMarkedBody(revisionDigest: string, body: string): string {
+    const marked = `${renderReportRevisionMarker({ schemaVersion: 1, revisionDigest })}\n${body}`;
+    if (marked.length > MAX_COMMENT_BODY_CHARACTERS) {
+        throw new ReportPublishError(
+            ReportPublishErrorKind.CommentBodyTooLarge,
+            `Report comment body is ${marked.length} characters; GitHub comments allow at most ` +
+                `${MAX_COMMENT_BODY_CHARACTERS}`,
+        );
+    }
+    return marked;
+}
+
+/**
+ * Publish the run's report once per issue revision.
+ *
+ * The composed body (marker on the first line, Markdown report beneath) is size-guarded against
+ * GitHub's comment limit before any API call. A prior report of the same revision (see
+ * `findRevisionReport`) is returned as is; only when no comment reports the revision is a new
+ * comment posted, with the body `finalizeBody` returns when the caller gave one; the size guard
+ * checks both bodies. Platform failures propagate unswallowed — classifying them as infrastructure
+ * failures for the run is the caller's contract.
+ *
+ * @param octokit - Authenticated GitHub API client.
+ * @param input - Target issue, revision digest, Markdown report body, and the run's own
+ *   report-author login.
+ * @returns The publication action and the comment identity for both outcomes.
+ */
+export async function publishReportOnce(
+    octokit: Octokit,
+    input: ReportPublishInput,
+): Promise<ReportPublishResult> {
+    const revisionDigest = input.revisionDigest.toLowerCase();
+    composeMarkedBody(revisionDigest, input.body);
+
+    const reported = await findRevisionReport(octokit, { ...input, revisionDigest });
+    if (reported !== null) {
+        return reported;
+    }
+
+    const finalBody = input.finalizeBody === undefined ? input.body : await input.finalizeBody();
     const created = await octokit.rest.issues.createComment({
         owner: input.owner,
         repo: input.repo,
         issue_number: input.issueNumber,
-        body,
+        body: composeMarkedBody(revisionDigest, finalBody),
     });
     return {
         action: ReportPublishAction.Posted,

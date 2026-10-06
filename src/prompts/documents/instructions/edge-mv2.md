@@ -123,6 +123,10 @@ file is where the fix is proposed to ship.
 
 {{missingInformation}}
 
+### Screenshots
+
+{{screenshots}}
+
 ### Artifacts
 
 {{artifactsLink}}

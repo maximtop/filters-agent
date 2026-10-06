@@ -63,6 +63,7 @@ export const REPORT_TEMPLATE_FILL = {
     listPlace: '',
     artifactsLink: '',
     missingInformation: '',
+    screenshots: '',
 } as const;
 
 /**
@@ -81,8 +82,8 @@ export type ReportTemplateValues = Record<ReportTemplateFill, string>;
  * outcome, why the run ended as it did, the version-update hint when the reported version is
  * outdated and the defect does not reproduce, reproduced symptom, rule, the unverified candidate an
  * analysis-only run wants reviewed, what the review still saw on the page after that candidate,
- * executor and version, policy rationale, place in the list, missing information block, and the
- * link to the run artifacts.
+ * executor and version, policy rationale, place in the list, missing information block, the
+ * verified candidate's before and after screenshots, and the link to the run artifacts.
  */
 export const BUILT_IN_REPORT_TEMPLATE = [
     '{{outcome}}',
@@ -122,6 +123,10 @@ export const BUILT_IN_REPORT_TEMPLATE = [
     '## Missing information',
     '',
     '{{missingInformation}}',
+    '',
+    '## Screenshots',
+    '',
+    '{{screenshots}}',
     '',
     '## Artifacts',
     '',
