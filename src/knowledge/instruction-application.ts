@@ -13,12 +13,12 @@ import {
 /**
  * Application-contract parsing of a run instruction.
  *
- * Decision (b) of the 11-HITL approach: the model performs the candidate application between phase
- * open and observation by following the instruction's own rule-application steps, while the host
- * reads the blocker state back itself. The instruction must therefore carry one `## Rule
- * application` heading (the steps, performed verbatim) and one `## State verification` heading
- * declaring how the host may read the state back (`read: <method> <target?>`). An instruction that
- * does not carry both is a recorded refusal — the host never invents an application method.
+ * The model performs the candidate application between phase open and observation by following the
+ * instruction's own rule-application steps, while the host reads the blocker state back itself. The
+ * instruction must therefore carry one `## Rule application` heading (the steps, performed
+ * verbatim) and one `## State verification` heading declaring how the host may read the state back
+ * (`read: <method> <target?>`). An instruction that does not carry both is a recorded refusal — the
+ * host never invents an application method.
  */
 
 /**
@@ -239,15 +239,15 @@ export function parseRuleApplication(content: string): RuleApplicationParse {
  * Detail explaining why a run must refuse before any paid work, when the instruction's application
  * contract declares a file-backed verification method the host cannot apply.
  *
- * One file-backed pairing runs today (31-AFK Decision 4): `managed-storage-file` beside a `launch:
- * firefox` declaration in the preparation section. There the host itself maintains the declared
- * file between phases — it writes the file, rebuilds the Firefox enterprise policies from the
- * instruction's managed-storage declaration, relaunches the browser so it reads them at startup,
- * and reads the file back. Every other file-backed declaration still has nobody who writes the file
- * the read names: `user-rules-file` reaches a Chromium blocker whose own storage the host cannot
- * write, and a `managed-storage-file` without a Firefox launch declaration names no policies to
- * rebuild — so the host would always read back a file the run itself never populated and the phase
- * could never verify.
+ * Exactly one file-backed pairing runs: `managed-storage-file` beside a `launch: firefox`
+ * declaration in the preparation section. There the host itself maintains the declared file between
+ * phases — it writes the file, rebuilds the Firefox enterprise policies from the instruction's
+ * managed-storage declaration, relaunches the browser so it reads them at startup, and reads the
+ * file back. Every other file-backed declaration has nobody who writes the file the read names:
+ * `user-rules-file` reaches a Chromium blocker whose own storage the host cannot write, and a
+ * `managed-storage-file` without a Firefox launch declaration names no policies to rebuild — so the
+ * host would always read back a file the run itself never populated and the phase could never
+ * verify.
  *
  * This is the one gate every face calls at the earliest point it holds the loaded instruction,
  * before the issue is fetched, intake extraction runs, or any other paid work starts, so a run that

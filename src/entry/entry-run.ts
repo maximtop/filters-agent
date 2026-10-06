@@ -1,9 +1,9 @@
 /**
  * The entry dispatch: mode resolution, the backlog loop, and the run's exit contract. It re-asserts
  * the validated input shape, then delegates every work seam — the per-issue engine defaults to the
- * public composition of `single-issue-run.ts`, the backlog reader to the 17-AFK GitHub reader, the
- * persisted result file to `entry-result.ts` — so both hosts it dispatches for today, the lab's own
- * CLI cycle and the container action, share this one dispatch untouched.
+ * public composition of `single-issue-run.ts`, the backlog reader to the GitHub backlog reader, the
+ * persisted result file to `entry-result.ts` — so every host it dispatches for, a CLI and the
+ * container action alike, shares this one dispatch untouched.
  */
 
 import { join } from 'node:path';
@@ -92,7 +92,7 @@ export { ENTRY_RESULT_FILE_NAME } from './entry-result';
 
 /**
  * Injectable seams of the entry; production passes nothing and gets the public per-issue
- * composition and the 17-AFK GitHub backlog reader.
+ * composition and the GitHub backlog reader.
  */
 export interface AgentEntryDependencies {
     /**

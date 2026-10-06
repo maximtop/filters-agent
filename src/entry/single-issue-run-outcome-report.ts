@@ -1,10 +1,12 @@
 /**
- * Best-effort short-report posting for a sealed outcome that never reached a locked `FixRunResult`
- * — a skip, or a failure once the run's revision digest was already computed.
+ * The short report of a sealed outcome that never reached a locked `FixRunResult` — a skip, or a
+ * failure once the run's revision digest was already computed — rendered for the artifacts and, for
+ * a failure, posted best-effort.
  *
  * Backlog selection's dedupe and revision budget only see a comment's marker; without one, a
- * repeatedly skipped or failing issue is retaken on every run, paying for a new attempt each time.
- * Posting here closes that gap the same way a fully processed run's report does. Also carries the
+ * repeatedly failing issue is retaken on every run, paying for a new attempt each time. Posting a
+ * failure closes that gap the same way a fully processed run's report does. A skip is never posted:
+ * it is not a finding the issue needs, and its retake costs one intake call. Also carries the
  * shared "log the caught error in full before mapping or swallowing it" helper every catch in the
  * default single-issue engine uses.
  */
@@ -62,19 +64,56 @@ export interface MinimalOutcomeReport {
 }
 
 /**
- * Render, and when comments are enabled attempt to post, the minimal short report for an outcome
+ * Render the minimal short report for an outcome that has no locked run result.
+ *
+ * @param request - The per-issue request.
+ * @param instructionContent - Loaded run instruction content, for the report template.
+ * @param filtersCommit - Commit of the filter lists the run prepared, for the report footer.
+ * @param outcomeLabel - Human outcome line (e.g. "Issue skipped", "Intake extraction failed").
+ * @param outcomeReason - Detail explaining the outcome.
+ * @returns The rendered Markdown body, minus the hidden revision marker.
+ */
+export function renderMinimalOutcomeReport(
+    request: DefaultSingleIssueRequest,
+    instructionContent: string | undefined,
+    filtersCommit: string,
+    outcomeLabel: string,
+    outcomeReason: string,
+): string {
+    const template = resolveReportTemplate(instructionContent).template;
+    const summary: ReportOutcomeSummary = {
+        outcome: outcomeLabel,
+        outcomeReason,
+        versionUpdateHint: '',
+        symptom: '',
+        rule: '',
+        listPlace: '',
+        executor: '',
+        executorVersion: '',
+        policyRationale: '',
+        missingInformation: [],
+        artifactsLink: request.actionsRunUrl ?? '',
+    };
+    return withReportFooter(
+        renderReportComment(template, buildReportTemplateValues(summary)),
+        filtersCommit,
+    );
+}
+
+/**
+ * Render, and when comments are enabled attempt to post, the minimal short report for a failure
  * that has no locked run result.
  *
  * Never throws: a publication failure here is logged and a null publication is returned, since this
- * best-effort comment is not the run's own purpose — the caller already has its own seal (the skip,
- * or the failure it is separately reporting).
+ * best-effort comment is not the run's own purpose — the caller already has its own seal (the
+ * failure it is separately reporting).
  *
  * @param request - The per-issue request.
  * @param logger - Diagnostics sink.
  * @param revisionDigest - The computed revision identity to bind the marker to.
  * @param instructionContent - Loaded run instruction content, for the report template.
  * @param filtersCommit - Commit of the filter lists the run prepared, for the report footer.
- * @param outcomeLabel - Human outcome line (e.g. "Issue skipped", "Intake extraction failed").
+ * @param outcomeLabel - Human outcome line (e.g. "Intake extraction failed").
  * @param outcomeReason - Detail explaining the outcome.
  * @param dependencies - Injectable seams; only the prebuilt GitHub client is read.
  * @returns The rendered report body and the publication result, or a null publication when comments
@@ -91,23 +130,12 @@ export async function postMinimalOutcomeReport(
     outcomeReason: string,
     dependencies: Pick<DefaultSingleIssueDependencies, 'octokit'>,
 ): Promise<MinimalOutcomeReport> {
-    const template = resolveReportTemplate(instructionContent).template;
-    const summary: ReportOutcomeSummary = {
-        outcome: outcomeLabel,
-        outcomeReason,
-        versionUpdateHint: '',
-        symptom: '',
-        rule: '',
-        listPlace: '',
-        executor: '',
-        executorVersion: '',
-        policyRationale: '',
-        missingInformation: [],
-        artifactsLink: request.actionsRunUrl ?? '',
-    };
-    const body = withReportFooter(
-        renderReportComment(template, buildReportTemplateValues(summary)),
+    const body = renderMinimalOutcomeReport(
+        request,
+        instructionContent,
         filtersCommit,
+        outcomeLabel,
+        outcomeReason,
     );
     if (!request.commentsEnabled || request.slug === null) {
         return { body, publication: null };

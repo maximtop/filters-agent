@@ -335,7 +335,7 @@ async function fetchCurrentCommit(
  * Fetch and verify the exact upstream master SHA captured by live intake.
  *
  * The provenance remains `current`: the commit is a concurrency pin for the current snapshot, not a
- * historical benchmark boundary.
+ * historical revision boundary.
  *
  * @param config - Current filters configuration containing an intake-selected commit.
  * @param checkoutPath - Disposable checkout root.

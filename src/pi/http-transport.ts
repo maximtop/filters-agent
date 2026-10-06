@@ -5,14 +5,13 @@
  * the Node 24 line asserts inside its HTTP parser when the peer closes a connection whose response
  * body is still paused by backpressure. The assertion is thrown from a socket event, so no caller
  * can catch it: the process exits. An LLM gateway that closes a connection before the client has
- * drained a streamed completion triggers exactly that, and it took down more than half of the live
- * runs of 2026-09-28..30 right after their first screenshot analysis.
+ * drained a streamed completion triggers exactly that, typically right after a run's first
+ * screenshot analysis.
  *
  * The project already pins a fixed Undici (`package.json`) whose parser finishes a paused body
  * instead of asserting. Installing its `Agent` as the process-wide dispatcher routes the built-in
- * `fetch` — the OpenAI SDK under pi, and every other request of the run — through that code. It is
- * the same repair the pre-pi transport carried (`src/llm/transport.ts`, removed with the pi
- * migration), applied once for the whole process instead of per call site.
+ * `fetch` — the OpenAI SDK under pi, and every other request of the run — through that code, once
+ * for the whole process instead of per call site.
  */
 import { Agent, setGlobalDispatcher } from 'undici';
 

@@ -203,7 +203,7 @@ export function registerRuleSearchTool(
             function: {
                 name: ToolName.SearchRules,
                 description:
-                    'Search AdguardFilters for existing rules matching a domain, selector, URL ' +
+                    "Search this repository's filter lists for existing rules matching a domain, selector, URL " +
                     'pattern, or scriptlet. After a compound modifier selector is rejected, ' +
                     'search its stable base selector separately before retrying. When an ' +
                     'applicable multi-domain base rule exists, use it or extend its domain list ' +

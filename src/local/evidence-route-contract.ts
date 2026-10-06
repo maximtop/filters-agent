@@ -4,9 +4,10 @@ import type { BrowserSession } from '../browser/browser-session';
 import type { AppliedRulesLog } from '../environment/applied-rules';
 
 /**
- * The command and storage contract of one isolated filtering installation, pinned by the retired
- * product CLI this baseline contract was written against. The producing route reads the native
- * catalog itself and binds these argv forms; src owns the contract and lab implements it.
+ * The command and storage contract of one isolated filtering installation, pinned to the product
+ * CLI version this baseline contract was written against. The producing route reads the native
+ * catalog itself and binds these argv forms; src owns the contract and an implementation outside
+ * this tree provides it.
  */
 export const BASELINE_ACTION_CONTRACT = Object.freeze({
     cliVersion: '1.4.13',

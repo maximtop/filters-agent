@@ -3,17 +3,17 @@
  * `interact_page`, and the refusals they answer with once spent.
  *
  * Both tools are unbounded by construction — a script, a sequence of clicks — so the budget is what
- * makes a dead end terminate: a live run spent 102 free-form evaluations re-deriving DOM structure
- * by hand and never applied its candidate. The counters belong to one browser session; a materially
- * different environment gets fresh ones.
+ * makes a dead end terminate: an unbounded run can spend 102 free-form evaluations re-deriving DOM
+ * structure by hand and never apply its candidate. The counters belong to one browser session; a
+ * materially different environment gets fresh ones.
  */
 import { ToolName } from '../agent/tool-names';
 
 /**
  * Free-form page-script evaluations allowed per browser session.
  *
- * `evaluate_js` is meant for focused facts the structured inspectors do not expose. A live run
- * spent 102 of them re-deriving DOM structure by hand and never applied its candidate, so the
+ * `evaluate_js` is meant for focused facts the structured inspectors do not expose. Unbounded, a
+ * run can spend 102 of them re-deriving DOM structure by hand and never apply its candidate, so the
  * budget makes that dead end terminate instead of consuming the whole investigation.
  */
 const MAX_EVALUATE_JS_CALLS_PER_SESSION = 25;

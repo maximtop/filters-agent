@@ -17,11 +17,11 @@ import type {
 import { filteringExecutors } from './filtering-executors';
 
 /**
- * The browser-extension filtering executor: the one executor the publishable tree registers.
+ * The browser-extension filtering executor: the one executor this tree registers.
  *
- * Importing this module performs the registration, so a public run's registry is never empty; the
- * lab tree imports it (directly or through the runtime wiring) and registers CLI-shaped executors
- * beside it.
+ * Importing this module performs the registration, so a run's registry is never empty; other
+ * callers may import it (directly or through the runtime wiring) and register executors of their
+ * own beside it.
  */
 
 /**
@@ -80,10 +80,10 @@ export const extensionFilteringExecutor: FilteringExecutor = {
     /**
      * Build the adapter of the run's own blocker family from the runtime's verified inputs.
      *
-     * One executor name, one adapter per launch family (32-AFK Decision 3): a Firefox-family run
-     * force-installs a signed XPI and credits its phases from the declared file, while the Chromium
-     * line loads an unpacked AdGuard build and locks its ruleset bytes. The runtime builds exactly
-     * one of the two option sets, so this registration never has to choose between them.
+     * One executor name, one adapter per launch family: a Firefox-family run force-installs a
+     * signed XPI and credits its phases from the declared file, while the Chromium line loads an
+     * unpacked AdGuard build and locks its ruleset bytes. The runtime builds exactly one of the two
+     * option sets, so this registration never has to choose between them.
      *
      * @param context - Runtime-resolved adapter inputs.
      * @returns Fresh executing adapter for this run.

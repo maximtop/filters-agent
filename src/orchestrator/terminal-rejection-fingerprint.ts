@@ -5,13 +5,12 @@ import type { FinishFixValidationRejection } from '../types/terminal-rejection';
  *
  * The streak caps a model that resubmits `finish_fix` into the same wall, and "the same wall" has
  * to follow the evidence, not the prose: a rejection's text is word-for-word identical whether or
- * not the model did the browser work it asks for in between. Live run 34003130266 sealed four fix
- * runs after three same-text rejections although the model had closed its session, launched a fresh
+ * not the model did the browser work it asks for in between. A text-keyed streak seals a run after
+ * three same-text rejections even when the model closed its session, launched a fresh
  * `reported_on_current` one and revalidated the candidate between every two of them. What changes
  * when the model makes progress is the requirement's counters and statuses; what changes when it
  * merely repeats itself is session ids, ordinals and artifact ids. The fingerprint keeps the former
  * and drops the latter along with every prose field, so equal fingerprints mean equal progress.
- * This is the retired agent loop's finish-retry identity, ported unchanged.
  */
 
 /**
@@ -37,7 +36,7 @@ const ARTIFACT_ID_KEY_PATTERN = /artifactids?$/iu;
 /**
  * Order items by a string key, so equal sets render identically regardless of the order the
  * producer emitted them in. `Array.prototype.sort` is stable, so items with equal keys keep their
- * relative order exactly as the retired insertion sort kept it.
+ * relative order.
  *
  * @param items - Items to order.
  * @param keyOf - Sort key of one item.

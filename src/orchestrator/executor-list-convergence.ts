@@ -112,9 +112,9 @@ function recordConvergenceFidelity(
  * first one it does not, exactly as the browser-extension launch converges onto the installed build
  * catalog: the ids left behind are classified against the third-party registry and recorded as the
  * run's filter-selection approximation, and the narrower baseline is what the executor prepares, so
- * every downstream record — phase proofs, the report's executed baseline — names what really ran. A
- * live desktop run of AdguardFilters #241534 ended `capability_limited` before `apply_rule` on
- * nothing worse than reporter-enabled third-party list 207 (Adblock Warning Removal List).
+ * every downstream record — phase proofs, the report's executed baseline — names what really ran.
+ * Failing instead would end a run `capability_limited` before `apply_rule` on nothing worse than a
+ * reporter-enabled third-party list such as 207 (Adblock Warning Removal List).
  *
  * Asking for filters and converging on none is still a refusal: a baseline with no list to execute
  * measures nothing, so the run says so instead of silently proving a rule against an empty filter
@@ -188,10 +188,10 @@ function convergeReportedFilterIds(input: {
  * adapter locks and replays the whole observed set from its own read-back. The request names the
  * pinned official part of that set because a list reference exists for nothing else — and nothing
  * is recorded, since a report saying a running ruleset was left out of the executed baseline would
- * state the opposite of what ran. Treating an observed set as a wish did exactly that, and the
- * narrowed request then failed the Extension adapter's exact-set check: every live run whose
- * reporter import activated a build-shipped third-party ruleset (216, 238, 252) ended
- * `capability_limited` at `apply_rule`.
+ * state the opposite of what ran. Treating an observed set as a wish does exactly that, and the
+ * narrowed request then fails the Extension adapter's exact-set check: every run whose reporter
+ * import activates a build-shipped third-party ruleset (216, 238, 252) ends `capability_limited` at
+ * `apply_rule`.
  *
  * @param input - The run's filter ids and the seams the record and the log line reach.
  * @param input.observedFilterIds - The enabled ids the launched blocker reported back, or undefined

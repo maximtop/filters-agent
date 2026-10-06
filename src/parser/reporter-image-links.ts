@@ -1,11 +1,11 @@
 /**
  * GitHub-controlled hosts that serve reporter-uploaded issue images.
  *
- * The pair is one contract with two halves: this module accepts a link on these hosts as a reporter
- * screenshot, and the exporter in `src/local/github-issue-exporter.ts` attaches the configured read
- * token to exactly the same hosts, without which `private-user-images` serves nothing. Naming a new
- * attachment host in only one of the two places would either extract screenshots the exporter
- * cannot fetch, or hand the token to hosts extraction never yields.
+ * The set is exported as one contract with two halves: this module accepts a link on these hosts as
+ * a reporter screenshot, and an issue exporter that downloads those screenshots attaches the
+ * configured read token to exactly the same hosts, without which `private-user-images` serves
+ * nothing. Naming a new attachment host in only one of the two places would either extract
+ * screenshots the exporter cannot fetch, or hand the token to hosts extraction never yields.
  */
 export const GITHUB_USER_IMAGE_HOSTS: ReadonlySet<string> = new Set([
     'user-images.githubusercontent.com',
@@ -46,9 +46,9 @@ const ADGUARD_SCREENSHOT_PATH_PREFIX = '/sitereports/';
  * Hosts of the AdGuard report front-ends that store a report's screenshots themselves, beside the
  * CDN above: the same front-ends `TRUSTED_REPORT_SETTINGS_HOSTS` trusts for settings imports.
  *
- * A live issue (upstream AdguardFilters #241594, 2026-09-16) linked its screenshot from
- * `reports.adguard.info/stcdn/sitereports/…`, and the downloader refused it as no reporter image
- * namespace, so the run analyzed the report without its only screenshot.
+ * An issue can link its screenshot from `reports.adguard.info/stcdn/sitereports/…`; without these
+ * hosts the downloader refuses it as no reporter image namespace, and the run analyzes the report
+ * without its only screenshot.
  */
 const ADGUARD_REPORT_FRONTEND_HOSTS: ReadonlySet<string> = new Set([
     'reports.adguard.com',
@@ -68,8 +68,8 @@ const ADGUARD_REPORT_FRONTEND_SCREENSHOT_PATH_PREFIX = '/stcdn/sitereports/';
  * questions: extraction asks it about an ordinary Markdown link's destination (beside its own
  * image-suffix test), and the screenshot downloader in `src/analyzer/site-analyzer.ts` asks it
  * about the first hop of a download, where it is the whole allowlist. A second copy of the list
- * drifted once already — the downloader knew only the AdGuard CDN and silently dropped every
- * GitHub-hosted reporter screenshot.
+ * would drift: a downloader that knows only the AdGuard CDN silently drops every GitHub-hosted
+ * reporter screenshot.
  *
  * @param url - An already parsed absolute URL.
  * @returns Whether the URL belongs to a reporter image namespace.

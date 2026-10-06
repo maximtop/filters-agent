@@ -4,8 +4,8 @@
  * investigation through `FixCoreOptions.agentRuntime.executorDependencies`. Without this wiring a
  * locked module selection finds no module and ends capability-limited. Every other behavior —
  * workspace preparation, GitHub publication, the durable revision marker — stays exactly the public
- * engine's own; only the investigation seam is wrapped. The action and the lab CLI build their
- * `runIssue` seam here, so the two never drift.
+ * engine's own; only the investigation seam is wrapped. The action and any other caller build their
+ * `runIssue` seam here, so they never drift.
  */
 import { mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';

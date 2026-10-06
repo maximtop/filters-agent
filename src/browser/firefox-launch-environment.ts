@@ -7,12 +7,12 @@ import { join } from 'node:path';
  * user owns, and the sandbox facts that explain what the browser will say about its own sandbox.
  *
  * Firefox refuses to start as root under a foreign-owned `$HOME`: the container action's `HOME` is
- * the runner's mounted home (`/github/home`, uid 1001), and every launch of the first live uBO run
- * died with "Running Nightly as root in a regular user's session is not supported. ($HOME is
- * /github/home which is owned by uid 1001.)". The check compares the _owner_ of `$HOME` against the
- * effective uid, so the fix is a home the launching process owns — not a different uid, not a
- * disabled check. A per-launch temporary directory is the smallest thing that satisfies it, and it
- * also keeps the browser's own profile leftovers out of a shared home.
+ * the runner's mounted home (`/github/home`, uid 1001), and a launch there dies with "Running
+ * Nightly as root in a regular user's session is not supported. ($HOME is /github/home which is
+ * owned by uid 1001.)". The check compares the _owner_ of `$HOME` against the effective uid, so the
+ * fix is a home the launching process owns — not a different uid, not a disabled check. A
+ * per-launch temporary directory is the smallest thing that satisfies it, and it also keeps the
+ * browser's own profile leftovers out of a shared home.
  */
 
 /**
@@ -67,11 +67,11 @@ export interface FirefoxLaunchHome {
 /**
  * Best-effort sandbox facts of the host a Firefox process is about to start on.
  *
- * The first live run also logged "Sandbox: CanCreateUserNamespace() clone() failure: EPERM" beside
- * the `$HOME` refusal. That is a property of the container's uid mapping and seccomp policy, not of
- * the launch arguments, so every launch records what the kernel would answer instead of guessing
- * later. Every field is optional: on a host without procfs the snapshot is simply smaller, and it
- * must never break a launch.
+ * A launch in the container action also logs "Sandbox: CanCreateUserNamespace() clone() failure:
+ * EPERM" beside the `$HOME` refusal. That is a property of the container's uid mapping and seccomp
+ * policy, not of the launch arguments, so every launch records what the kernel would answer instead
+ * of guessing later. Every field is optional: on a host without procfs the snapshot is simply
+ * smaller, and it must never break a launch.
  */
 export interface FirefoxSandboxSnapshot {
     /**

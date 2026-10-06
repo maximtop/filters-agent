@@ -25,13 +25,13 @@ export const StructuredReportHeadingPattern = {
 
     /**
      * The heading narrowed to the exact `Anti Adblock Script` declaration, the parenthetical that
-     * maps to the canonical lab type label.
+     * maps to the canonical issue type label.
      */
     IssueUrlAntiAdblock: /^###\s+Issue URL\s*\(Anti Adblock Script\)\s*$/imu,
 
     /**
      * The heading narrowed to the exact `Incorrect Blocking` declaration, the one other
-     * parenthetical with its own canonical lab type label.
+     * parenthetical with its own canonical issue type label.
      */
     IssueUrlIncorrectBlocking: /^###\s+Issue URL\s*\(Incorrect Blocking\)\s*$/imu,
 

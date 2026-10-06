@@ -157,9 +157,9 @@ export interface PreparationSubprocessResult {
  * are deliberately omitted as variables. Git commands are the one exception, and only in derived
  * form and only when {@link allowGitCredential} is on: when the parent holds `GITHUB_TOKEN` — or
  * the caller supplies an explicit token — git receives a credential scoped to github.com through
- * `GIT_CONFIG_*` — anonymous clones from a shared runner IP trip GitHub's secondary rate limit
- * (every analysis job of 2026-09-02/03 died on "could not read Username"), while the raw token
- * still never reaches any child. Git also receives a non-interactive prompt policy.
+ * `GIT_CONFIG_*` — anonymous clones from a shared runner IP trip GitHub's secondary rate limit and
+ * fail with "could not read Username", while the raw token still never reaches any child. Git also
+ * receives a non-interactive prompt policy.
  *
  * @param source - Parent environment from which safe execution paths may be copied.
  * @param overrides - Optional command-specific values subject to the same allowlist.

@@ -90,12 +90,12 @@ export const PRE_EXISTING_DAMAGE_PREFIX = 'PRE-EXISTING:';
 /**
  * Rubric lines telling an inventory pass how wide the reporter's symptom is.
  *
- * An inventory pass sees the candidate rule beside the symptom scope, and on sitepoint.com it
- * behaved as if the rule bounded the search: the reporter had named a header banner among the ad
- * units, the candidate's selectors did not reach it, and no pass recorded it even though it is
- * plainly there in the AFTER capture. The scope handed to the pass is now composed from the
- * reporter's own report (`reporter-symptom-scope`), and these lines say that the selector is not
- * the boundary of what to record.
+ * An inventory pass sees the candidate rule beside the symptom scope and can behave as if the rule
+ * bounded the search: when the reporter names a header banner among the ad units and the
+ * candidate's selectors do not reach it, no pass records it even though it is plainly there in the
+ * AFTER capture. The scope handed to the pass is composed from the reporter's own report
+ * (`reporter-symptom-scope`), and these lines say that the selector is not the boundary of what to
+ * record.
  */
 export const REPORTER_SCOPE_RUBRIC = [
     'Record an instance at every location the reporter named, and everywhere on the page that',
@@ -106,10 +106,10 @@ export const REPORTER_SCOPE_RUBRIC = [
 /**
  * Rubric lines telling every review prompt what the symptom is and what resolves it.
  *
- * On a site that gates its videos behind cookie consent, the reporter complained that the video did
- * not play, and the screenshot showed the gray "enable cookies to view videos" placeholder. The
- * candidate hid the placeholder, described its own target as "video placeholder overlay", and the
- * review verified it: the placeholder was gone, while the video was as unavailable as before. The
+ * On a site that gates its videos behind cookie consent, a reporter complains that the video does
+ * not play, and the screenshot shows the gray "enable cookies to view videos" placeholder. A
+ * candidate that hides the placeholder and describes its own target as "video placeholder overlay"
+ * can get verified: the placeholder is gone, while the video is as unavailable as before. The
  * reporter's complaint defines the symptom, and a gating placeholder stands for the content it
  * withholds — so hiding it leaves that symptom in place.
  */
@@ -160,10 +160,10 @@ export function synthesisResidueRubric(kind: SymptomKind, scope?: CandidateNetwo
     }
     if (scope === CandidateNetworkScope.ThirdPartyHostBlock) {
         // A block of a third-party host can stop the advertising from loading but cannot collapse
-        // space the page itself reserves for it — that takes a cosmetic rule, and the maintainers
-        // of the uAssets bench case landed the network rule alone. The model still reports the
-        // residue; whether it blocks the verdict is the runner's call, exactly like an unclear
-        // page integrity under this scope.
+        // space the page itself reserves for it — that takes a cosmetic rule, and a maintainer fix
+        // can be the network rule alone. The model still reports the residue; whether it blocks
+        // the verdict is the runner's call, exactly like an unclear page integrity under this
+        // scope.
         return [
             'An outer ad wrapper, REKLAMA',
             'label, divider or frame, or reserved blank space or height at a removed advertising',

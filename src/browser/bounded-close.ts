@@ -4,10 +4,10 @@ import type { Logger } from 'pino';
 /**
  * Deadline for one graceful browser close before escalating to a forced kill.
  *
- * A close on a wedged page can block in the protocol forever: on 2026-08-16 two live analyses
- * (rigla.ru, manhuaren.com) each sat 66+ minutes inside `close_browser` after a navigation timeout,
- * until the CI-level SIGTERM killed the process group and the close finally settled. The bound must
- * stay far below every tool deadline so the model regains control.
+ * A close on a wedged page can block in the protocol forever: a close after a navigation timeout
+ * has been seen to sit for over an hour inside `close_browser`, until the CI-level SIGTERM killed
+ * the process group and the close finally settled. The bound must stay far below every tool
+ * deadline so the model regains control.
  */
 export const BROWSER_CLOSE_DEADLINE_MS = 30_000;
 

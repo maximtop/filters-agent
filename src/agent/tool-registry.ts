@@ -1,11 +1,10 @@
 /**
  * One tool as the registry records it.
  *
- * The shape is OpenAI's function-calling envelope for historical reasons only: nothing advertises
- * it to a model any more. What the model sees is built by the pi session adapters from
- * `TOOL_GUIDANCE` and the catalog's advertisement schemas, so of the three fields only `name` and
- * `parameters` have live readers — see {@link ToolRegistry.getToolNames} and
- * {@link ToolRegistry.getRegisteredTools}.
+ * The shape is OpenAI's function-calling envelope, but nothing advertises it to a model. What the
+ * model sees is built by the pi session adapters from `TOOL_GUIDANCE` and the catalog's
+ * advertisement schemas, so of the three fields only `name` and `parameters` have live readers —
+ * see {@link ToolRegistry.getToolNames} and {@link ToolRegistry.getRegisteredTools}.
  */
 export interface ToolDefinition {
     /**
@@ -73,8 +72,8 @@ export type RegistrationGuard = (tool: RegisteredTool) => void;
  */
 export interface ToolHandler {
     /**
-     * The registry's record of the tool: its name, its registered JSON Schema parameters, and the
-     * legacy description field.
+     * The registry's record of the tool: its name, its registered JSON Schema parameters, and an
+     * unread description field.
      */
     definition: ToolDefinition;
 
@@ -117,10 +116,9 @@ export class ToolRegistry {
      *
      * A session's advertisement is decided once, at build time, but the registry keeps changing
      * after that: the environment lifecycle registers the browser tools, and the fix runtime
-     * re-registers analyze_screenshot behind a widened definition. A drift introduced by one of
-     * those late registrations was never compared against the advertisement, so it surfaced as an
-     * unwinnable run rather than a startup error. Guarding registration itself moves the failure
-     * back to the moment the drift appears.
+     * re-registers analyze_screenshot behind a widened definition. Unchecked, a drift introduced by
+     * one of those late registrations surfaces as an unwinnable run rather than a startup error.
+     * Guarding registration itself moves the failure to the moment the drift appears.
      *
      * @param guard - The check to run before every subsequent registration.
      */
@@ -165,8 +163,8 @@ export class ToolRegistry {
     /**
      * Return the full recorded envelope of every registered tool.
      *
-     * Prefer {@link getToolNames} or {@link getRegisteredTools}: this also returns the legacy
-     * `description` that nothing reads.
+     * Prefer {@link getToolNames} or {@link getRegisteredTools}: this also returns the unread
+     * `description`.
      *
      * @returns The array of `ToolDefinition` objects.
      */

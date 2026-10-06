@@ -20,38 +20,33 @@ import { formatIssues } from './valibot-issues';
 
 /**
  * Single-shot LLM calls on the pi runtime: every out-of-loop completion (vision verdicts,
- * inventories, screenshot analysis, benchmark reviewer, golden oracle) runs through this module.
- * One structured mechanism — prompt-and-parse with one bounded repair attempt, ported verbatim in
- * semantics from the retired vision-json adapter — serves them all, and the free-text path is the
- * same mechanism with no schema. Model/provider behavior never throws here: results are typed
- * unions, terminal failures emit one structured pino warn through the injected logger (pi exposes
- * no retry events, so this line is the only failure diagnostic a run sees), and programmer errors
- * still throw. This module is also the single-shot boundary between pi's vocabulary and the
- * application's own: pi's `Usage` and `StopReason` are mapped here into the shared
- * `CompletionUsage` and `TurnStopReason`, so nothing a consumer of these results touches is a
- * harness type.
+ * inventories, screenshot analysis, reviewer and oracle calls) runs through this module. One
+ * structured mechanism — prompt-and-parse with one bounded repair attempt — serves them all, and
+ * the free-text path is the same mechanism with no schema. Model/provider behavior never throws
+ * here: results are typed unions, terminal failures emit one structured pino warn through the
+ * injected logger (pi exposes no retry events, so this line is the only failure diagnostic a run
+ * sees), and programmer errors still throw. This module is also the single-shot boundary between
+ * pi's vocabulary and the application's own: pi's `Usage` and `StopReason` are mapped here into the
+ * shared `CompletionUsage` and `TurnStopReason`, so nothing a consumer of these results touches is
+ * a harness type.
  *
  * The contract types live in `single-shot-types.ts` and are imported FROM there by every consumer;
- * this module re-exports none of them. It used to, next to the behavior, and the result was two
- * reachable origins for one symbol — the split leaked into call sites either way, and one origin
- * per name is the property worth keeping. One bounded provider completion — the pi request mapping
- * and the inactivity deadline over the streamed response — is `single-shot-completion.ts`, which
- * every attempt made here goes through.
+ * this module re-exports none of them, so every symbol has one reachable origin. One bounded
+ * provider completion — the pi request mapping and the inactivity deadline over the streamed
+ * response — is `single-shot-completion.ts`, which every attempt made here goes through.
  */
 
 /**
  * Maximum schema bytes embedded in one structured system contract.
  *
- * Same bound the retiring vision-json adapter enforced; larger schemas belong in the agent loop's
- * terminal tool, not in an embedded contract.
+ * Larger schemas belong in the agent loop's terminal tool, not in an embedded contract.
  */
 const MAX_SCHEMA_CHARS = 16_000;
 
 /**
  * Maximum invalid model reply retained on the repair re-prompt.
  *
- * Same bound as the retiring adapter: enough for the model to see its mistake, small enough to keep
- * the repair turn cheap.
+ * Enough for the model to see its mistake, small enough to keep the repair turn cheap.
  */
 const MAX_INVALID_RESPONSE_CHARS = 8_000;
 
@@ -72,13 +67,11 @@ const MIN_MAX_ATTEMPTS = 1;
 /**
  * Largest structured-validation attempt count one logical call may own.
  *
- * Why 3: the ceiling of the retiring vision-json adapter's `1 through 3` contract, ported so no
- * migrated caller changes behaviour. The working default is 2 — initial plus one repair — and no
- * caller in the tree passes more; the ceiling exists to stop `maxAttempts` from turning ONE logical
- * single-shot call into an unbounded repair loop, because every attempt past the first is another
- * paid completion and a model that has already seen its own schema error twice is not converging. A
- * caller that genuinely needs more re-prompts from its own loop with context this function does not
- * have.
+ * Why 3: the working default is 2 — initial plus one repair — and no caller in the tree passes
+ * more; the ceiling exists to stop `maxAttempts` from turning ONE logical single-shot call into an
+ * unbounded repair loop, because every attempt past the first is another paid completion and a
+ * model that has already seen its own schema error twice is not converging. A caller that genuinely
+ * needs more re-prompts from its own loop with context this function does not have.
  */
 const MAX_MAX_ATTEMPTS = 3;
 
@@ -295,10 +288,10 @@ export async function runStructuredSingleShot<T>(
 /**
  * Log one completed single-shot call with its wall time and token counts.
  *
- * A single-shot call has no turn in the trace: a live run spent 22 minutes inside the intake
- * extraction with nothing logged in between, and that silence was indistinguishable from a hang
- * until the call returned. Wall time beside the token counts is what tells a trickling stream from
- * a long answer.
+ * A single-shot call has no turn in the trace: a run can spend 22 minutes inside the intake
+ * extraction with nothing logged in between, and that silence is indistinguishable from a hang
+ * until the call returns. Wall time beside the token counts is what tells a trickling stream from a
+ * long answer.
  *
  * @param logger - Diagnostics sink; nothing is logged without one.
  * @param modelId - Model the call was bound to.

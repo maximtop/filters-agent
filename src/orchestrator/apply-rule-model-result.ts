@@ -4,9 +4,9 @@
  * The experiment's record is evidence first: three phases with their measurements, the structure
  * facts, and the vision review. On a long page that record outgrows the tool-result limit, and the
  * generic envelope then hands the model the first kilobytes of JSON — which is where the phases
- * live, while the verdict sits at the very end. Live run 35229530522 finished its review for the
- * first time, the result came to 84,098 bytes against the 65,536-byte limit, and the model wrote
- * "apply_rule returned no readable verdict" and gave up on a candidate it could have corrected.
+ * live, while the verdict sits at the very end. A result of 84,098 bytes against the 65,536-byte
+ * limit leaves the model writing "apply_rule returned no readable verdict" and giving up on a
+ * candidate it could have corrected.
  *
  * So the decision travels first and always: the review, its artifact ids and the summary lead the
  * object, and when the whole still exceeds the budget the bulky evidence is replaced, largest

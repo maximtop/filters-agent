@@ -21,7 +21,6 @@ import {
 import { RuleGuidanceQuerySchema, RuleGuidanceTopicSchema } from '../knowledge/rule-guidance';
 import { MissingInformationEntrySchema } from '../types/missing-information';
 import { ConsentStrategySchema, ViewportSchema } from '../types/repro-profile';
-import { ProblemTypeSchema } from '../types/issue-facts';
 import { SETTINGS_PROFILE_KIND_VALUES } from '../types/settings-profile-kind';
 import { EXTENSION_MODE_VALUES } from '../types/fix-run-result';
 import { FindingSchema } from '../types/site-analysis';
@@ -76,12 +75,11 @@ export const TOOL_GUIDANCE: Readonly<Record<string, string>> = {
     [ToolName.UpdateObservedIntent]:
         'Refines the observed issue classification after new evidence without changing the locked environment or reported context.',
     [ToolName.LookupRuleGuidance]:
-        'Returns bounded guidance from the pinned AdGuard KnowledgeBase and repository policy for a ' +
-        'rule topic, including the source SHA, file, and anchor citation. Syntax topics answer how ' +
+        "Returns bounded guidance from the run's rule-guidance documents for a rule topic, with the " +
+        'citation of the document it quotes. Syntax topics answer how ' +
         'a rule is written; `policy` answers what this repository accepts, refuses or requires — ' +
         'scope, anti-adblock and rewarded-ad gates, exceptions, quality bar — and `placement` ' +
-        "where a rule goes. When a run serves the instruction's own linked documents instead, a " +
-        'document too long to return whole comes back as the sections matching the topic plus an ' +
+        'where a rule goes. A document too long to return whole comes back as the sections matching the topic plus an ' +
         'index of every heading it has — pass `query` with the words naming what you need (a ' +
         'modifier such as `removeparam`, a selector such as `:has`, a heading from the index) to ' +
         'narrow it to those sections, and call again for another part of the same document.',
@@ -92,9 +90,7 @@ export const TOOL_GUIDANCE: Readonly<Record<string, string>> = {
         'reaches the run result and the log; it changes nothing about the current turn, so continue ' +
         'the investigation afterwards. Do not use it to report ads, evidence, or terminal decisions.',
     [ToolName.SearchRules]:
-        'Searches AdguardFilters by domain, selector, URL pattern, or scriptlet. A domain-only query is a compact grouped inventory: follow it with a focused selector, URL pattern, or scriptlet query for exact matches. Search the stable base of a compound modifier selector and validate an exact existing base element-hiding rule as a domain-scoped ## candidate before the modifier. A reported domain absent from a matching shared rule is an expected extend_domains candidate, not a reason to ignore it. Every match carries the repository path of its list file: a draft names one of those paths as the file its rule goes into.',
-    [ToolName.PolicyCheck]:
-        'Checks whether filter policy allows rule generation (first-party ads, paywalls, German anti-adblock). Returns propose_close, needs_human_review, or allow_rule_generation with cited reasons.',
+        "Searches this repository's filter lists by domain, selector, URL pattern, or scriptlet. A domain-only query is a compact grouped inventory: follow it with a focused selector, URL pattern, or scriptlet query for exact matches. Search the stable base of a compound modifier selector and validate an exact existing base element-hiding rule as a domain-scoped ## candidate before the modifier. A reported domain absent from a matching shared rule is an expected extend_domains candidate, not a reason to ignore it. Every match carries the repository path of its list file: a draft names one of those paths as the file its rule goes into.",
     [ToolName.LintRule]:
         "Runs the repository's own lint command over one candidate rule, which checks it against " +
         "the repository's own policy (excluded rules, platforms, modifiers). Pass the rule and " +
@@ -136,7 +132,7 @@ export const TOOL_GUIDANCE: Readonly<Record<string, string>> = {
     [ToolName.GetAppliedRules]:
         "Returns the rules this browser session's filtering engine reported acting on the page, " +
         'grouped by rule: the exact text (and the text it was converted from, when the engine ' +
-        'converted it), the list it belongs to by id and name — lists outside the AdguardFilters ' +
+        'converted it), the list it belongs to by id and name — lists outside this ' +
         'repository included — its family, how often it acted and a sample of what it acted on. ' +
         'Tracking protection actions are counted apart. The answer names the engine, the period ' +
         'it covers and what the engine applies without naming it, whose absence proves nothing. ' +
@@ -221,14 +217,6 @@ export const TOOL_PARAMETER_SCHEMAS: Readonly<
 > = {
     // ── Always present ──────────────────────────────────────────────────────
     [ToolName.FetchIssue]: v.object({ issueNumber: v.number() }),
-    [ToolName.PolicyCheck]: v.object({
-        firstPartyAd: v.boolean(),
-        paywall: v.boolean(),
-        antiAdblockWall: v.boolean(),
-        germanAntiAdblock: v.boolean(),
-        evidenceRefs: v.array(v.string()),
-        problemType: ProblemTypeSchema,
-    }),
 
     // ── Repository lint command present ─────────────────────────────────────
     [ToolName.LintRule]: v.object({ rule: v.string(), filePath: v.string() }),
@@ -407,9 +395,9 @@ export const LAUNCH_BROWSER_PARAMETERS = v.strictObject({
     targetUrl: v.string(),
     profile: ADVERTISED_BROWSER_PROFILE,
     // One flat object, not a union of per-kind shapes: a provider validates the call against this
-    // advertisement before the runtime sees it, and a union failed with every branch's errors and no
-    // field named (AdguardFilters #242775). `launchBrowserRequestSchema` holds each kind to its own
-    // fields and names the one that does not belong.
+    // advertisement before the runtime sees it, and a union fails with every branch's errors and no
+    // field named. `launchBrowserRequestSchema` holds each kind to its own fields and names the one
+    // that does not belong.
     settings: v.optional(
         v.strictObject({
             kind: v.picklist(SETTINGS_PROFILE_KIND_VALUES),

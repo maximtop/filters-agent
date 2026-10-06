@@ -3,17 +3,17 @@ import { COST_COVERAGE_VALUES, USAGE_COMPLETENESS_VALUES } from './usage-status'
 import { UnsupportedArtifactVersionError, readVersionedDocument } from './versioned-document';
 
 /**
- * Persisted usage accounting shared by the run trace, the fix-run artifact, and the benchmark
- * campaign: per-model pricing and the Usage Summary the collector renders. The two honesty statuses
- * it carries (`usageCompleteness`, `costCoverage`) are declared in `usage-status.ts` with every
- * other usage-accounting vocabulary; this module only imports them, so `src/types/trace.ts` can
- * carry the optional `usage` block without an inverted import direction.
+ * Persisted usage accounting shared by the run trace, the fix-run artifact, and cross-run benchmark
+ * comparisons: per-model pricing and the Usage Summary the collector renders. The two honesty
+ * statuses it carries (`usageCompleteness`, `costCoverage`) are declared in `usage-status.ts` with
+ * every other usage-accounting vocabulary; this module only imports them, so `src/types/trace.ts`
+ * can carry the optional `usage` block without an inverted import direction.
  *
  * The artifact this module describes (`llm-usage-summary.json` beside a locked run, and its
  * redacted publication copy `llm-usage.json`) exists on disk in two mutually unreadable shapes, and
- * one reader dispatches between them. Only the pi-sourced shape is declared in full: the retired
- * ledger-shaped aggregate that accompanied the per-attempt `llm-usage.jsonl` ledger has no consumer
- * left that reads a field of one, so it is recognized by its version tag alone.
+ * one reader dispatches between them. Only the pi-sourced shape is declared in full: the
+ * ledger-shaped aggregate that earlier builds wrote beside a per-attempt `llm-usage.jsonl` ledger
+ * has no consumer that reads a field of one, so it is recognized by its version tag alone.
  */
 
 /**
@@ -21,14 +21,13 @@ import { UnsupportedArtifactVersionError, readVersionedDocument } from './versio
  *
  * Each shape owns a number for the whole life of the artifact: a reader must be able to decide from
  * the file alone whether it can interpret the document, and two incompatible shapes sharing one
- * number take that decision away from it. The migration that introduced the pi shape first reused
- * 1, which made a build pinned to the ledger shape accept a file whose every field it would then
- * misread.
+ * number take that decision away from it: a pi-shaped file tagged 1 would make a build that reads
+ * the ledger shape accept a file whose every field it would then misread.
  */
 export const UsageSummaryVersion = {
     /**
-     * The retired ledger-shaped aggregate: per-component and per-model attempt counters written
-     * beside the `llm-usage.jsonl` attempt ledger. Only read, never written again.
+     * The ledger-shaped aggregate earlier builds wrote: per-component and per-model attempt
+     * counters beside the `llm-usage.jsonl` attempt ledger. Only read, never written.
      */
     Ledger: 1,
 
@@ -52,8 +51,8 @@ export type UsageSummaryVersion = (typeof UsageSummaryVersion)[keyof typeof Usag
 /**
  * Frozen per-million-token prices for one model.
  *
- * Field names are byte-identical to the retired `LlmModelPricing`, so the tracked pricing document
- * stays valid across the migration.
+ * Field names are byte-identical to the keys of the tracked pricing document, so that document
+ * stays valid as written.
  */
 export const UsageModelRatesSchema = v.object({
     inputUsdPerMillionTokens: v.pipe(v.number(), v.finite(), v.minValue(0)),
@@ -201,7 +200,7 @@ export type TokenTotals = v.InferOutput<typeof TokenTotalsSchema>;
  * The one place this sum is spelled out. `input` is cache-exclusive under pi and `reasoningTokens`
  * is already a subset of `output`, so the total is exactly the four disjoint counters and nothing
  * else — a fifth term or a dropped cache term produces a number that still looks plausible in a
- * campaign artifact and silently misstates every cross-run cost and cache comparison built on it.
+ * persisted summary and silently misstates every cross-run cost and cache comparison built on it.
  *
  * @param tokens - Token totals of one report, source aggregate, or per-model entry.
  * @returns Cache-inclusive total token count.
@@ -226,15 +225,15 @@ export type RunUsageSummary = v.InferOutput<typeof RunUsageSummarySchema>;
 export type PersistedUsageSummary =
     | {
           /**
-           * Marks the ledger-era document, whose fields count transport attempts. Carries no
-           * payload: the shape is retired and unreadable by every consumer, so the tag is the whole
-           * answer a reader of one can give.
+           * Marks the ledger-shaped document, whose fields count transport attempts. Carries no
+           * payload: no consumer reads the shape, so the tag is the whole answer a reader of one
+           * can give.
            */
           version: typeof UsageSummaryVersion.Ledger;
       }
     | {
           /**
-           * Marks the pi-era document, whose fields count provider completions.
+           * Marks the pi-shaped document, whose fields count provider completions.
            */
           version: typeof UsageSummaryVersion.Run;
 
@@ -250,13 +249,13 @@ export type PersistedUsageSummary =
 const USAGE_SUMMARY_ARTIFACT = 'Persisted usage summary';
 
 /**
- * The retired ledger-shaped summary as this build reads it: its version tag, and nothing else.
+ * The ledger-shaped summary as this build reads it: its version tag, and nothing else.
  *
- * Its counters were attempt-shaped and cache-inclusive, and nothing left in this build reads a
- * field of one — the manifest verifier only has to establish which era a locked run's summary
- * belongs to, and the bytes themselves are proven by the digest its locking manifest bound them
- * with. Re-declaring the eighteen dead counters would be a second definition of a document nothing
- * can produce and nothing interprets.
+ * Its counters are attempt-shaped and cache-inclusive, and nothing in this build reads a field of
+ * one — the manifest verifier only has to establish which shape a locked run's summary belongs to,
+ * and the bytes themselves are proven by the digest its locking manifest bound them with.
+ * Re-declaring the eighteen unread counters would be a second definition of a document nothing can
+ * produce and nothing interprets.
  */
 const LedgerUsageSummaryEnvelopeSchema = v.object({
     schemaVersion: v.literal(UsageSummaryVersion.Ledger),
@@ -286,13 +285,13 @@ export function readPersistedUsageSummary(value: unknown): PersistedUsageSummary
 /**
  * Parse one persisted usage summary that a pi-shaped consumer must be able to interpret.
  *
- * A ledger-era document is rejected rather than migrated: its counters are attempt-shaped and
+ * A ledger-shaped document is rejected rather than converted: its counters are attempt-shaped and
  * cache-inclusive, so any mapping onto the pi shape would invent per-source splits and reported
  * completion counts the ledger never recorded.
  *
  * @param value - Decoded JSON read from a usage-summary artifact.
  * @returns The parsed pi-sourced Usage Summary.
- * @throws UnsupportedArtifactVersionError When the document is not a pi-era summary.
+ * @throws UnsupportedArtifactVersionError When the document is not a pi-shaped summary.
  */
 export function readRunUsageSummary(value: unknown): RunUsageSummary {
     const persisted = readPersistedUsageSummary(value);

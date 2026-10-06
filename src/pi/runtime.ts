@@ -2,6 +2,7 @@ import { InMemoryCredentialStore, type Api, type Model } from '@earendil-works/p
 import { ModelRuntime } from '@earendil-works/pi-coding-agent';
 import type { LlmConfig } from '../config/config';
 import type { ProviderRouting } from '../config/provider-routing';
+import { ReasoningEffort } from '../config/reasoning-effort';
 import { installHttpTransport } from './http-transport';
 
 /**
@@ -16,12 +17,11 @@ import { installHttpTransport } from './http-transport';
  * the reasoning entry is `input: ['text']`, the vision entry `input: ['text', 'image']`. Put both
  * in one catalog and a configuration that names the SAME slug for both roles collapses onto
  * whichever entry was registered first — the text-only one — and pi's message transform then strips
- * every image before the request with `(image omitted: model does not support images)`. A live run
- * with `llmModel` and `llmVisionModel` both set to `deepseek/deepseek-v4.1-flash` answered every
- * `analyze_screenshot` call with "No image was delivered with this request" for exactly that
- * reason. A provider id per role gives each its own slot, so the two handles stay distinct no
- * matter how the ids compare — one slug serving both roles is a supported configuration, not a
- * collision.
+ * every image before the request with `(image omitted: model does not support images)`: with
+ * `llmModel` and `llmVisionModel` both set to one slug, every `analyze_screenshot` call is answered
+ * with "No image was delivered with this request". A provider id per role gives each its own slot,
+ * so the two handles stay distinct no matter how the ids compare — one slug serving both roles is a
+ * supported configuration, not a collision.
  */
 
 /**
@@ -52,10 +52,9 @@ const UNPRICED_MODEL_COST = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
  * model.
  *
  * `requiresReasoningContentOnAssistantMessages` replays `reasoning_content` on assistant history:
- * some thinking-mode OpenAI-compatible gateways hard-fail the following request without it (the
- * bespoke loop carried the same workaround). pi's URL auto-detection cannot fire here — the gateway
- * host is not `deepseek.com` — so the flag must be explicit, and it only takes effect on entries
- * registered with `reasoning: true`.
+ * some thinking-mode OpenAI-compatible gateways hard-fail the following request without it. pi's
+ * URL auto-detection cannot fire here — the gateway host is not `deepseek.com` — so the flag must
+ * be explicit, and it only takes effect on entries registered with `reasoning: true`.
  *
  * `sendSessionAffinityHeaders` with `sessionAffinityFormat: 'openai'` attaches `session_id`,
  * `x-client-request-id`, and `x-session-affinity` headers whenever a caller passes a session id,
@@ -65,13 +64,12 @@ const UNPRICED_MODEL_COST = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
  * openai-completions API sends it as `developer` for any entry registered `reasoning: true` unless
  * the flag says otherwise, and its URL auto-detection only turns the role off for hosts it knows
  * (`deepseek.com`, `cerebras.ai`, …) — the gateway host is none of them, so the detected default is
- * `true`. The gateway's upstream pool is not uniform on that role: in one live campaign a replica
- * answered 400 "messages[0].role: unknown variant developer, expected one of system, user,
- * assistant, tool" on the 26th request of a session whose first 25 requests — same model, same
- * system prompt, same role — had been accepted by other replicas, and the run sealed
- * `provider-failure` as a deterministic rejection. `system` is the one spelling every OpenAI-shaped
- * upstream accepts, and the two roles are equivalent to the gateway, so nothing is given up by
- * pinning it.
+ * `true`. The gateway's upstream pool is not uniform on that role: a replica can answer 400
+ * "messages[0].role: unknown variant developer, expected one of system, user, assistant, tool"
+ * mid-session after other replicas accepted the same model, system prompt and role, and the run
+ * then seals `provider-failure` as a deterministic rejection. `system` is the one spelling every
+ * OpenAI-shaped upstream accepts, and the two roles are equivalent to the gateway, so nothing is
+ * given up by pinning it.
  */
 const OPENAI_COMPATIBLE_COMPAT = {
     requiresReasoningContentOnAssistantMessages: true,
@@ -130,6 +128,7 @@ export type PiRuntimeConfig = Pick<
     | 'maxOutputTokens'
     | 'visionMaxOutputTokens'
     | 'providerRouting'
+    | 'reasoningEffort'
 >;
 
 /**
@@ -186,10 +185,10 @@ export interface PiRuntime {
 /**
  * Register one extra text-only reasoning model on the REASONING role's provider and resolve it.
  *
- * The benchmark reviewer's model override (`reviewerModel`, defaulting to the configured reasoning
- * model) may name a slug outside the two configured models; the legacy provider sent any slug to
- * the gateway, so the pi runtime keeps that capability by extending the in-code catalog.
- * Idempotent: an already-registered id resolves without re-registering.
+ * A caller's model override (a reviewer model, for instance, defaulting to the configured reasoning
+ * model) may name a slug outside the two configured models; the pi runtime supports any slug the
+ * gateway serves by extending the in-code catalog. Idempotent: an already-registered id resolves
+ * without re-registering.
  *
  * The new entry inherits the resolved reasoning model's catalog limits — it stands in for exactly
  * that role — so an override model is bounded by the configured values and no second default for
@@ -221,7 +220,7 @@ export function registerAdditionalTextModel(runtime: PiRuntime, modelId: string)
             {
                 id: modelId,
                 name: modelId,
-                reasoning: true,
+                reasoning: runtime.reasoningModel.reasoning,
                 input: ['text'],
                 cost: { ...UNPRICED_MODEL_COST },
                 contextWindow: runtime.reasoningModel.contextWindow,
@@ -255,13 +254,26 @@ function sharedCatalogFields(config: PiRuntimeConfig) {
 }
 
 /**
+ * Whether the configured reasoning model is registered as one that reasons.
+ *
+ * @param config - Validated provider configuration.
+ * @returns `false` when the deployment set its reasoning effort to `off`.
+ */
+function reasons(config: PiRuntimeConfig): boolean {
+    return config.reasoningEffort !== ReasoningEffort.Off;
+}
+
+/**
  * Build the catalog entry for the configured REASONING model.
  *
  * `maxTokens` is sent as `max_completion_tokens`, clamped to what is left of the window, and the
  * completion cap is per ROLE because the two roles are bounded by different things: the loop model
  * spends the same budget on thinking and on the terminal payload that follows it, while a vision
- * call returns one bounded JSON verdict. `input: ['text']` is what the loop model is asked for, and
- * `reasoning: true` is what makes the DeepSeek-style compat flags take effect.
+ * call returns one bounded JSON verdict. `input: ['text']` is what the loop model is asked for.
+ *
+ * `reasoning` follows the configured effort: an entry registered `reasoning: true` puts a level on
+ * the wire and replays `reasoning_content` on its history (the DeepSeek-style compat flags), and a
+ * model that does not reason may refuse both, so `off` registers it as a plain model.
  *
  * @param config - Validated provider configuration.
  * @returns The reasoning entry with its configured completion cap.
@@ -271,7 +283,7 @@ function reasoningCatalogEntry(config: PiRuntimeConfig): CatalogEntry {
         ...sharedCatalogFields(config),
         id: config.model,
         name: config.model,
-        reasoning: true,
+        reasoning: reasons(config),
         input: ['text'],
         maxTokens: config.maxOutputTokens,
     };
@@ -287,11 +299,12 @@ function reasoningCatalogEntry(config: PiRuntimeConfig): CatalogEntry {
  * `reasoning` follows the slug: pi puts a reasoning level on the wire only for an entry registered
  * `reasoning: true`, and the only vision model this runtime can vouch for as a reasoning model is
  * the reasoning model itself. When both roles name one slug the vision entry is registered with
- * reasoning support so `llm.singleShotReasoningEffort` reaches its calls: registered without it, a
- * live run's vision verdicts carried no level at all and the gateway's own default let the model
- * spend 6.8k of 7k output tokens on thinking per call, four minutes each, until `apply_rule` hit
- * its deadline. A distinct vision slug (a model this runtime knows nothing about) stays `reasoning:
- * false`, so no level is sent to a model that may refuse the parameter.
+ * reasoning support so `llm.singleShotReasoningEffort` reaches its calls: registered without it,
+ * vision verdicts carry no level at all and the gateway's own default can let the model spend 6.8k
+ * of 7k output tokens on thinking per call, four minutes each, until `apply_rule` hits its
+ * deadline. A distinct vision slug (a model this runtime knows nothing about) stays `reasoning:
+ * false`, so no level is sent to a model that may refuse the parameter, and so does a shared slug
+ * whose reasoning the deployment turned off.
  *
  * @param config - Validated provider configuration.
  * @returns The vision entry with its configured completion cap.
@@ -301,7 +314,7 @@ function visionCatalogEntry(config: PiRuntimeConfig): CatalogEntry {
         ...sharedCatalogFields(config),
         id: config.visionModel,
         name: config.visionModel,
-        reasoning: config.visionModel === config.model,
+        reasoning: config.visionModel === config.model && reasons(config),
         input: ['text', 'image'],
         maxTokens: config.visionMaxOutputTokens,
     };
@@ -342,9 +355,9 @@ function resolveModel(
  *
  * The one gateway is registered TWICE — same `baseUrl`, same API, same compat flags, same
  * credential — so each role owns its own catalog slot and a configuration naming one slug for both
- * roles still resolves an image-capable vision handle; see the module note for the live run that
- * proved it necessary. Pi keys everything it does off `model.provider` — credential lookup included
- * — which is why `setRuntimeApiKey` runs for both ids.
+ * roles still resolves an image-capable vision handle; see the module note for why that matters. Pi
+ * keys everything it does off `model.provider` — credential lookup included — which is why
+ * `setRuntimeApiKey` runs for both ids.
  *
  * @param config - Provider fields (typically `CoreConfig.llm`).
  * @returns The runtime with both model handles resolved.

@@ -368,7 +368,7 @@ export const FidelityLimitationCode = {
     /**
      * The reported filter selection exceeds the executing browser's MV3 limits, so the run could
      * execute it only in part and the terminal evidence comes from a session that selects fewer
-     * filters (AdguardFilters#242720: 52 requested, Chrome allows 50 static rulesets).
+     * filters (a request can name 52 filters while Chrome allows 50 static rulesets).
      */
     Mv3LimitsApproximation: 'mv3_limits_approximation',
 } as const;
@@ -672,9 +672,9 @@ export interface EnvironmentSelectionHostOptions {
      * The executable baseline the run supplies instead of resolving the reported names against
      * AdGuard's official catalog.
      *
-     * Decision 1 of 32-AFK: a run whose blocker declares its own list selection resolves nothing —
-     * the declaration is the baseline, and the reporter's names are only compared against it. When
-     * the run supplies none, the reported selection is resolved as it always was.
+     * A run whose blocker declares its own list selection resolves nothing — the declaration is the
+     * baseline, and the reporter's names are only compared against it. When the run supplies none,
+     * the reported selection is resolved against the official catalog.
      */
     filterBaseline?: SelectionFilterBaseline;
 }

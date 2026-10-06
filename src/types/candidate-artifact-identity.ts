@@ -113,7 +113,7 @@ export function candidateArtifactIdentitiesEqual(
  * Format the optional physical execution suffix for an artifact ID or filename.
  *
  * @param executionSuffix - Host-derived hexadecimal execution identity.
- * @returns Empty legacy suffix or a validated execution segment.
+ * @returns Empty suffix when there is no execution identity, or a validated execution segment.
  */
 export function formatCandidateArtifactExecutionSuffix(executionSuffix?: string): string {
     if (executionSuffix === undefined) {

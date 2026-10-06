@@ -13,7 +13,6 @@ import { isSingleLineRule } from '../repo/rule-normalizer';
 import { runRepositoryLint, type RepositoryLintCommand } from '../rules/repository-lint-command';
 import * as v from 'valibot';
 import { TraceArtifactStore, type IArtifactStore } from '../tracer/artifact-store';
-import { ProblemTypeSchema } from '../types/issue-facts';
 import type { PlacementMap } from '../types/repo-context';
 import {
     KnowledgeGuidanceSession,
@@ -198,14 +197,13 @@ function resolveArtifactStore(
 /**
  * Create a ToolRegistry pre-populated with all agent tools.
  *
- * Always registers two pure tools: `fetch_issue` and `policy_check`. When the run binds the
- * repository's own lint command, registers `lint_rule` over it. When `checkoutPath` is provided,
- * additionally registers `search_rules` against the checkout. When `browserTools` is provided,
- * additionally registers browser evidence and validation tools. If vision configuration is present,
- * it also registers `analyze_screenshot`.
+ * Always registers the pure `fetch_issue` tool. When the run binds the repository's own lint
+ * command, registers `lint_rule` over it. When `checkoutPath` is provided, additionally registers
+ * `search_rules` against the checkout. When `browserTools` is provided, additionally registers
+ * browser evidence and validation tools. If vision configuration is present, it also registers
+ * `analyze_screenshot`.
  *
- * This factory eliminates duplicated registration between `main.ts` (analyze handler) and
- * `replay-runner.ts` (Finding 2).
+ * Every caller registers its tools through this factory, so registration is never duplicated.
  *
  * @param options - Everything this run binds into its registry.
  * @returns A fully registered ToolRegistry ready for the agent loop.
@@ -313,34 +311,6 @@ export async function createToolRegistry(options: ToolRegistryOptions): Promise<
                 raw = await fetchIssue(githubConfig, num);
             }
             return { raw };
-        },
-    });
-
-    // ── policy_check (always) ──────────────────────────────────────────────
-    registry.register({
-        definition: {
-            type: 'function',
-            function: {
-                name: ToolName.PolicyCheck,
-                description:
-                    'Check whether filter policy allows rule generation for a reported issue. Returns propose_close, needs_human_review, or allow_rule_generation with cited reasons.',
-                parameters: registeredParameters(ToolName.PolicyCheck),
-            },
-        },
-        handler: async (args) => {
-            const { policyCheck } = await import('../policy/policy-gate');
-            const parsedProblemType = v.safeParse(ProblemTypeSchema, args.problemType);
-            const problemType = parsedProblemType.success ? parsedProblemType.output : 'unknown';
-            return policyCheck({
-                firstPartyAd: Boolean(args.firstPartyAd),
-                paywall: Boolean(args.paywall),
-                antiAdblockWall: Boolean(args.antiAdblockWall),
-                germanAntiAdblock: Boolean(args.germanAntiAdblock),
-                evidenceRefs: Array.isArray(args.evidenceRefs)
-                    ? args.evidenceRefs.filter((e): e is string => typeof e === 'string')
-                    : [],
-                problemType,
-            });
         },
     });
 

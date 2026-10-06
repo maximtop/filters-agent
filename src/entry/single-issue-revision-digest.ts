@@ -10,8 +10,8 @@ import type { RepositorySlug } from '../types/repository-slug';
  * Version mixed into a fetched issue's revision projection, so a projection change cannot alias an
  * old revision binding to a new one.
  *
- * Bumped to 2 when the projection stopped hashing `updatedAt` (which GitHub moves on every new
- * comment, including our own posted report) in favor of the content the run actually read.
+ * Version 2 is the projection that hashes the content the run actually read rather than
+ * `updatedAt`, which GitHub moves on every new comment, including the run's own posted report.
  */
 const FETCHED_ISSUE_REVISION_PROJECTION_VERSION = 2;
 

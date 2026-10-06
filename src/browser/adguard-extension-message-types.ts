@@ -6,13 +6,11 @@
  * message type that can drift, and the one that drifts silently is the worst kind — the extension
  * answers `undefined` and the step looks like it ran.
  *
- * Every member here was proven against the pinned build: the settings messages by the retired
- * options-page driver (`git show 1ea6e065^:src/browser/adguard-extension.ts`), the filtering-log
- * messages by a headless probe of v5.5.2.3 on 2026-09-24; nothing is invented. In particular the
- * driver had no _enable_ counterpart to `DisableFilter`, so the convergence the instruction
- * performs only ever turns filters off, and the log has no working open message:
- * `onOpenFilteringLogPage` throws in the pinned build, so recording starts by opening the
- * extension's own log page.
+ * Every member here was proven against the pinned build, the filtering-log messages by a headless
+ * probe of v5.5.2.3; nothing is invented. In particular no _enable_ counterpart to `DisableFilter`
+ * is proven, so the convergence the instruction performs only ever turns filters off, and the log
+ * has no working open message: `onOpenFilteringLogPage` throws in the pinned build, so recording
+ * starts by opening the extension's own log page.
  */
 export const AdGuardExtensionMessageType = {
     /**

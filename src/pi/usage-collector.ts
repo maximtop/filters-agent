@@ -45,11 +45,10 @@ function roundUsd(value: number): number {
 /**
  * Price one reported completion from its model's frozen per-million rates.
  *
- * Pi's `input` EXCLUDES cache reads/writes — the semantic shift from the retired ledger, where
- * `cachedInputTokens` was a subset of an inclusive `inputTokens`. There is therefore NO subtraction
- * step: cache-read prices at its specialized rate (falling back to the input rate), cache-write at
- * its specialized rate (falling back to the input rate — the July pin carried none, the catalog
- * pins do), the non-reasoning output at the output rate, and the reasoning subset at its
+ * Pi's `input` EXCLUDES cache reads/writes: cached tokens are not a subset of `input`. There is
+ * therefore NO subtraction step: cache-read prices at its specialized rate (falling back to the
+ * input rate), cache-write at its specialized rate (falling back to the input rate — not every rate
+ * pin carries one), the non-reasoning output at the output rate, and the reasoning subset at its
  * specialized rate (falling back to the output rate).
  *
  * @param completion - Normalized completion usage.

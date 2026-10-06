@@ -1,9 +1,9 @@
 /**
  * Fix-session delivered-frontier observations: the buffer of sanitized tool results stamped with
- * the pi turn that produced them, drained only when a LATER turn succeeds — the pi successor of the
- * legacy loop's flush-after-successful-response rule, which is the agent-observations contract —
- * plus the deterministic seal completion for the accepting terminal turn. Split from fix-session.ts
- * so every module stays under the repo's 500-line ceiling.
+ * the pi turn that produced them, drained only when a LATER turn succeeds — the
+ * flush-after-successful-response rule of the agent-observations contract — plus the deterministic
+ * seal completion for the accepting terminal turn. Split from fix-session.ts so every module stays
+ * under the repo's 500-line ceiling.
  */
 import type { AgentObservation } from '../types/agent-run-artifacts';
 import type { SessionTurnObservation } from '../pi/session-observations';

@@ -395,7 +395,7 @@ export class BrowserExtensionAdsObserver {
      */
     /**
      * The host the candidate blocks, when it is a third-party host block the phase network logs can
-     * judge; undefined leaves every decision to vision and the structural probe as before.
+     * judge; undefined leaves every decision to vision and the structural probe.
      */
     private readonly blockedHost: string | undefined;
 

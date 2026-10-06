@@ -70,11 +70,11 @@ const strictRouteStates = new WeakMap<PreparedStrictBrowserRoute, StoredStrictRo
 /**
  * Validate a canonical credential-free HTTP or HTTPS route target.
  *
- * Plain `http:` targets are accepted deliberately: reporters paste them (live run 32706975563
- * failed task #239090 over `http://www.emaillink.adtidy.org/`), the CLI proxy filters plaintext
- * traffic exactly as it filters TLS, and the route's TLS machinery — the SPKI launch pin — simply
- * never engages for a connection that carries no certificate. Fragments are accepted because the
- * reporter's URL may carry one and `page.url()` echoes it back; they never reach the network.
+ * Plain `http:` targets are accepted deliberately: reporters paste them and refusing one fails the
+ * task, the CLI proxy filters plaintext traffic exactly as it filters TLS, and the route's TLS
+ * machinery — the SPKI launch pin — simply never engages for a connection that carries no
+ * certificate. Fragments are accepted because the reporter's URL may carry one and `page.url()`
+ * echoes it back; they never reach the network.
  *
  * @param value - Candidate URL.
  * @returns Parsed canonical URL.

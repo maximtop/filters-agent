@@ -28,8 +28,15 @@ When it runs against an issue, `filters-agent`:
 1. Copy [`docs/examples/filters-agent-workflow.yml`](docs/examples/filters-agent-workflow.yml)
    into your repository's `.github/workflows/`.
 2. Add your LLM provider's API key as the repository secret `FILTERS_AGENT_LLM_API_KEY`. The
-   endpoint URL and the two model names are not secret — edit them directly in the workflow file
-   you just copied, which ships with an OpenRouter-shaped placeholder.
+   endpoint URL, the two model names and the reasoning model's limits are not secret — edit them
+   directly in the workflow file you just copied, which ships with an OpenRouter-shaped
+   placeholder. Take the limits from your provider's model page: `llmContextWindowTokens` and
+   `llmMaxOutputTokens` for the reasoning model, and `llmVisionMaxOutputTokens` when the vision
+   model is a different one. A limit above the provider's own fails every request, so the action
+   has no defaults for them, and a run without them fails before it spends anything. For a model
+   that does not reason, also set `llmReasoningEffort: 'off'`. The agent is developed and tested
+   on DeepSeek V4 Flash for reasoning (context window 1048576, completion cap 384000) and Gemini
+   3.7 Flash for screenshots (completion cap 65536).
 3. Optional: if your users run something other than the built-in AdGuard Browser Extension, add
    `.github/filters-agent/AGENTS.md` to your repository describing that blocker. See
    [`docs/modules/browser-with-extension.md`](docs/modules/browser-with-extension.md) for how the
@@ -46,7 +53,9 @@ When it runs against an issue, `filters-agent`:
 5. The report appears as a comment on the issue, unless the issue no longer needs one: it is
    closed, a commit or pull request of your repository references it, a maintainer (see
    `trustedRoles`) commented or is assigned, or the report for its current text is already there.
-   The run checks this before it spends anything, and again right before it posts. For a verified
+   The run checks this before it spends anything, and again right before it posts. An issue the
+   run skips because it is not a filter report, or names no page, gets no comment either; the
+   reason is in the run log and the uploaded artifact. For a verified
    rule the report shows the page without and with the rule. GitHub has no API to attach an image
    to a comment, so the run commits the images to a branch of your repository, named by the
    `screenshotsBranch` input (`filters-agent-screenshots` by default), which is why the example
@@ -191,6 +200,12 @@ The setup step's inputs and outputs:
 | `manifest` | Output | Workspace-relative path of the module manifest; pass it as `blockerModules`. |
 | `homeRestored` | Output | `'true'` when the run restored a seed. |
 
+`adguard-cli/` is generated: `scripts/build-adguard-cli-module.ts` bundles the module process from
+`src/adguard-cli/` and copies the setup action from `modules/adguard-cli/action.yml` together with
+the scripts it runs. After changing any of them, run `pnpm install` and `pnpm run build:adguard-cli`,
+and commit the regenerated `adguard-cli/` directory. The action image leaves `src/adguard-cli/` out,
+so the action itself never carries the CLI code.
+
 ### How a rule gets applied between phases
 
 To measure a candidate the action has to put your repository's filters and the candidate rule into
@@ -255,8 +270,10 @@ is chosen from where the repository already keeps rules like the new one.
 
 The link labels are what bind the documents: a label containing `syntax`, `policy` or
 `contributing` binds that role, and `lookup_rule_guidance` then answers every topic from your
-documents instead of the pinned AdGuard KnowledgeBase. A topic whose role you did not link is
-answered by a notice saying so, which the run's report carries as missing information.
+documents. A topic whose role you did not link is answered by a notice saying so, which the run's
+report carries as missing information. Without an instruction the run serves one document: AdGuard's
+filter syntax at a pinned KnowledgeBase commit. It serves no policy document, so no policy applies
+until your instruction states one.
 
 ### Your own rules for the agent
 
@@ -285,14 +302,28 @@ Example, AdguardTeam/AdguardFilters#243463 (wzielonej.pl):
 - Disables the detector: `wzielonej.pl#%#//scriptlet("set-constant", "tie.ad_blocker_detector", "")`
 ```
 
-Three limits apply:
+The same place holds your filter policy: which reports your repository closes without a rule and
+which it hands to a maintainer. The action has no policy of its own: without such rules every
+report is open to a rule, and the agent closes a report only on a rule your instruction states. For
+AdguardFilters, following the AdGuard filter policy:
+
+```markdown
+## Filter policy
+
+- The site's own advertising (first-party ads): close without a rule.
+- Paywalls: close without a rule.
+- German anti-adblock walls: close without a rule.
+- Any other anti-adblock wall: write a rule only after the network log shows the detector script;
+  without it, hand the report to a maintainer.
+```
+
+The agent records which rule decided and quotes it in the report's `{{policyRationale}}`.
+
+Two limits apply:
 
 - Some `##` headings carry a function: a heading containing `preparation`, `application`,
   `verification`, `selection`, `which issues` or `report template` is read as that part of the
   instruction. Name your rules' heading something else, such as `## Maintainer rules`.
-- The built-in policy check comes first and your rules cannot relax it: a first-party ad, a paywall
-  and a German anti-adblock report end without a rule, and another anti-adblock wall needs a captured
-  network log before a rule is written. Your rules can be stricter than that.
 - Each linked document role binds one document. Linking your own policy document replaces the
   AdGuard filter policy rather than adding to it, so rules that extend it belong in the instruction
   text.
@@ -439,9 +470,11 @@ so it is worth re-reading this table after an upgrade.
 | `llmApiKey` | Yes | API key of the LLM provider; pass it from a repository secret. |
 | `llmModel` | Yes | Default reasoning-model slug for the run's LLM sessions. |
 | `llmVisionModel` | Yes | Model slug used for vision steps that read screenshots. |
-| `llmContextWindowTokens` | No | Context window of the reasoning model, in tokens. The default (1048576) is the window of the model the agent was tuned on; state your own model's window when it differs. |
-| `llmMaxOutputTokens` | No | Completion cap sent with the reasoning model's requests, in tokens; defaults to 384000. Set it to your model's own limit when that is lower. |
-| `llmVisionMaxOutputTokens` | No | Completion cap sent with the vision model's requests, in tokens; defaults to 384000. A gateway that routes by the requested cap finds no endpoint for a vision model whose own limit is lower, so set it whenever `llmVisionModel` names a different model (65536 for `google/gemini-3.8-flash`). |
+| `llmContextWindowTokens` | Yes | Context window of the reasoning model, in tokens, as your provider states it. |
+| `llmMaxOutputTokens` | Yes | Completion cap sent with the reasoning model's requests, in tokens: the model's own limit at your provider. |
+| `llmVisionMaxOutputTokens` | When `llmVisionModel` differs from `llmModel` | Completion cap sent with the vision model's requests, in tokens. When both inputs name one model, it is `llmMaxOutputTokens`. |
+| `llmReasoningEffort` | No | Reasoning effort of the investigation's requests: `off`, `minimal`, `low`, `medium` or `high`; defaults to `high`. `off` sends no reasoning parameter, for a model that does not reason. |
+| `llmSingleShotReasoningEffort` | No | Reasoning effort of the one-question calls (reading the issue, describing a screenshot), same values; defaults to `low`. |
 | `llmRequestMaxAttempts` | No | Total attempts per LLM request when the provider fails transiently (a 5xx, a timeout, a response cut off mid-stream), 1 to 3; defaults to 2. Raise it to 3 for a gateway that drops responses more than once in a row. |
 | `llmProviderRouting` | No | JSON routing preferences for an OpenRouter-compatible gateway, sent as the `provider` object on every request — for example `{"ignore":["Together"]}` to route around a faulting upstream provider. Plain configuration, not a secret; leave it unset for a gateway that does not understand the field. |
 

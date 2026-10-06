@@ -8,7 +8,7 @@ The instruction, verbatim:
 
 {{preparationContext}}
 
-Documents the instruction links for rule guidance — the `lookup_rule_guidance` tool serves these instead of the built-in AdGuard KnowledgeBase:
+Documents the instruction links for rule guidance — the `lookup_rule_guidance` tool serves these instead of the built-in syntax document:
 
 {{linkedDocuments}}
 

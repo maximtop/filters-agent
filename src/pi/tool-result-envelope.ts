@@ -13,12 +13,11 @@ import { redactPayload } from '../tracer/redactor';
  *
  * The largest legitimate tool result observed across the live corpus is 10.5 KB, so 64 KiB is a
  * six-fold allowance. Without a ceiling a single call can end the run: get_storage on a site
- * caching its whole movie catalog in localStorage returned 5.9 MB, the next request weighed
- * 1,048,577 tokens against the model's 1,048,576 limit, and the deterministic HTTP 400 burned all
- * three paid attempts of report 239587 (run 33278625818). Only the wire message to the provider is
- * bounded: the full redacted result rides on `SessionToolResult.details`, which `session-trace.ts`
- * records in preference to the model-facing prose, so the run evidence keeps everything the
- * envelope cut.
+ * caching its whole movie catalog in localStorage can return 5.9 MB, pushing the next request past
+ * the model's 1,048,576-token limit, and the deterministic HTTP 400 then burns every paid attempt
+ * of the report. Only the wire message to the provider is bounded: the full redacted result rides
+ * on `SessionToolResult.details`, which `session-trace.ts` records in preference to the
+ * model-facing prose, so the run evidence keeps everything the envelope cut.
  */
 export const MAX_TOOL_RESULT_BYTES = 64 * 1024;
 

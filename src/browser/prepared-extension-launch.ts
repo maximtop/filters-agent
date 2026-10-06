@@ -1,11 +1,11 @@
 /**
  * The launch channel one prepared extension build is loaded through.
  *
- * Decision 2 of 31-AFK: the engine follows the launch family. A Chromium-family build takes the
- * stealth Chromium engine and the unpacked-directory channel; a Firefox-family build takes the
- * Playwright Firefox engine and the enterprise-policies channel, whose managed storage carries the
- * current content of the run's user-filters file. The two channels are exclusive by construction
- * here, which is what keeps `BrowserSession.create` from ever seeing a mixed configuration.
+ * The engine follows the launch family. A Chromium-family build takes the stealth Chromium engine
+ * and the unpacked-directory channel; a Firefox-family build takes the Playwright Firefox engine
+ * and the enterprise-policies channel, whose managed storage carries the current content of the
+ * run's user-filters file. The two channels are exclusive by construction here, which is what keeps
+ * `BrowserSession.create` from ever seeing a mixed configuration.
  *
  * The policies are rebuilt on every launch rather than stored: Firefox reads `policies.json` only
  * at startup, so the content a session serves is exactly the content the file held when that
@@ -58,9 +58,9 @@ export interface PolicySessionRelaunchRequest {
  * Relaunch one session with rebuilt enterprise policies.
  *
  * Firefox reads `policies.json` only at startup, so new managed storage reaches the extension only
- * through a new browser: the host-performed file-backed application (31-AFK Decision 3) closes the
- * persistent context and launches again through this seam. Tests supply their own implementation to
- * observe the rebuilt policies without starting a browser.
+ * through a new browser: the host-performed file-backed application closes the persistent context
+ * and launches again through this seam. Tests supply their own implementation to observe the
+ * rebuilt policies without starting a browser.
  */
 export type PolicySessionRelaunch = (
     request: PolicySessionRelaunchRequest,

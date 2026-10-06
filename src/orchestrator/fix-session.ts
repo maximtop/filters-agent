@@ -3,11 +3,10 @@
  * registry tool names plus finish_fix — with lifecycle gate sync derived from the runtime's own
  * registry mutations, the shared diagnostic quarantine, the seeded lookup_rule_guidance stub, the
  * typed finish_fix terminal with a validateHost adapter over the runtime's terminal hook, the
- * rendered prompt documents, and the seal mapping back onto the legacy-shaped `FixSessionRun` the
- * fix core consumes. The legacy forced-tool-choice finalization turn does not exist on this path: a
- * host-rejected submission returns to the model as a tool error, and the terminal's streak cap
- * counts resubmissions at the same evidence progress (`terminal-rejection-fingerprint.ts`), the
- * retired loop's finish-retry identity.
+ * rendered prompt documents, and the seal mapping back onto the `FixSessionRun` the fix core
+ * consumes. There is no forced-tool-choice finalization turn: a host-rejected submission returns to
+ * the model as a tool error, and the terminal's streak cap counts resubmissions at the same
+ * evidence progress (`terminal-rejection-fingerprint.ts`).
  */
 import { TraceEventType } from '../types/trace';
 import { createToolEnumerationBackstop } from './tool-enumeration-backstop';
@@ -155,7 +154,7 @@ export interface FixSessionOptions {
  * The scaffolding prose (headings, the standing missing-information direction) lives in the
  * `tasks/instruction-context` document; this render only supplies its data fills — the exact
  * instruction text, one roster line per linked document, and the preparation note. Absent
- * instruction keeps the fill '' so built-in runs render as before.
+ * instruction keeps the fill '' so built-in runs render no instruction context.
  *
  * The instruction text rides the task verbatim because the instruction governs investigation and
  * proposals, but its preparation section does not govern this session: the host runs that section
@@ -163,9 +162,9 @@ export interface FixSessionOptions {
  * `pre-run-preparation.ts`, called from the fix core before `AgentRuntime.create`), and it is
  * skipped only for a run whose executor set consumes no extension build — where nothing would board
  * a prepared build either. Either way the steps are unreachable from here: the fix surface
- * advertises no shell or command execution at all. A live run read the section as its own to
- * perform and spent the ending on `No shell tool for the run instruction's XPI preparation steps`,
- * for an XPI the host had already downloaded, verified and force-installed.
+ * advertises no shell or command execution at all. A model that reads the section as its own to
+ * perform spends the ending on `No shell tool for the run instruction's XPI preparation steps`, for
+ * an XPI the host has already downloaded, verified and force-installed.
  *
  * @param prompts - The session's prompt document loader.
  * @param instruction - The run instruction, or undefined for built-in mode.
@@ -193,7 +192,7 @@ function renderInstructionContext(
 }
 
 /**
- * Run the fix session for one issue and return the legacy-shaped result.
+ * Run the fix session for one issue and return the fix-run-shaped result.
  *
  * @param options - The session options.
  * @returns The fix-run-shaped result.
@@ -206,8 +205,8 @@ export async function runFixSession(options: FixSessionOptions): Promise<FixSess
     const preparedExtension = options.runtime.getPreparedExtension?.();
     // The environment context follows the exact fact the tool surface follows: `select_environment`
     // is advertised only while the registry holds it, and a sole-executor run — its environment
-    // locked at construction — never holds it. Rendering the selection-first framing there told the
-    // model to call a tool this session does not advertise, which a live run reported back as a
+    // locked at construction — never holds it. Rendering the selection-first framing there tells
+    // the model to call a tool this session does not advertise, and the model reports a
     // `select_environment tool not advertised in this session` limitation instead of investigating.
     const environmentLocked = !options.runtime.registry
         .getToolNames()

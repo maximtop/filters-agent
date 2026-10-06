@@ -7,14 +7,14 @@ import { formatIssues } from './valibot-issues';
 /**
  * Session tool surface for pi sessions: tool adaptation — the execution semantics every existing
  * tool keeps under the frozen tool list, the per-tool deadline race, and the `withToolDeadline`
- * helper `agent-runtime.ts` still calls directly — plus the gate refusal envelope (a tool whose
+ * helper `agent-runtime.ts` calls directly — plus the gate refusal envelope (a tool whose
  * `AdaptedToolInput.gate` callback reports it unavailable stays advertised and answers calls with
  * an explanatory refusal). Three neighbouring concerns are deliberately elsewhere: the wire ceiling
  * and the truncation envelope in `tool-result-envelope.ts`, the model-facing rendering of Valibot
  * issues in `valibot-issues.ts` (the one `formatIssues` this module, `terminal-tool.ts` and
  * `single-shot.ts` all refuse payloads with), and the advertisement conversion pi pre-validates
  * against in `tool-schema.ts`. Per-tool guidance arrives through
- * `AdaptSessionToolsOptions.guidance` (the wiring sources it from the relocated catalog at the two
+ * `AdaptSessionToolsOptions.guidance` (the wiring sources it from the tool catalog at the two
  * production call sites), keeping `src/pi` free of `src/agent` imports.
  */
 
@@ -275,7 +275,7 @@ export interface AdaptedToolInput {
      * It receives exactly what `content` carried to the provider, truncation envelope included, so
      * it is bounded by {@link MAX_TOOL_RESULT_BYTES}. The sink writes `agent-observations.json`,
      * documented as the sanitized results proven to have reached the model; handing it the
-     * pre-envelope object filled that artifact with megabytes the model never saw, because
+     * pre-envelope object would fill that artifact with megabytes the model never saw, because
      * `get_console_log` and `get_network_log` return uncapped inventories.
      */
     onResult?: (modelFacing: Record<string, unknown>) => void;
@@ -286,8 +286,8 @@ export interface AdaptedToolInput {
     description?: string;
 
     /**
-     * Per-call wall-clock deadline in milliseconds. Unset means no deadline, exactly like the
-     * legacy loop's unwrapped pure tools; mode wiring passes the per-tool values.
+     * Per-call wall-clock deadline in milliseconds. Unset means no deadline; mode wiring passes the
+     * per-tool values.
      */
     deadlineMs?: number;
 }
@@ -313,10 +313,10 @@ export interface AdaptSessionToolsOptions {
 /**
  * Adapt existing tool implementations into one session's frozen pi tool set.
  *
- * Every adapted execute keeps the legacy model-facing semantics: a gated call returns the
+ * Every adapted execute keeps one model-facing semantics: a gated call returns the
  * reason-plus-remedy refusal; arguments that reach execute and fail the full Valibot schema return
  * the `{error, errorKind: 'validation_error', retryable, requiredAction}` bounce (pi's pre-execute
- * check normally catches these first now that the advertisement is the schema verbatim, but the
+ * check normally catches these first because the advertisement is the schema verbatim, but the
  * guarantee that a handler never sees unvalidated arguments belongs to the adapter, and callers
  * that invoke execute with no pi in front of them rely on it); an expired deadline returns the
  * `tool_deadline_exceeded` envelope; an oversized result arrives as the truncation envelope; and a
@@ -339,9 +339,9 @@ export function adaptSessionTools(
     const names = new Set<string>();
     for (const input of inputs) {
         if (names.has(input.name)) {
-            // Legacy registered by Map.set (silent overwrite) and re-registers wrapped lifecycle
-            // tools; two inputs under one name would advertise both while pi dispatches the
-            // first — the model's view of the tool would split.
+            // `ToolRegistry` overwrites by Map.set and re-registers wrapped lifecycle tools; two
+            // inputs under one name would advertise both while pi dispatches the first — the
+            // model's view of the tool would split.
             throw new Error(`Duplicate tool name in adapted session set: ${input.name}`);
         }
         names.add(input.name);

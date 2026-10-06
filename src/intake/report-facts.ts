@@ -25,8 +25,8 @@ export interface ReportSource {
 /**
  * Product placeholder for a report whose environment names no product.
  *
- * The retired parser's fallback for the same situation; the facts schema requires a non-empty
- * product string, so the absence is represented, never silently dropped.
+ * The facts schema requires a non-empty product string, so the absence is represented, never
+ * silently dropped.
  */
 const UNKNOWN_PRODUCT = 'Unknown';
 

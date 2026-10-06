@@ -277,8 +277,8 @@ export async function reviewCandidateVisually(
         };
         // Every inventory below is its own vision completion over its own images, and none reads
         // another's answer, so they run side by side under one limiter; only the synthesis that
-        // follows needs them all. Enqueued in the order they used to run in, and the limiter is
-        // first come first served, so the calls still START in that order.
+        // follows needs them all. Enqueued in a fixed order, and the limiter is first come first
+        // served, so the calls START in that order.
         const limiter = createCallLimiter(options.visionConcurrency);
         // Held in a constant: the closures below outlive this statement's narrowing of the `let`.
         const overviewEvidence = fullPageOverviewEvidence;

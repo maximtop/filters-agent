@@ -1,16 +1,16 @@
 /**
  * The host-performed file-backed application between two environment phases.
  *
- * Decision 3 of 31-AFK: for a file-backed verification there is nothing for a model session to do.
- * The state the read-back credits is a file in the run's own host-state directory, which no session
- * knows about, so the host maintains it: write the file (empty for the Baseline goal, exactly the
- * candidate line for the Candidate goal), rebuild the Firefox enterprise policies from the
- * instruction's declaration plus what was just written, relaunch the session — Firefox reads
- * policies only at startup, so a running browser can never pick up new managed storage — and read
- * the file back through the same reader every file-backed verification uses.
+ * For a file-backed verification there is nothing for a model session to do. The state the
+ * read-back credits is a file in the run's own host-state directory, which no session knows about,
+ * so the host maintains it: write the file (empty for the Baseline goal, exactly the candidate line
+ * for the Candidate goal), rebuild the Firefox enterprise policies from the instruction's
+ * declaration plus what was just written, relaunch the session — Firefox reads policies only at
+ * startup, so a running browser can never pick up new managed storage — and read the file back
+ * through the same reader every file-backed verification uses.
  *
- * No prompt, no turn, no model. The credit rules are unchanged and shared with the model-driven
- * path (`blocker-state-credit.ts`): empty content credits the Baseline, the exact candidate content
+ * No prompt, no turn, no model. The credit rules are shared with the model-driven path
+ * (`blocker-state-credit.ts`): empty content credits the Baseline, the exact candidate content
  * credits the Candidate, and the proof detail names the file the host wrote and the relaunch it
  * performed.
  */
@@ -287,8 +287,8 @@ export async function runFileBackedApplication(
     if (credited.kind !== PhaseApplicationOutcomeKind.Applied) {
         return { result: credited, session };
     }
-    // Decision 3: the proof detail names the file the host wrote and the relaunch it performed,
-    // beside whatever the credit itself could not observe.
+    // The proof detail names the file the host wrote and the relaunch it performed, beside whatever
+    // the credit itself could not observe.
     const hostDetail =
         `The host wrote ${targetPath} and relaunched the session with rebuilt ` +
         `${launch.extensionId} policies before the read-back.`;

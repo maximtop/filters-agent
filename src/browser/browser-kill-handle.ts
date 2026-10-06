@@ -5,12 +5,11 @@ import type { Logger } from 'pino';
  * The kill handle every browser launch keeps: the pid of Playwright's own browser process.
  *
  * A close on a wedged page can block in the protocol forever, and the escalation after the close
- * deadline is only as good as what it has to kill. The first live runs proved the gap: the forced
- * kill reported "no session-owned profile path: this browser cannot be force-killed" and
- * `killedProcesses: 0`, because the only kill route was a `/proc` command-line scan for a
- * session-unique profile path — which a plain `launch()` never has (Playwright picks its own
- * temporary profile and never tells the caller where). 35 s per session were spent waiting for a
- * kill that could not happen.
+ * deadline is only as good as what it has to kill. A `/proc` command-line scan for a session-unique
+ * profile path cannot find a plain `launch()`, which has no such path (Playwright picks its own
+ * temporary profile and never tells the caller where): without the pid the forced kill reports "no
+ * session-owned profile path: this browser cannot be force-killed" with `killedProcesses: 0`, and
+ * every session spends 35 s waiting for a kill that cannot happen.
  *
  * Playwright publishes no process accessor on `Browser` (only `BrowserServer.process()`, which
  * belongs to the `launchServer` route this repo does not take), so the pid comes from the

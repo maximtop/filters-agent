@@ -2,8 +2,8 @@
  * The default public per-issue engine: one call that materializes the filters workspace, loads the
  * run instruction inside it, obtains the issue from an exported snapshot or the GitHub fetch seam,
  * investigates through `runFixCore`, and posts one revision-marked report when comments are on. It
- * is the public composition behind `runFiltersAgentEntry` — the lab keeps its richer local cycle
- * through the same dispatch seam, so hosting swaps without touching the entry again.
+ * is the public composition behind `runFiltersAgentEntry`; a host with a richer local cycle plugs
+ * it in through the same dispatch seam, so hosting swaps without touching the entry again.
  *
  * Every sealed outcome — a full run, a skip, or a failure once the run's revision digest is known —
  * writes its report artifacts and, when comments are enabled, posts the short report with its
@@ -25,6 +25,7 @@ import {
     loadInstruction,
     type LoadedInstruction,
 } from '../knowledge/instruction-loader';
+import { loadDefaultRuleGuidance } from '../knowledge/default-rule-guidance';
 import { fileBackedApplicationRefusalDetail } from '../knowledge/instruction-application';
 import { GITHUB_HTTP_ORIGIN } from '../local/git-http-auth';
 import type { FiltersPreparationConfig } from '../local/run-config-types';
@@ -48,7 +49,11 @@ import { renderHostedReportScreenshots } from '../publisher/report-screenshots';
 import { resolveReportTemplate } from '../publisher/report-template';
 import { decideVersionUpdate } from '../publisher/report-version-decision';
 import { writeRunReportArtifacts } from './single-issue-run-artifacts';
-import { logCaughtError, postMinimalOutcomeReport } from './single-issue-run-outcome-report';
+import {
+    logCaughtError,
+    postMinimalOutcomeReport,
+    renderMinimalOutcomeReport,
+} from './single-issue-run-outcome-report';
 import {
     checkIssueBeforeRun,
     publishGuardedReport,
@@ -403,15 +408,15 @@ async function runInsideWorkspace(
             { issueNumber: request.issueNumber, reason: intake.reason },
             'intake extraction skipped the issue',
         );
-        const { body, publication } = await postMinimalOutcomeReport(
+        // Never posted: the issue needs no comment saying the run passed it by, and on a busy
+        // repository such comments are most of what the action would write. The reason stays in
+        // the log above and the artifacts below; without a marker, a backlog run rereads the issue.
+        const body = renderMinimalOutcomeReport(
             request,
-            logger,
-            revisionDigest,
             instruction?.content,
             prepared.provenance.commit,
             'Issue skipped',
             intake.reason,
-            dependencies,
         );
         writeRunReportArtifacts(request.artifactsDir, body, {
             verdict: IntakeVerdict.NotAFilterReport,
@@ -421,7 +426,7 @@ async function runInsideWorkspace(
             kind: DefaultSingleIssueResultKind.Skipped,
             issueNumber: request.issueNumber,
             reason: intake.reason,
-            publication,
+            publication: null,
             artifactsDir: request.artifactsDir,
         };
     }
@@ -439,6 +444,7 @@ async function runInsideWorkspace(
         artifactsDir: request.artifactsDir,
         model: request.model,
         instruction: instruction ?? undefined,
+        ...(instruction === null ? { loadDefaultRuleGuidance } : {}),
         // The lint runs in the checkout the workflow gave the run, not the disposable clone: only
         // there did the workflow install the repository's own dependencies, the linter among them.
         ...(request.lintCommand === undefined

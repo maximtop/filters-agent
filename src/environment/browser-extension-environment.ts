@@ -770,8 +770,8 @@ export type EnvironmentPhaseConfigurationResult =
           /**
            * The session the phase must be observed over, when the application replaced the one it
            * was handed. A host-performed file-backed application relaunches the browser so it reads
-           * the rebuilt enterprise policies at startup (31-AFK Decision 3), and the session it was
-           * handed is closed by then. Absent when the application left that session running.
+           * the rebuilt enterprise policies at startup, and the session it was handed is closed by
+           * then. Absent when the application left that session running.
            */
           session?: IBrowserSession;
       }
@@ -960,7 +960,7 @@ export class BrowserExtensionEnvironmentAdapter implements FilteringEnvironmentA
 
     /**
      * Registry ids of the locked baseline, ascending — the exact numeric input the native settings
-     * recheck received before the keys migration and keeps receiving.
+     * recheck receives.
      */
     private preparedFilterIds: readonly number[] = [];
 

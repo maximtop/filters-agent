@@ -77,9 +77,8 @@ interface WithheldEnvironmentAccess {
  * Name the first session whose page withheld the reported content.
  *
  * A geo-blocked player, a login wall, or a bot challenge makes an absent symptom meaningless: the
- * run never saw the state the reporter described. Live run 32581277065 published `not_reproduced`
- * for a Rutube pre-roll behind a regional block (#238615) and for an x.com popup behind a login
- * wall (#237706) on exactly this evidence.
+ * run never saw the state the reporter described. Without this check, a pre-roll behind a regional
+ * block or a popup behind a login wall is published as `not_reproduced` on exactly this evidence.
  *
  * @param control - Symptom evidence of the unfiltered control session, when one exists.
  * @param prepared - Symptom evidence of the prepared-extension session, when one exists.

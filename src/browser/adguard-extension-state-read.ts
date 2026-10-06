@@ -24,10 +24,9 @@ import {
  * The host read-backs of the prepared extension's state: the options settings, the user rules, and
  * the MV3 limit counters, read over the extension's own app-message transport.
  *
- * Decision 1 of 11-HITL: after the model performs the instruction's application steps, the host
- * reads the blocker state itself and credits a phase only when that state contains exactly what the
- * phase expected. The writes that once lived beside these reads are the retired options-page
- * driver; only the reads survive here.
+ * After the model performs the instruction's application steps, the host reads the blocker state
+ * itself and credits a phase only when that state contains exactly what the phase expected. This
+ * module only reads; it never writes extension settings.
  *
  * The message transport and the bounded readiness posture underneath every read live in
  * `adguard-extension-state-transport.ts`.
@@ -177,9 +176,8 @@ async function readUserRulesContent(
 /**
  * Read the complete observable state of the prepared extension for the host read-back.
  *
- * This is the `extension-state` verification surface of Decision 1: the options settings, the exact
- * user-rule bundle, and the MV3 counters, all read by the host itself after the model's application
- * steps.
+ * This is the `extension-state` verification surface: the options settings, the exact user-rule
+ * bundle, and the MV3 counters, all read by the host itself after the model's application steps.
  *
  * @param context - Persistent Chromium context containing the prepared AdGuard extension.
  * @param expectedManifestVersion - Manifest generation verified from the extension build.

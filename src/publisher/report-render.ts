@@ -561,11 +561,10 @@ const MAX_REPORTED_REMAINING_INSTANCES = 5;
 /**
  * Render what the vision review still saw after the candidate as the block its section carries.
  *
- * This is the runner-bound review record, not model prose about it: two live runs published a
- * report that read as a complete fix — sitepoint.com kept a header banner the reporter had named,
- * nottinghampost.com kept the placeholder bands between its sections — because nothing in the
- * report said what the review had seen after the rule. An empty list renders the empty string,
- * which is what drops the section out of the body.
+ * This is the runner-bound review record, not model prose about it: without it a report reads as a
+ * complete fix while the page still shows a header banner the reporter named, or placeholder bands
+ * between its sections, because nothing in the report says what the review saw after the rule. An
+ * empty list renders the empty string, which is what drops the section out of the body.
  *
  * @param instances - Instances the review still found, or undefined when it recorded none.
  * @returns The block to fill the section with, or the empty string.

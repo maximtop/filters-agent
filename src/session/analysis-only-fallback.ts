@@ -1,9 +1,9 @@
 /**
  * The safe zero-write outcome a mode continues with when its session sealed without an accepted
- * terminal payload — the same analysis_only shape the legacy parser's fallback produced, with the
- * seal kind and detail carried in the reasoning so the ending stays diagnosable. Used by the
- * pre-orchestrated fix session; the noun naming what it was waiting for is still a named parameter
- * rather than a hardcoded string, so a future mode that seals the same way needs no change here.
+ * terminal payload — an analysis_only outcome with the seal kind and detail carried in the
+ * reasoning so the ending stays diagnosable. Used by the pre-orchestrated fix session; the noun
+ * naming what it was waiting for is still a named parameter rather than a hardcoded string, so a
+ * future mode that seals the same way needs no change here.
  *
  * It lives here rather than beside the seal mapping in `src/tracer/session-trace.ts` because the
  * value it builds is a `FixOutcome`, and the tracer must not depend on the PR layer.

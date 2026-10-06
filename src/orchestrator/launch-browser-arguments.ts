@@ -7,12 +7,12 @@
  * constructing a browser session.
  *
  * The shapes are per-run because the two blocker families answer the question "what settings does
- * this session launch with?" differently, and the first live uBO run met both answers at once: one
- * call was refused with `Expected "settings" but received undefined`, a later one with `Expected
- * never but received "settings"`. A Firefox-family run has no host-writable settings surface at all
- * — its baseline is the run instruction's own managed-storage declaration, applied by the browser
- * when it force-installs the XPI — so the request takes no `settings`, the advertisement shows
- * none, and the refusal says what the baseline is instead.
+ * this session launch with?" differently, and one shared shape gives a uBO run both answers at
+ * once: one call is refused with `Expected "settings" but received undefined`, a later one with
+ * `Expected never but received "settings"`. A Firefox-family run has no host-writable settings
+ * surface at all — its baseline is the run instruction's own managed-storage declaration, applied
+ * by the browser when it force-installs the XPI — so the request takes no `settings`, the
+ * advertisement shows none, and the refusal says what the baseline is instead.
  */
 import * as v from 'valibot';
 import {
@@ -270,10 +270,9 @@ function launchBrowserDescription(policy: LaunchBrowserSettingsPolicy): string {
  * Whether the request paired an unfiltered control session with blocker settings.
  *
  * The control shape declares `settings` as `never`, so Valibot reports the pairing as "Expected
- * never but received Object" — which the generic refusal answered by listing the accepted settings
- * shapes, and the model then resent the same settings on the same control session: four times in
- * AdguardFilters #242140, where it concluded the browser was unavailable and finished without ever
- * launching one, and eight times in #239967.
+ * never but received Object". A generic refusal that answers by listing the accepted settings
+ * shapes leaves the model resending the same settings on the same control session — up to eight
+ * times, or until it concludes the browser is unavailable and finishes without ever launching one.
  *
  * @param issues - The Valibot issues the request failed with.
  * @returns Whether the failure is `settings` on a control session.

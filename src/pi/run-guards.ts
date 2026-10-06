@@ -54,12 +54,11 @@ export interface RunGuardOptions {
  * legitimately long tool execution. A provider that never answers at all is still the SDK's timeout
  * and still seals as a provider failure.
  *
- * Measuring total length rather than liveness is what this guard used to do, and it killed live
- * runs: a reasoning model streaming its thinking for longer than `requestTimeoutMs` tripped the
- * timer that exists for a wedged provider. Two runs sealed `request-deadline` with tokens still
- * arriving — one at loop turn 30, one at turn 24 right after a turn whose completion was 10,554
- * tokens. A run's total duration is already bounded by the wall-clock budget, so the only thing
- * left for this timer to detect is a stream that has stopped producing.
+ * Measuring total length rather than liveness would kill healthy runs: a reasoning model streaming
+ * its thinking for longer than `requestTimeoutMs` would trip the timer that exists for a wedged
+ * provider and seal `request-deadline` with tokens still arriving, for instance right after a turn
+ * whose completion was 10,554 tokens. A run's total duration is already bounded by the wall-clock
+ * budget, so the only thing left for this timer to detect is a stream that has stopped producing.
  *
  * Determinism note: pi awaits every event listener between turns and `abort()` flips the run signal
  * synchronously, so a guard tripping on `turn_end` stops the run before the next provider request
@@ -86,8 +85,8 @@ export function attachRunGuards(session: AgentSession, options: RunGuardOptions)
         }
         cause = next;
         clearRequestTimer();
-        // The moment a bound trips was invisible in a run log: an 87-minute run had to be
-        // reconstructed from the timestamps around it to tell when its wall clock had expired.
+        // Without this line the moment a bound trips is invisible in a run log, and a long run has
+        // to be reconstructed from the timestamps around it to tell when its wall clock expired.
         logger.warn(
             {
                 guard: next,

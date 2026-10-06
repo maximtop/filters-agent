@@ -31,10 +31,10 @@ export const RULE_GUIDANCE_TOPICS = [
     'placement',
     // What this repository accepts, refuses or requires for a rule: scope, anti-adblock and
     // rewarded-ad gates, exceptions, quality bar. Every topic above is about how a rule is
-    // written, so all of them but `placement` resolve to the syntax document; a run that asked
-    // `exception` and then `scriptlet` for uAssets' anti-adblock policy got syntax sections both
-    // times and filed report_missing_information saying the repository's CONTRIBUTING.md policy
-    // was unreachable (shellshock.io, run 34876667827).
+    // written, so all of them but `placement` resolve to the syntax document; without this topic a
+    // run that asks `exception` and then `scriptlet` for a repository's anti-adblock policy gets
+    // syntax sections both times and reports the repository's CONTRIBUTING.md policy as
+    // unreachable.
     'policy',
 ] as const;
 

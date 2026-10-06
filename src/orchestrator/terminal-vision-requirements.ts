@@ -397,9 +397,8 @@ export function terminalVisionRequirements(
             (state) =>
                 state.extensionMode === ExtensionMode.Prepared &&
                 // The session's baseline proof is the host read-back taken by the launch route's
-                // Baseline application (11-HITL Decision 1), or the list selection a declaring
-                // blocker's instruction supplied (32-AFK Decision 3); launch-time settings evidence
-                // is retired, so one of those two records is what qualifies a prepared session.
+                // Baseline application, or the list selection a declaring blocker's instruction
+                // supplied; one of those two records is what qualifies a prepared session.
                 sessionBaselineCredited(state) &&
                 view.isTerminalCurrentPreparedState(state),
         );
@@ -548,10 +547,10 @@ export function validateCurrentFirstTerminalVision(
         // Only a run whose current-build sessions are ALL controlled profiles is missing the
         // reporter settings. Once one session already runs `reported_on_current` with the
         // reporter's exact import, what is missing is its full-page vision, and the generic
-        // rejection below names that step. Live run 34003130266 sealed four fix runs on this
-        // branch because it fired for such sessions too: the model followed the settings
-        // guidance — closed the session, launched a fresh `reported_on_current` one — and never
-        // re-captured the page, since nothing told it the capture was the missing piece.
+        // rejection below names that step. Firing this branch for such sessions too seals runs:
+        // the model follows the settings guidance — closes the session, launches a fresh
+        // `reported_on_current` one — and never re-captures the page, since nothing tells it the
+        // capture is the missing piece.
         const diagnosticOnly =
             currentStates.length > 0 &&
             !currentStates.some((state) => view.isTerminalCurrentPreparedState(state));
@@ -622,9 +621,9 @@ export function validateCurrentFirstTerminalVision(
 /**
  * Guidance for a full-vision rejection when a qualifying session already exists.
  *
- * Such a session must not be told to launch again — that is the loop live run 34003130266 died in —
- * but to finish the capture in the session it has, with the requirement's own next action. Absent a
- * qualifying session the caller keeps its launch-first guidance.
+ * Such a session must not be told to launch again — that loop seals the run — but to finish the
+ * capture in the session it has, with the requirement's own next action. Absent a qualifying
+ * session the caller keeps its launch-first guidance.
  *
  * @param requirement - The vision requirement report.
  * @param sessionDescription - What the qualifying session runs, for the model.

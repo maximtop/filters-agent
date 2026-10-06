@@ -323,12 +323,12 @@ export function buildListCatalog(input: {
  * The split is the same policy the browser-extension launch already applies against the installed
  * build catalog: an id the catalog publishes becomes exactly one `officialAdguardListRef` in
  * evidence order, an id it does not is classified against the third-party registry snapshot and
- * left out of the request. Refusing the whole set on the first such id is what a live desktop run
- * of AdguardFilters #241534 did — the reporter had third-party list 207 (Adblock Warning Removal
- * List) enabled, so the run ended `capability_limited` before `apply_rule` ever executed, and
- * AdguardFilters reporters enable third-party lists often enough that this takes out a large share
- * of real desktop reports. Deciding what an empty subset means belongs to the caller, which is the
- * only layer that knows whether the request was empty to begin with.
+ * left out of the request. Refusing the whole set on the first such id would end a run
+ * `capability_limited` before `apply_rule` ever executes whenever the reporter has a third-party
+ * list enabled (e.g. list 207, Adblock Warning Removal List), and reporters enable third-party
+ * lists often enough that this would take out a large share of real desktop reports. Deciding what
+ * an empty subset means belongs to the caller, which is the only layer that knows whether the
+ * request was empty to begin with.
  *
  * No executor loads the repository's own list files yet, so a run's catalog entries never reach the
  * executor request this way; `namesOwnedPath` in `placement-tool.ts` is the ownership guard over

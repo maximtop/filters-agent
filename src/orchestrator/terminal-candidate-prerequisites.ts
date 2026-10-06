@@ -20,11 +20,11 @@ import type { TerminalValidationView } from './terminal-validation-view';
  * Return a draft whose rule is not scoped to the reported domain alone to the model, while it can
  * still fix it.
  *
- * The safety gate refuses such a draft after the run has sealed, and the model never learns why: on
- * nottinghampost.com a vision-verified fix ended as analysis-only because the submitted rule was
- * the merged line of an extension plan (the existing rule's three domains plus the reported one).
- * The common way here is exactly that, so the recovery names it: submit the rule for the reported
- * domain alone and let the host extend the existing rule.
+ * The safety gate refuses such a draft after the run has sealed, and the model never learns why: a
+ * vision-verified fix ends as analysis-only when the submitted rule is the merged line of an
+ * extension plan (the existing rule's three domains plus the reported one). The common way here is
+ * exactly that, so the recovery names it: submit the rule for the reported domain alone and let the
+ * host extend the existing rule.
  *
  * @param view - Read-only projection of the run the judgement reads.
  * @param outcome - Schema-valid draft decision proposed by the model.

@@ -19,9 +19,9 @@ import type { SessionToolBounceObservation, ToolBounceObserver } from './session
  * - The terminal tool's rejection cap is fed from here, because counting inside `execute` would miss
  *   every pre-`execute` bounce and leave a schema-invalid submission loop unbounded; and
  * - The bounce itself is RECORDED from here, because the execute wrapper never sees it. Without this,
- *   the exact benchmark failure the streak cap was relaxed for — a summary 39 characters over its
- *   limit, resubmitted until the run sealed — was visible in the run evidence only as a tool name
- *   on the turn event, with neither the payload nor pi's reason anywhere.
+ *   a failure such as a summary 39 characters over its limit, resubmitted until the run seals, is
+ *   visible in the run evidence only as a tool name on the turn event, with neither the payload nor
+ *   pi's reason anywhere.
  *
  * The two are told apart by `markExecuted`, which the runner's pi tool adapter calls with the call
  * id the moment `execute` runs: an id the observation never saw marked is a call that never
@@ -38,8 +38,8 @@ import type { SessionToolBounceObservation, ToolBounceObserver } from './session
  * block travels on as the reason: the same-reason streak can then only trip on a byte-identical
  * resubmission, so a model shortening its summary by one character each time never repeats a
  * "reason" and only the total ceiling ever fires; and the reason is persisted (the seal's
- * `lastReason`, the fix host summary, the analysis-only fallback reasoning, campaign reports),
- * where a whole payload is not a reason. The per-path issue lines are kept, which is the same shape
+ * `lastReason`, the fix host summary, the analysis-only fallback reasoning, run reports), where a
+ * whole payload is not a reason. The per-path issue lines are kept, which is the same shape
  * `formatIssues` gives the execute path, so the two bounce paths compare and read alike.
  */
 const PI_ECHOED_ARGUMENTS_BLOCK = /\n\s*Received arguments:\n[\s\S]*$/u;

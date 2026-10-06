@@ -64,7 +64,7 @@ import {
     type FixCoreOptions,
 } from './fix-core-inputs';
 import { declaredPlacementForRun } from '../knowledge/instruction-placement';
-import { resolveRuleGuidanceSource } from './fix-core-inputs';
+import { resolveRunRuleGuidance } from './fix-core-inputs';
 import {
     acceptedCandidateDisposition,
     deriveAgenticVerificationStatus,
@@ -107,7 +107,7 @@ import { lintPublishedCandidate } from '../rules/repository-lint-command';
  * live AgentRuntime registry. A run whose instruction declares a file-backed verification method
  * never reaches here: every calling face refuses it at the earliest point it holds the loaded
  * instruction, before this core is ever invoked (`fileBackedApplicationRefusalDetail` in
- * `knowledge/instruction-application.ts`), so this core no longer repeats that check itself.
+ * `knowledge/instruction-application.ts`), so this core does not repeat that check itself.
  *
  * @param config - GitHub-independent LLM and browser configuration.
  * @param issue - Prompt-safe local issue snapshot and integrity-addressed attachments.
@@ -183,7 +183,7 @@ export async function runAgenticFixCore(
             'failed',
             browserState,
             'unavailable',
-            'Agent runtime requires a reported URL, pinned AdguardFilters checkout, and ' +
+            'Agent runtime requires a reported URL, pinned filters checkout, and ' +
                 'extension source/cache configuration.',
             null,
             emptyArtifactPaths(tracePath),
@@ -336,9 +336,9 @@ export async function runAgenticFixCore(
                 // The run's one collector also meters the bounded application sessions, so their
                 // tokens land in the same usage summary and run record as every other session.
                 usageCollector: dependencies.usageCollector,
-                // One dispatch, two branches: an instruction source replaces the KnowledgeBase
-                // behind lookup_rule_guidance for the whole run.
-                knowledgeGuidanceSource: resolveRuleGuidanceSource(options),
+                // One dispatch: the instruction's documents, the prepared KnowledgeBase, or the
+                // run's default guidance serve lookup_rule_guidance for the whole run.
+                knowledgeGuidanceSource: await resolveRunRuleGuidance(options, logger),
                 ...(options.repositoryLint === undefined
                     ? {}
                     : { repositoryLint: options.repositoryLint }),
@@ -423,7 +423,7 @@ export async function runAgenticFixCore(
         );
         // The rule an analysis-only run found and could not verify. It has no publication path by
         // design; carrying it typed is what stops it from surviving only inside the reasoning
-        // prose, where the sarkisozleri.bbs.tr run left the rule a maintainer later landed.
+        // prose, where a maintainer has to dig it out.
         const candidateForReview =
             outcome.outcome === FixOutcomeKind.AnalysisOnly
                 ? outcome.candidateForReview
@@ -502,8 +502,8 @@ export async function runAgenticFixCore(
         );
         if (runtimeCandidateBinding !== undefined && candidateValidationEvidence === undefined) {
             // The experiment already proved this candidate; losing it here silently would leave
-            // the run reporting no patch with nothing to explain why. The preflight sink is only
-            // installed by the lab's local cycle, so the run log carries the names as well.
+            // the run reporting no patch with nothing to explain why. The preflight sink is not
+            // installed on every run, so the run log carries the names as well.
             const failures = describeVerifiedCandidateBindingFailure(
                 runtimeCandidateBinding,
                 selectedValidation,
@@ -519,8 +519,8 @@ export async function runAgenticFixCore(
             );
         }
         // The one line that says how a terminal proposal became, or failed to become, a candidate
-        // patch: a live run accepted a draft-PR terminal over a verified review and still ended
-        // analysis-only with nothing in the log naming the step that dropped it.
+        // patch: without it, a run that accepts a draft-PR terminal over a verified review and
+        // still ends analysis-only has nothing in the log naming the step that dropped it.
         logger.info(
             {
                 outcome: outcome.outcome,
@@ -591,11 +591,10 @@ export async function runAgenticFixCore(
         const environmentSelection = runtime.getEnvironmentSelection();
         const agentTerminationReason = run.terminationReason ?? undefined;
         // A rejected terminal is NOT a failed run: the rejection was corrective guidance the
-        // session could not act on, and mapping it to failed discarded complete analyses. The
-        // host's analysis_only terminal (carrying the model's reasoning plus the rejection
-        // summary) flows through the ordinary status mapping instead (owner decisions
-        // 2026-08-18 / 2026-08-23, carried over unchanged from the legacy finish retry).
-        // Every other host termination without an accepted model decision remains failed.
+        // session could not act on, and mapping it to failed would discard complete analyses.
+        // The host's analysis_only terminal (carrying the model's reasoning plus the rejection
+        // summary) flows through the ordinary status mapping instead. Every other host
+        // termination without an accepted model decision remains failed.
         const runStatus: FixRunStatus =
             environmentSelectionRunStatus(environmentSelection) ??
             (agentTerminationReason !== undefined && !run.terminalRejected
@@ -819,7 +818,7 @@ export async function runAgenticFixCore(
         // above was just replaced by canonical environment execution, which records only sessions
         // it conducted as phases. When that swap leaves no session proving a no-patch verdict, the
         // record would claim more than it holds: lower the claim rather than fail the run, which
-        // is what a schema rejection here costs (de.euronews.com #238829, 2026-08-22).
+        // is what a schema rejection here costs.
         if (!noPatchVerdictIsSessionBound(finalResult)) {
             recordPreflightDiagnostic('run', {
                 note: 'no_patch_verification_unbound',
@@ -874,9 +873,9 @@ export async function runAgenticFixCore(
             });
         }
         if (!parsed.success) {
-            // Fail closed, but with an identity: an anonymous ValiError here was classified as
-            // generic runtime infrastructure and cost a full evidence-archive reproduction to
-            // attribute (2026-08-10). The violation is in this run's own result assembly.
+            // Fail closed, but with an identity: an anonymous ValiError here reads as generic
+            // runtime infrastructure and takes a full evidence-archive reproduction to attribute.
+            // The violation is in this run's own result assembly.
             throw new FixRunResultContractError(
                 parsed.issues.map((validationIssue) => validationIssue.message),
             );

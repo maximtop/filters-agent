@@ -6,9 +6,8 @@ import * as v from 'valibot';
  * Backlog selection consumes only this shape: open-issue summaries, per-issue comment entries, and
  * the composite history derivation input. Raw GitHub REST items are mapped here at the seam — label
  * objects beside plain names, missing logins and bodies to empties, absent author associations to
- * null — before schema validation admits them (AC1). How the reads travel and how failures map to
- * typed errors live with the transport adapter in `backlog-reader.ts`; nothing here handles
- * transport.
+ * null — before schema validation admits them. How the reads travel and how failures map to typed
+ * errors live with the transport adapter in `backlog-reader.ts`; nothing here handles transport.
  */
 
 /**

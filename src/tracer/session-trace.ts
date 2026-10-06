@@ -1,11 +1,11 @@
 /**
  * Session trace recording for pi session modes: map each pi seal kind onto the trace outcome
- * vocabulary the legacy loop used (shared by analyze, observe, and replay), record the run_sealed
- * decision event, and end the run trace — plus the per-execution, per-bounce, per-turn and
- * per-compaction recording wrappers every mode wiring shares (tool execution, terminal submission,
- * calls pi refused before execution, llm_request/llm_response pairs, and pi's context rewrites with
- * the summaries they left behind). Extracted from the pi layer because these are tracer concerns:
- * they own no run behavior, only what lands in the run trace.
+ * vocabulary (shared by analyze, observe, and replay), record the run_sealed decision event, and
+ * end the run trace — plus the per-execution, per-bounce, per-turn and per-compaction recording
+ * wrappers every mode wiring shares (tool execution, terminal submission, calls pi refused before
+ * execution, llm_request/llm_response pairs, and pi's context rewrites with the summaries they left
+ * behind). Kept out of the pi layer because these are tracer concerns: they own no run behavior,
+ * only what lands in the run trace.
  */
 import type { TraceRecorder } from './trace-recorder';
 import { TraceEventType, type RunTrace } from '../types/trace';
@@ -30,8 +30,8 @@ import type { SessionToolResult, SessionToolSpec } from '../pi/session-tool-type
 import type { TerminalToolController } from '../pi/terminal-tool';
 
 /**
- * Trace outcome for a terminally sealed run — the exact string the legacy loop wrote for every mode
- * on normal completion.
+ * Trace outcome for a terminally sealed run — the exact string every mode writes on normal
+ * completion.
  */
 export const TRACE_OUTCOME_SUCCESS = 'analysis_complete';
 
@@ -57,8 +57,8 @@ export const COMPACTION_DECISION_PHASE = 'context_compacted';
  * this to tell them apart: a provider response that went silent says nothing about the
  * investigation (the model was mid-thought), an expired wall clock says the work did not fit the
  * time it was given, and the iteration backstop says the loop was going in circles. Collapsing all
- * three onto `max_iterations_exceeded` reported every one of them as "The agent loop reached its
- * budget".
+ * three onto `max_iterations_exceeded` would report every one of them as "The agent loop reached
+ * its budget".
  */
 const BUDGET_TERMINATION_REASONS: Record<BudgetExceededSealed['budget'], AgentTerminationReason> = {
     [GuardCause.Turns]: AgentTerminationReason.MaxIterationsExceeded,
@@ -99,7 +99,7 @@ export function sealTerminationReason(outcome: NonTerminalSeal): AgentTerminatio
 }
 
 /**
- * Map a pi seal kind to the trace outcome string the legacy loop wrote for that ending.
+ * Map a pi seal kind to the trace outcome string for that ending.
  *
  * @param outcome - The sealed pi outcome.
  * @returns The run_end outcome string.
@@ -119,9 +119,9 @@ export function traceOutcomeForSeal(outcome: TerminalOutcome<unknown>): string {
  *
  * The keys are STABLE and explicitly mapped, never spread from the outcome: a seal kind's own field
  * names are free to change with the pi vocabulary, while a trace reader must be able to read traces
- * written before and after such a change with one shape. Spreading also collided two different
- * meanings on one key — a provider error message and an abort reason both landed as `message` —
- * which no reader could tell apart without re-deriving the seal kind first.
+ * written before and after such a change with one shape. Spreading would also collide two different
+ * meanings on one key — a provider error message and an abort reason both land as `message` — which
+ * no reader can tell apart without re-deriving the seal kind first.
  */
 export interface SealTraceDetails {
     /**
@@ -223,7 +223,7 @@ export function sealTraceDetails(outcome: TerminalOutcome<unknown>): SealTraceDe
 
 /**
  * Record the terminal seal and end the run trace, mapping each pi seal kind onto the trace outcome
- * vocabulary the legacy loop wrote and persisting the seal's typed detail beside it.
+ * vocabulary and persisting the seal's typed detail beside it.
  *
  * @param recorder - The run trace recorder.
  * @param outcome - The sealed pi outcome.
@@ -276,8 +276,8 @@ export function sealDetail(outcome: TerminalOutcome<unknown>): string {
 
 /**
  * Wrap one session tool so every execution — success, gated refusal, or throw — lands in the run
- * trace, mirroring the legacy loop's per-call recordToolCall. The wrapper sits outside the gate
- * check inside the adapted execute, so gated refusals are recorded as ordinary tool results.
+ * trace through the recorder's per-call recordToolCall. The wrapper sits outside the gate check
+ * inside the adapted execute, so gated refusals are recorded as ordinary tool results.
  *
  * @param spec - The adapted session tool.
  * @param recorder - The run trace recorder.
@@ -364,7 +364,7 @@ export function recordToolBounce(recorder: TraceRecorder): ToolBounceObserver {
 
 /**
  * Build the observer that records one llm_request/llm_response event pair per completed pi turn,
- * with legacy token-total field names and pi's cache counts as extra response fields.
+ * with the trace format's token-total field names and pi's cache counts as extra response fields.
  *
  * @param recorder - The run trace recorder.
  * @returns The turn observer for runAgentSession's onTurnEnd.

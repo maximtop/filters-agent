@@ -2,11 +2,10 @@
  * The runtime's executor wiring: the one module that imports the browser-extension executor
  * registration for its side effect and resolves the run's executor set into a selection host.
  *
- * `AgentRuntime.create` consumes this module, so the public path (every entry point reaching
- * `AgentRuntime`, no lab import required) joins the browser-extension registration before the set
- * resolves; the lab tree adds its own registrations beside it by importing their modules. The
- * resolution is the run's executor-set input: names the run requests, or every registered executor
- * when the run names none.
+ * `AgentRuntime.create` consumes this module, so every entry point reaching `AgentRuntime` joins
+ * the browser-extension registration before the set resolves; other callers may add registrations
+ * of their own beside it by importing their modules. The resolution is the run's executor-set
+ * input: names the run requests, or every registered executor when the run names none.
  */
 import './extension-filtering-executor';
 import type { IssueFacts } from '../types/issue-facts';
@@ -59,7 +58,7 @@ export interface RuntimeExecutorWiringInput {
     /**
      * The executable filter baseline the run supplies, when its blocker declares its own list
      * selection instead of naming lists the official AdGuard catalog can resolve. Absent for every
-     * run whose reported selection is resolved as it always was.
+     * run whose reported selection is resolved against that catalog.
      */
     filterBaseline?: SelectionFilterBaseline;
 }

@@ -17,7 +17,7 @@ import {
  * Resolve one backlog run's issue-selection narrowing.
  *
  * @param checkoutRoot - Checkout the instruction is read from: the action's own workspace, the
- *   lab's configured checkout, or the process working directory as the last resort.
+ *   caller's configured checkout, or the process working directory as the last resort.
  * @param instructionPath - Explicit instruction path override, when the run configured one.
  * @returns The parsed narrowing, or undefined when the run carries no instruction or its selection
  *   section is empty.

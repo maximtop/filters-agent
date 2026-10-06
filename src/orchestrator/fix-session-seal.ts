@@ -1,5 +1,5 @@
 /**
- * Fix-session seal mapping: how one pi seal becomes the legacy-shaped run result the fix core
+ * Fix-session seal mapping: how one pi seal becomes the `FixSessionRun` result the fix core
  * consumes — the accepted terminal, the rejected-terminal downgrade that preserves the model's own
  * analysis, the routing-check halt, and the host analysis-only fallback every other ending lands
  * on. Split from `fix-session.ts` so the session wiring stays the launch procedure and this stays
@@ -19,8 +19,8 @@ import type { ObservationSink } from './fix-session-observations';
 
 /**
  * How the run's terminal decision originated: the model's accepted finish_fix call, or a host
- * fallback synthesized because the run sealed without an accepted terminal. The wire strings match
- * the legacy `AgentLoopTerminalSource` members they replace.
+ * fallback synthesized because the run sealed without an accepted terminal. The wire strings are
+ * the ones results written by earlier builds already carry.
  */
 export const FixTerminalSource = {
     /**
@@ -64,20 +64,20 @@ export const FixTracePhase = {
 export type FixTracePhase = (typeof FixTracePhase)[keyof typeof FixTracePhase];
 
 /**
- * The exact legacy routing-check reason text — a persisted observable of the routing-check flow.
+ * The exact routing-check reason text — a persisted observable of the routing-check flow.
  */
 export const ROUTING_CHECK_HALT_REASON =
     'Routing check: the environment selection was recorded, and the run stops before any ' +
     'investigation by design.';
 
 /**
- * Longest model-authored reasoning carried verbatim inside a downgraded host terminal; hoisted from
- * the legacy loop's reserved-finish fallback so the rejected-terminal mapping cannot drift.
+ * Longest model-authored reasoning carried verbatim inside a downgraded host terminal, declared
+ * once so the rejected-terminal mapping cannot drift.
  */
 export const MAX_PRESERVED_REJECTED_REASONING_LENGTH = 6_000;
 
 /**
- * The legacy-shaped run result the fix core consumes after the pi session ends.
+ * The run result the fix core consumes after the pi session ends.
  */
 export interface FixSessionRun {
     /**
@@ -184,7 +184,7 @@ function rejectedTerminalOutcome(
 }
 
 /**
- * Map one pi seal onto the legacy-shaped fix run result and the sealed trace.
+ * Map one pi seal onto the fix run result and the sealed trace.
  *
  * @param outcome - The sealed pi outcome.
  * @param target - The run recorder.

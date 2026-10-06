@@ -1,11 +1,11 @@
 /**
  * Removal of the report sections a run had nothing to put under.
  *
- * A report template spells every section it might need, but a run fills only what it observed. Both
- * failure reports of the first live runs carried "### Rule", "### Policy rationale", "### Place in
- * the list" and "### Executor and version" with nothing under them, and an empty heading promises
- * the reader something the report does not have. The rendered body is the only place this can be
- * decided: the template itself does not know which of its placeholders resolved.
+ * A report template spells every section it might need, but a run fills only what it observed. A
+ * failure report can leave its Rule, Policy rationale, Place in the list and Executor and version
+ * sections with nothing under them, and an empty heading promises the reader something the report
+ * does not have. The rendered body is the only place this can be decided: the template itself does
+ * not know which of its placeholders resolved.
  */
 
 /**

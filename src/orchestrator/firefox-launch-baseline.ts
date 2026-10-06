@@ -6,11 +6,11 @@
  * from a state read-back. A Firefox-family run can do none of that: `moz-extension://` pages cannot
  * be driven, so the blocker's own state is unreadable from the host.
  *
- * Decision 3 of 32-AFK says what readiness means instead: a successful launch with the declared
- * policies applied. The browser has installed the signed XPI and read the managed-storage document
- * at startup by the time the session exists, so the baseline this function credits is the
- * declaration's own list selection — and it says plainly what it could not observe, so nothing
- * downstream mistakes the credit for a live settings proof.
+ * Readiness here means a successful launch with the declared policies applied. The browser has
+ * installed the signed XPI and read the managed-storage document at startup by the time the session
+ * exists, so the baseline this function credits is the declaration's own list selection — and it
+ * says plainly what it could not observe, so nothing downstream mistakes the credit for a live
+ * settings proof.
  */
 import { declaredBaselineListKeys } from '../environment/declared-filter-baseline';
 import type { FilterListKey } from '../environment/filter-list-ref';

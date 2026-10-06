@@ -140,9 +140,9 @@ export interface CreateProxyBlockerEvidenceRouteInput {
 }
 
 /**
- * Create the AdGuard CLI-backed evidence route.
+ * Create the proxy-blocker evidence route.
  *
- * It satisfies the same contract as the AdGuard CLI route, so the runtime is unchanged, but it
+ * It satisfies the same contract as the AdGuard CLI route, so the runtime drives both alike, but it
  * needs no licence, fetches nothing in the background, and executes exactly the filter files the
  * run supplied — which is what makes its baseline attributable and its phases comparable.
  *

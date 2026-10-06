@@ -1,11 +1,9 @@
 /**
  * The enumeration backstop: what catches a model searching by one tool call per candidate.
  *
- * The pathology this exists for is NOT repetition. The first scheduled live pass after the
- * modular-agent merge lost AdguardFilters #242044 (dl.3dmgame.com): the run spent its entire
- * 35-minute investigation budget and sealed `wall_clock_exceeded` without ever reaching
- * `apply_rule` — 227 tool calls over 168 model turns, 99 of them `stabilize_page`, including one
- * uninterrupted run of 37.
+ * The pathology this exists for is NOT repetition. One run spent its entire 35-minute investigation
+ * budget and sealed `wall_clock_exceeded` without ever reaching `apply_rule` — 227 tool calls over
+ * 168 model turns, 99 of them `stabilize_page`, including one uninterrupted run of 37.
  *
  * Those 37 calls were not identical. Each carried a different `targetSelector` (`.GmL_8 >
  * div:nth-of-type(2)`, `div:has(> img[src*="1789529315"])`, `a[href*="steam"]`, …), and 74 distinct
@@ -25,16 +23,16 @@
  * treats every tool alike.
  *
  * "Every tool" has to mean every tool the session dispatches, so the fix session's tool adapter is
- * where results pass through it. It used to sit on the runtime's browser-tool tail alone, and the
- * next enumeration came from a repository tool: AdguardFilters #242193 (londonworld.com) spent its
+ * where results pass through it. Enumeration comes from repository tools too: a run can spend its
  * 35 minutes on 293 `search_rules` calls — 72 pattern variants for the one rule blocking
- * `player.ex.co`, 234 of them answering nothing — with a 40-call streak the backstop never saw.
+ * `player.ex.co`, 234 of them answering nothing — with a 40-call streak that a backstop on the
+ * browser-tool tail alone never sees.
  */
 
 /**
  * Consecutive same-tool calls after which the notice rides along with the real result.
  *
- * Picked from the two bands the live traces actually show. Across 39 saved live runs of every tool,
+ * Picked from the two bands recorded traces actually show. Across 39 recorded runs of every tool,
  * the longest legitimate same-tool streak is 10 (`search_rules`, then `launch_browser` and
  * `evaluate_js` at 9 — each call a genuinely different question no earlier answer could have
  * supplied), while the two runs that exhausted their budget reached 37 (`stabilize_page`) and 40

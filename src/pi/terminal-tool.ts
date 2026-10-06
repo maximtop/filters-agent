@@ -31,26 +31,26 @@ const TERMINAL_EXECUTION_MODE: ToolExecutionMode = 'sequential';
  * of the run (what the outcome reports, and what an operator reading a seal expects), while
  * `repeatedRejections` is the length of the current same-reason streak (what the cap compares
  * against `maxRejections`). Collapsing them into one counter — the streak, reported as the total —
- * made a run that failed three different ways seal claiming a single rejection. The cap counts
- * REPEATED rejections: a reason the model has not seen before resets the streak, because a model
- * that changes its answer is still working the problem, while one that resubmits into the same wall
- * is stuck. Both counters are bounded: the streak by `maxRejections`, the total by the wider
- * ceiling `TERMINAL_REJECTION_TOTAL_MULTIPLE` derives from it, so a model alternating between two
- * walls forever — which never builds a streak — still seals as rejected-terminal with its last
+ * would make a run that failed three different ways seal claiming a single rejection. The cap
+ * counts REPEATED rejections: a reason the model has not seen before resets the streak, because a
+ * model that changes its answer is still working the problem, while one that resubmits into the
+ * same wall is stuck. Both counters are bounded: the streak by `maxRejections`, the total by the
+ * wider ceiling `TERMINAL_REJECTION_TOTAL_MULTIPLE` derives from it, so a model alternating between
+ * two walls forever — which never builds a streak — still seals as rejected-terminal with its last
  * reason instead of draining the turn budget into a budget-exceeded seal that carries no reason at
  * all. Acceptance settles the run with the validated payload.
  *
- * The simplified knowledge-base pattern (plain cap, no forced-tool-choice reserved turn) is kept,
- * with progress awareness restored after a benchmark run showed the plain cap sealing a healthy
- * run: a summary 39 characters over its limit was shortened on every retry (439 -> 425 -> 416) and
- * still ran out of budget, because a model cannot count characters exactly.
+ * The simplified knowledge-base pattern (plain cap, no forced-tool-choice reserved turn) is used,
+ * with progress awareness on top, because a plain cap seals a healthy run: a summary 39 characters
+ * over its limit can be shortened on every retry (439 -> 425 -> 416) and still run out of budget,
+ * because a model cannot count characters exactly.
  *
  * What makes two rejections "the same" is the host's business. A host hook may hand back a
  * fingerprint beside the model-facing reason, and the streak then compares fingerprints; a host
  * that gives none, and every pre-`execute` schema bounce, is compared by reason text. The
  * distinction exists because the text of a rejection can stay word-for-word identical while the
- * model does exactly the browser work it asks for: live run 34003130266 sealed four fix runs after
- * three same-text rejections whose progress counters had moved between them.
+ * model does exactly the browser work it asks for: compared by text alone, three same-text
+ * rejections whose progress counters moved between them would seal a fix run that is progressing.
  */
 
 /**
@@ -69,10 +69,10 @@ export const DEFAULT_MAX_TERMINAL_REJECTIONS = 3;
  *
  * The ceiling exists only for the failure the streak cap cannot see: a model that alternates
  * between two walls holds its streak at 1 forever. Three times the streak cap leaves the converging
- * case untouched — the benchmark run this cap was relaxed for needed three distinct reasons (439 ->
- * 425 -> 416 characters) and a converging model runs out of distinct reasons quickly — while
- * bounding the alternating one at a small multiple of the budget a stuck model already gets. It
- * scales with `maxRejections`, so a mode that tightens the streak cap tightens the ceiling too.
+ * case untouched — the shortening summary above needs three distinct reasons (439 -> 425 -> 416
+ * characters) and a converging model runs out of distinct reasons quickly — while bounding the
+ * alternating one at a small multiple of the budget a stuck model already gets. It scales with
+ * `maxRejections`, so a mode that tightens the streak cap tightens the ceiling too.
  */
 export const TERMINAL_REJECTION_TOTAL_MULTIPLE = 3;
 
@@ -320,8 +320,8 @@ export function buildTerminalTool<T>(options: TerminalToolOptions<T>): TerminalT
             const rejection = await options.validateHost?.(parsed.output);
             if (rejection !== undefined) {
                 pendingFingerprint = rejection.fingerprint;
-                // The model must see the budget it is spending: the retired loop learned this
-                // when a run died on its third attempt without the model knowing it was the last.
+                // The model must see the budget it is spending: otherwise a run can die on its
+                // third attempt without the model knowing it was the last.
                 throw new Error(
                     `${options.name}: rejected (${rejection.reason}) ` +
                         `[rejected submission ${rejections + 1}; the run seals after ` +

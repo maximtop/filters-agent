@@ -1,13 +1,20 @@
 # syntax=docker/dockerfile:1.7
 
 # The container action image of the `filters-agent` action face: the sources, node_modules and
-# both browsers in one image, booted through tsx — the same mechanism as `pnpm start` on a
-# developer machine. There is no build step and no bundle; the repository ships sources, so a
-# `src/` change is an image change by construction. The browser presence check
-# (`src/action/action-main.ts`) never downloads: everything it probes is installed here, and the
-# final proof of each browser is a real headless launch at build time — a launched browser is the
-# capability, its installed files are not (`ldd` and directory listings assert prerequisites,
-# not the capability).
+# both browsers in one image, booted through tsx. There is no build step and no bundle; the
+# repository ships sources, so a `src/` change is an image change by construction. The browser
+# presence check (`src/action/action-main.ts`) never downloads: everything it probes is installed
+# here, and the final proof of each browser is a real headless launch at build time — a launched
+# browser is the capability, its installed files are not (`ldd` and directory listings assert
+# prerequisites, not the capability).
+
+# The sources the image runs, without the AdGuard CLI module: src/adguard-cli/ ships as the
+# separately installed blocker module (`adguard-cli/`), so the image carries the browser extension
+# route and the generic module executor, and nothing that knows the CLI. Pruning in its own stage
+# keeps the module's files out of every layer of the final image, not just its top layer.
+FROM node:24-bookworm-slim AS sources
+COPY src/ /sources/src/
+RUN rm -rf /sources/src/adguard-cli
 
 FROM node:24-bookworm-slim
 
@@ -48,7 +55,7 @@ RUN apt-get update \
     && unzip -t /tmp/git-proof.zip \
     && rm -rf /tmp/git-proof /tmp/git-clone /tmp/git-proof.zip
 
-COPY package.json pnpm-lock.yaml tsconfig.json tsconfig.test.json ./
+COPY package.json pnpm-lock.yaml tsconfig.json ./
 
 # No `pnpm store prune` here on purpose: node_modules lives on the layer while the store rides
 # the cache mount, so cross-filesystem imports fall back to copies, every store file keeps
@@ -82,10 +89,9 @@ RUN pnpm exec playwright-core install-deps firefox \
 
 RUN node --input-type=module -e "import { firefox } from 'playwright-core'; const browser = await firefox.launch({ headless: true }); console.log('playwright firefox ready:', browser.version()); await browser.close();"
 
-# Sources only — never `lab/` (the lint boundary keeps it out of every published surface) and
-# never the tests; the tsconfig pair travels with them because tsx resolves the module graph
-# through it.
-COPY src/ ./src/
+# Sources only (the pruned tree from the `sources` stage), never the tests; tsconfig.json (copied
+# above) travels with them because tsx resolves the module graph through it.
+COPY --from=sources /sources/src/ ./src/
 
 # The boot command, written once: the ENTRYPOINT runs this file and the boot proof below runs the
 # very same file, so the proof can never drift from what GitHub starts. It changes into the mounted
@@ -105,9 +111,8 @@ RUN chmod 0755 /app/boot.sh
 # Boot proof: start the face exactly as GitHub does, with a bound workspace and none of the action's
 # inputs, and require the named failure that lists every mandatory input. A wrong loader path, a
 # module that no longer resolves inside the image, or a face that boots without its inputs fails
-# the build here instead of the first real action run. It runs at build time because the
-# repository's own CI runners route `docker build` to a remote builder and have no daemon to
-# `docker run` an image.
+# the build here instead of the first real action run. It runs at build time so that a builder
+# without a daemon to `docker run` the image (a remote BuildKit builder, for one) still proves it.
 RUN mkdir -p /tmp/boot-proof \
     && if out="$(GITHUB_WORKSPACE=/tmp/boot-proof /app/boot.sh 2>&1)"; then \
         printf '%s\n' "$out"; echo 'boot proof: the face booted cleanly without its inputs'; exit 1; \

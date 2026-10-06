@@ -11,10 +11,10 @@ import {
 /**
  * The app-message transport and bounded readiness posture of the AdGuard extension state read.
  *
- * Decision 1 of 11-HITL: the host reads the blocker state back itself. Every such read goes over
- * one transport — the options page's `chrome.runtime.sendMessage` — and shares one bounded
- * readiness posture: one shared wall-clock budget, a retry delay, and a per-wait floor, so a slow
- * early wait never starves a later one.
+ * The host reads the blocker state back itself. Every such read goes over one transport — the
+ * options page's `chrome.runtime.sendMessage` — and shares one bounded readiness posture: one
+ * shared wall-clock budget, a retry delay, and a per-wait floor, so a slow early wait never starves
+ * a later one.
  *
  * The host read-back functions built on this transport live in `adguard-extension-state-read.ts`.
  */

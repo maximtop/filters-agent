@@ -5,13 +5,13 @@ import { toJsonSchema } from '@valibot/to-json-schema';
  * Advertisement conversion of one tool's Valibot parameter schema: the JSON Schema pi registers as
  * the tool's parameters, advertises to the model, and pre-validates every call against.
  *
- * There is no node projection here any more, and that is the point. pi validates a tool call by
- * compiling the advertised schema with TypeBox (`Compile` + `Value.Check` inside pi-ai's
+ * The schema is advertised as converted, with no projection. pi validates a tool call by compiling
+ * the advertised schema with TypeBox (`Compile` + `Value.Check` inside pi-ai's
  * `validateToolArguments`), which is a JSON Schema validator: `minLength`, `maxLength`, `minimum`,
  * `maximum`, `pattern`, `enum`, `const`, `minItems`, `maxItems`, `anyOf`/`oneOf`, `required`,
  * `additionalProperties` and `$ref`/`$defs` are all compiled and enforced natively. Dropping the
- * bound keywords and re-rendering them as a prose "Constraints:" sentence bought nothing and cost
- * the model a machine-checkable contract.
+ * bound keywords and re-rendering them as a prose "Constraints:" sentence would buy nothing and
+ * cost the model a machine-checkable contract.
  *
  * The one invariant this seam owes is that pi's pre-execute check must never be STRICTER than the
  * adapter's authoritative Valibot re-check, and `toJsonSchema` gives that for free:
@@ -30,12 +30,12 @@ import { toJsonSchema } from '@valibot/to-json-schema';
 /**
  * The JSON Schema `type` every function-parameters schema must declare at its root.
  *
- * The OpenAI function-calling contract, and the strict OpenAI-compatible upstreams TokenGuard
- * routes to, refuse a `parameters` object whose root lacks `type: "object"`: live run 34446626531
- * lost two fix runs mid-session to `Invalid schema for function 'finish_fix': schema must be a JSON
- * Schema of 'type: "object"', got 'type: null'` once the gateway's load balancer moved them onto
- * such an upstream. `@valibot/to-json-schema` renders a `v.union` of objects as a bare `anyOf` with
- * no root type, which is what those upstreams reject.
+ * The OpenAI function-calling contract, and the strict OpenAI-compatible upstreams an LLM gateway
+ * may route to, refuse a `parameters` object whose root lacks `type: "object"`: a fix run fails
+ * mid-session with `Invalid schema for function 'finish_fix': schema must be a JSON Schema of
+ * 'type: "object"', got 'type: null'` once the gateway's load balancer moves it onto such an
+ * upstream. `@valibot/to-json-schema` renders a `v.union` of objects as a bare `anyOf` with no root
+ * type, which is what those upstreams reject.
  */
 const OBJECT_ROOT_TYPE = 'object';
 
@@ -76,8 +76,7 @@ function everyBranchIsObject(branches: unknown): boolean {
 export function toAdvertisedSchema(schema: v.GenericSchema): Record<string, unknown> {
     // `$schema` names the dialect of the DOCUMENT, not a constraint on the call, and pi forwards
     // `tool.parameters` verbatim into the provider request body (`api/openai-completions.js`).
-    // Master's hand-built `finishFixParameters()` stripped the same key before advertising; this
-    // keeps the wire schema to keywords that describe the arguments.
+    // Stripping it keeps the wire schema to keywords that describe the arguments.
     const { $schema: _dialect, ...advertised } = toJsonSchema(schema) as Record<string, unknown>;
     if (
         advertised['type'] === undefined &&

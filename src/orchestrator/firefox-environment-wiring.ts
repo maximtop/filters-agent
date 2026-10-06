@@ -6,8 +6,7 @@
  * binds an AdGuard settings provider over the launch read-back. A Firefox-family run has neither:
  * its whole executable identity is the launch declaration, so the options are built from that
  * declaration plus the session seams the runtime supplies, and the run's filter baseline is the
- * declaration's list selection rather than anything resolved against AdGuard's catalog (32-AFK
- * Decisions 1 and 3).
+ * declaration's list selection rather than anything resolved against AdGuard's catalog.
  */
 import { createHash } from 'node:crypto';
 import {
@@ -41,8 +40,8 @@ export function firefoxPreparedLaunch(
 /**
  * The executable filter baseline a Firefox-family run declares, or undefined for any other family.
  *
- * Decision 1: the declaration is the baseline. A run of any other family returns undefined, so the
- * environment selection resolves the reported names against AdGuard's catalog exactly as before.
+ * The declaration is the baseline. A run of any other family returns undefined, so the environment
+ * selection resolves the reported names against AdGuard's catalog.
  *
  * @param extension - The run's one prepared extension build, when the run prepared one.
  * @param reportedFilters - The reporter's own filter list texts, untrusted; compared against the

@@ -7,9 +7,9 @@ import { IssueSelectionNarrowingSchema } from '../knowledge/instruction-selectio
  * The scheduled-queue module derives everything from the agent's comments and the issue history, so
  * its only configuration is the pair of work bounds and the revision budget: how many issues one
  * run may take, how often one issue may be reported during a rolling window, and which
- * author-association roles count as trusted. Every unset field falls back to the lab's defaults
- * (AC5) before validation, and `capturedAt` — the run's clock capture — comes from the caller so
- * window arithmetic stays deterministic.
+ * author-association roles count as trusted. Every unset field falls back to {@link QUEUE_DEFAULTS}
+ * before validation, and `capturedAt` — the run's clock capture — comes from the caller so window
+ * arithmetic stays deterministic.
  */
 
 /**
@@ -37,9 +37,8 @@ export const TRUSTED_ROLE_VALUES: readonly TrustedRole[] = Object.values(Trusted
 /**
  * Author associations trusted by default.
  *
- * Mirrors the lab intake's trusted-association set (`lab/github/live-intake.ts`): owners, members,
- * and collaborators of the filter list may change an issue revision; untrusted associations such as
- * `NONE` are simply absent, so unknown values fail closed.
+ * Owners, members, and collaborators of the filter list may change an issue revision; untrusted
+ * associations such as `NONE` are simply absent, so unknown values fail closed.
  */
 export const DEFAULT_TRUSTED_ROLES: readonly TrustedRole[] = [
     TrustedRole.Owner,
@@ -50,18 +49,17 @@ export const DEFAULT_TRUSTED_ROLES: readonly TrustedRole[] = [
 /**
  * Length of the rolling window that bounds paid revisions per issue.
  *
- * Why 24 hours: the lab intake bounds paid revisions per report with a rolling one-day budget
- * (`REVISION_BUDGET_WINDOW_MS` in `lab/github/live-intake.ts`), so "not more than three a day"
- * (AC3) is this window, not a calendar day.
+ * Why 24 hours: paid revisions per report are bounded by a rolling one-day budget, so "not more
+ * than three a day" is this window, not a calendar day.
  */
 export const REVISION_ROLLING_WINDOW_MS = 1000 * 60 * 60 * 24;
 
 /**
- * Applied per missing queue field (AC5) before validation.
+ * Applied per missing queue field before validation.
  *
- * `maxIssuesPerRun` is the lab intake's batch size, `maxRevisionsPerWindow` and the window
- * (`revisionWindowMs`) its paid-revision budget, and `trustedRoles` its trusted-association set —
- * `lab/github/live-intake.ts` stays the authoritative source of these values.
+ * `maxIssuesPerRun` is the batch size one run takes, `maxRevisionsPerWindow` and the window
+ * (`revisionWindowMs`) the paid-revision budget per issue — at most three revisions in a rolling
+ * day — and `trustedRoles` the trusted-association set above.
  */
 export const QUEUE_DEFAULTS = {
     maxIssuesPerRun: 50,
@@ -120,7 +118,7 @@ export interface DefaultedQueueInputs extends Omit<
 }
 
 /**
- * Apply the lab's defaults to every unset queue field (AC5).
+ * Apply {@link QUEUE_DEFAULTS} to every unset queue field.
  *
  * @param inputs - Queue inputs as configured; fields left undefined are filled from
  *   `{@link QUEUE_DEFAULTS}`, and already-present values — valid or not — pass through for the

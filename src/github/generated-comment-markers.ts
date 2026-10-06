@@ -50,7 +50,7 @@ export const GeneratedCommentMarkerPrefix = {
     BenchmarkMetadata: '<!-- adguard-agent-benchmark:',
 
     /**
-     * Opener of the marker that records which upstream issue a mirrored lab issue came from.
+     * Opener of the marker that records which upstream issue a mirrored issue came from.
      */
     UpstreamMirror: '<!-- adguard-filters-agent:upstream-mirror ',
 

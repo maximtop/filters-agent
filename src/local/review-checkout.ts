@@ -73,8 +73,8 @@ export class ReviewCheckoutError extends Error {
      *
      * The optional detail names the failing operation for job logs; it never carries subprocess
      * environment, secrets, or absolute paths. Anonymous failures cost a full evidence-archive
-     * reproduction to diagnose (the 2026-08-10 publish failures reported only "unsafe artifact"
-     * while the actual error was git refusing a refs-less checkout).
+     * reproduction to diagnose (a bare "unsafe artifact" can hide git refusing a refs-less
+     * checkout).
      *
      * @param code - Stable failure code.
      * @param detail - Optional bounded diagnostic naming the failed operation.

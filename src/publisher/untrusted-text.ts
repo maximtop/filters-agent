@@ -7,20 +7,18 @@
  * depth: one reader-dependent renderer decides what `{{tokens}}` in a template become, so untrusted
  * text is escaped, flattened, and bounded before entering any fill.
  *
- * The escape is the one shared renderer for untrusted text in public comments — the same mapping
- * `lab/github/live-runtime-publisher.ts` applies to live fix-agent prose, so a public GitHub
- * comment and a private live summary neutralize model-authored text identically. Beyond the plain
- * HTML metacharacters, it also escapes `@` (mentions), `[`/`]` (links — and, since an image needs
- * the same literal brackets, images too) and `#` (both a leading-`#` Markdown heading and a bare
- * `owner/repo#123` cross-reference need a literal `#` to fire).
+ * The escape is the one shared renderer for untrusted text in public comments, and other renderers
+ * of fix-agent prose apply the same mapping, so every surface neutralizes model-authored text
+ * identically. Beyond the plain HTML metacharacters, it also escapes `@` (mentions), `[`/`]` (links
+ * — and, since an image needs the same literal brackets, images too) and `#` (both a leading-`#`
+ * Markdown heading and a bare `owner/repo#123` cross-reference need a literal `#` to fire).
  */
 
 /**
  * Character ceiling for one escaped untrusted fill in the report.
  *
  * Model-authored text is bounded, not dropped: a whole-sentence summary usually fits, and a longer
- * run still ends in the artifacts. 500 characters is the same order of bound the lab's outcome
- * renderer uses for agent reasoning.
+ * run still ends in the artifacts.
  */
 const MAX_UNTRUSTED_TEXT_CHARACTERS = 500;
 
@@ -63,9 +61,8 @@ function escapeUntrustedCharacter(character: string): string {
  * Escape every reserved character in untrusted text, without flattening or bounding it.
  *
  * The shared primitive behind {@link renderUntrustedText}'s bounded single-line rendering; a caller
- * with its own normalization and length bound (the lab's live-run summary, which allows longer
- * prose and wraps it in `<code>`/`<p>`) applies this directly instead of duplicating the character
- * map.
+ * with its own normalization and length bound (say, a summary that allows longer prose and wraps it
+ * in `<code>`/`<p>`) applies this directly instead of duplicating the character map.
  *
  * @param input - Untrusted text, already normalized by the caller.
  * @returns The text with every reserved character replaced by its HTML entity.

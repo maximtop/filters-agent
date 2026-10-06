@@ -36,9 +36,9 @@ export type BlockerFileTargetResolution =
  * it: a relative target is that file's path inside the run's host-state directory — a fresh per-run
  * directory outside the repository checkout, so no checkout walk can ever read the run's own
  * candidate back as repository content — and an absolute target is honored as-is, as part of the
- * instruction's trusted content (D20). A relative target whose resolution escapes the host-state
- * root is a typed refusal: the host contains file-backed read-backs to that directory, and the
- * refused target is never read.
+ * instruction's trusted content. A relative target whose resolution escapes the host-state root is
+ * a typed refusal: the host contains file-backed read-backs to that directory, and the refused
+ * target is never read.
  *
  * @param hostStateRoot - The run's host-state root the relative reference resolves against.
  * @param target - Declared target exactly as the instruction wrote it.

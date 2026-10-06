@@ -1,13 +1,13 @@
 /**
  * How a run launches browser sessions for its one prepared extension build.
  *
- * Decision 2 of 31-AFK: the engine, the user-agent family and the extension channel all follow the
- * build's launch family, and a Firefox family needs two things no Chromium launch does — the
- * current content of the declared user-filters file in its enterprise policies, and a relaunch
- * whenever that content changes, because Firefox reads `policies.json` only at startup. The runtime
- * holds none of that logic itself: it hands this module the leaf options it needs
- * (`PreparedSessionLaunchHost`) and calls these functions, so the family knowledge lives in one
- * place beside the channel builder it delegates to.
+ * The engine, the user-agent family and the extension channel all follow the build's launch family,
+ * and a Firefox family needs two things no Chromium launch does — the current content of the
+ * declared user-filters file in its enterprise policies, and a relaunch whenever that content
+ * changes, because Firefox reads `policies.json` only at startup. The runtime holds none of that
+ * logic itself: it hands this module the leaf options it needs (`PreparedSessionLaunchHost`) and
+ * calls these functions, so the family knowledge lives in one place beside the channel builder it
+ * delegates to.
  */
 import { readFileSync } from 'node:fs';
 import type { IBrowserSession } from '../browser/browser-interfaces';
@@ -88,8 +88,8 @@ export interface PreparedSessionLaunchHost {
  * and the browser that really ran. The Chromium route drives the stealth Chromium engine for every
  * reporter browser: an Edge (or explicit-MV2) reporter is served by the CloakBrowser Chromium
  * substitute, and the environment selection's fidelity recomputation records the
- * browser-approximation limitation for the substituted browser — the report-visible stand-in for
- * the deleted reporter-to-target parity policy.
+ * browser-approximation limitation for the substituted browser, so the substitution stays visible
+ * in the report.
  *
  * @param extension - The run's one prepared extension build.
  * @returns The product, browser and version the run really executed with.
@@ -115,11 +115,10 @@ export function preparedExtensionActualContext(
  *
  * The file is the host's own to maintain, so its absence is the expected state before the first
  * application writes it: empty content is the baseline ground state, which is exactly what a
- * missing file means. An absent file is therefore an info line without an error object — every
- * Firefox launch of a live run logged an `ENOENT` stack at warn before the run had written
- * anything, which reads as a fault in the log and is not one. Every other read failure keeps its
- * warn and its error before the same empty content is used, so a launch never silently serves stale
- * filters.
+ * missing file means. An absent file is therefore an info line without an error object — an
+ * `ENOENT` stack at warn on every Firefox launch before the run has written anything reads as a
+ * fault in the log and is not one. Every other read failure keeps its warn and its error before the
+ * same empty content is used, so a launch never silently serves stale filters.
  *
  * @param host - The run's leaf launch options.
  * @returns The file's content, or empty content when the run has not written it yet.

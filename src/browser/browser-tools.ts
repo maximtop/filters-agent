@@ -346,9 +346,9 @@ export function createBrowserToolHandlers(config: BrowserToolConfig): BrowserToo
     };
     // The origins a top-level navigation may land on: the reported issue origin, plus every origin
     // the site itself redirected an admitted page to. A reported URL that is a short link or an
-    // interstitial lands somewhere else by design — the reporter saw the landing page — and the
-    // guard used to refuse that landing on every attempt until the target counted as unavailable
-    // (AdguardFilters #239967, oii.la). The model's own navigation still has to name one of these.
+    // interstitial lands somewhere else by design — the reporter saw the landing page — and
+    // refusing that landing would fail every attempt until the target counted as unavailable.
+    // The model's own navigation still has to name one of these.
     const issueOrigins = new Set<string>();
     let allowedOriginError: string | undefined;
     try {
@@ -358,7 +358,7 @@ export function createBrowserToolHandlers(config: BrowserToolConfig): BrowserToo
     }
     // True only while open_page loads a URL the guard admitted, from the navigation request to the
     // end of stabilization: a cross-origin top-level navigation in that window is the site's own
-    // redirect. Outside it — consent setup, a click, a later script — it is refused as before.
+    // redirect. Outside it — consent setup, a click, a later script — it is refused.
     let loadingAdmittedUrl = false;
     let blockedNavigationError: string | undefined;
     let safetyGuardInstall: Promise<void> | undefined;

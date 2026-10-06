@@ -73,8 +73,8 @@ export function extensionBaselineSettingsFromStateRead(
  *
  * A model-selected request enables exactly its filter IDs; reporter URLs import exactly their
  * parsed IDs. A defaults-plus-required request expects the fresh-install defaults the launch
- * pre-read observed plus its required IDs — the same union the deleted options-page driver applied
- * — so the required filters are applied and compared, never merely recorded.
+ * pre-read observed plus its required IDs, so the required filters are applied and compared, never
+ * merely recorded.
  *
  * @param settings - Model-selected extension settings profile.
  * @param preReadEnabledFilterIds - Enabled filter IDs the launch pre-read observed; supplies the
@@ -170,9 +170,7 @@ export function filterLimitsExceededFor(stateRead: AdGuardExtensionStateRead): b
  * The filter groups a set of enabled filter IDs need switched on.
  *
  * The extension's own configuration schema enables a filter's rules only when its group is also
- * enabled, so a settings import that names the filter without its group leaves it inert — exactly
- * the computation the retired options-page driver made from the same options metadata before
- * building its own import document.
+ * enabled, so a settings import that names the filter without its group leaves it inert.
  *
  * @param enabledFilterIds - Exact filter IDs the import must enable.
  * @param filtersMetadata - The baseline read-back's own filter catalog, groups included.

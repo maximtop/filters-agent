@@ -2,11 +2,10 @@
  * The settings-proof artifact: the one place a run's verified extension settings evidence is
  * written to disk and read back.
  *
- * Both ends are ours — the host read-back of the blocker state produces the evidence (Decision 1 of
- * 11-HITL), the core writes it, the local report reads it — so the file is trusted data, not
- * external input: it is parsed and cast to the producer's own type. A proof whose shape does not
- * match is a bug in the writer and must surface as one, never be smoothed over by a shape check
- * here.
+ * Both ends are ours — the host read-back of the blocker state produces the evidence, the core
+ * writes it, the local report reads it — so the file is trusted data, not external input: it is
+ * parsed and cast to the producer's own type. A proof whose shape does not match is a bug in the
+ * writer and must surface as one, never be smoothed over by a shape check here.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import type { AdGuardExtensionSettingsEvidence } from '../browser/adguard-extension-state-shapes';

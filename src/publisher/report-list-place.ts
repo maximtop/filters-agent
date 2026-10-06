@@ -3,12 +3,11 @@
  * planned one, the place inside it.
  *
  * The run plans the exact edit — the domain list it extends, the sorted position, the site's own
- * block, the end of a section — and the issue comment used to name the file alone. On the EasyList
- * fork that read as "easylist/easylist_specific_hide.txt" for a rule the run had placed between two
- * specific lines of a 8,800-rule sorted list, which is the part a maintainer would otherwise have
- * to redo by hand. The position is named by the rule it precedes, never by a line number: a line
- * number drifts between the run and the moment someone reads the comment, the neighbouring rule
- * does not.
+ * block, the end of a section — so the comment names that place, not the file alone: a bare
+ * "easylist/easylist_specific_hide.txt" for a rule the run placed between two specific lines of an
+ * 8,800-rule sorted list leaves exactly that part for a maintainer to redo by hand. The position is
+ * named by the rule it precedes, never by a line number: a line number drifts between the run and
+ * the moment someone reads the comment, the neighbouring rule does not.
  */
 import { PlacementBasis } from '../types/placement-basis';
 import { RepositoryEditKind } from '../types/repository-edit-kind';

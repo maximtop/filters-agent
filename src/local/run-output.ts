@@ -275,7 +275,7 @@ export interface WriteLocalRunOutputOptions {
  */
 export interface LocalRunOutputPaths {
     /**
-     * Canonical deterministic report rendered without benchmark or human material.
+     * Canonical deterministic report rendered without evaluation or human material.
      */
     agentReportPath: string;
 

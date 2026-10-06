@@ -2,23 +2,21 @@
  * The review's symptom scope, composed on the host from reporter material the run holds
  * independently of any one candidate.
  *
- * The candidate visual review used to be handed whatever the reasoning model wrote in
- * `apply_rule`'s `symptomDescription`, and a model writes that description to fit the candidate it
- * just built. Two live runs show what that costs. On sitepoint.com (maximtop/easylist #1) the
- * reporter wrote "Visible ads in header, throughout article, in sidebar, and in footer"; the
- * candidate covered the in-article, sidebar and footer units, the scope handed to the review named
- * only those three, and the header banner that is still in the AFTER capture was never looked for —
- * the review returned `verified` with zero remaining instances. On nottinghampost.com
- * (maximtop/AdguardFilters #7) the scope was narrowed to "the band at the very top of the page
- * above the site header", so the identical empty placeholder bands between the page's other
- * sections did not count either.
+ * The scope does not come from whatever the reasoning model wrote in `apply_rule`'s
+ * `symptomDescription` alone, because a model writes that description to fit the candidate it just
+ * built. When a reporter writes "Visible ads in header, throughout article, in sidebar, and in
+ * footer" and the candidate covers the in-article, sidebar and footer units, a model-written scope
+ * names only those three, the header banner still in the AFTER capture is never looked for, and the
+ * review returns `verified` with zero remaining instances. Likewise a scope narrowed to "the band
+ * at the very top of the page above the site header" leaves identical empty placeholder bands
+ * between the page's other sections uncounted.
  *
- * The review's own rules already say the opposite — "The reporter screenshot is an example of a
- * symptom that may repeat", "An AFTER observation that visually repeats the reporter-defined
- * symptom anywhere on the page must be remaining" — they simply never got a chance, because the
- * text defining the symptom was already narrowed to the candidate. So the host composes the scope
- * instead: the reporter's material leads, and the model's per-candidate description follows as what
- * this one candidate targets rather than as the whole symptom.
+ * The review's own rules say the opposite — "The reporter screenshot is an example of a symptom
+ * that may repeat", "An AFTER observation that visually repeats the reporter-defined symptom
+ * anywhere on the page must be remaining" — but they never get a chance when the text defining the
+ * symptom is already narrowed to the candidate. So the host composes the scope instead: the
+ * reporter's material leads, and the model's per-candidate description follows as what this one
+ * candidate targets rather than as the whole symptom.
  *
  * This module is pure text composition and deliberately depends on nothing: it takes plain strings,
  * and the caller owns where they came from.
@@ -39,8 +37,8 @@ export const MAX_REPORTER_SYMPTOM_CHARS = 2_000;
  * The reporter material leads, so without a reservation a long reporter report would push the
  * candidate section past the ceiling and delete exactly the context that tells the review which
  * part of the symptom this rule was aimed at. A quarter of the budget holds the one or two
- * sentences `apply_rule` descriptions actually run to (the sitepoint scope above is 180 characters)
- * without letting a runaway description crowd out the reporter.
+ * sentences `apply_rule` descriptions actually run to (a three-placement scope like the one above
+ * is about 180 characters) without letting a runaway description crowd out the reporter.
  */
 const MAX_CANDIDATE_TARGET_CHARS = MAX_REPORTER_SYMPTOM_CHARS / 4;
 
@@ -95,8 +93,8 @@ function bounded(value: string | undefined, maximumChars: number): string | unde
  *
  * The reporter's material leads and defines the scope; the candidate's own description follows,
  * labelled as the part of that scope this rule was aimed at. With no reporter material at all the
- * candidate description is returned alone, which is what the review used to receive — an unlabelled
- * scope is honest there, because nothing wider is known.
+ * candidate description is returned alone — an unlabelled scope is honest there, because nothing
+ * wider is known.
  *
  * @param material - Reporter material the run holds, plus this candidate's target description.
  * @returns The bounded composed scope, or undefined when the run holds no symptom text at all.

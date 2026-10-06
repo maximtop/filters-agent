@@ -1,13 +1,13 @@
 /**
- * Registry session wiring: adapt one legacy ToolRegistry surface to a frozen pi session tool set —
+ * Registry session wiring: adapt one ToolRegistry surface to a frozen pi session tool set —
  * advertisement schemas looked up from TOOL_PARAMETER_SCHEMAS (and checked against the registry
  * definitions the session dispatches into), dispatch through ToolRegistry.dispatch, the shared
  * diagnostic quarantine (evaluate_js policy rejections and inspect_full_page_capture incomplete
  * captures), the gate-refusing stubs of the widened surface (deduped against names the registry
- * already registers), and the retry default. Extracted from the analyze wiring so analyze and
- * replay wire identical semantics instead of copies; the fix-mode twin lives at
- * `orchestrator/fix-session-gates.ts` (the gate-refusing stubs of the universal system.md surface
- * are runner-owned steps, also shared by fix's frozen list).
+ * already registers), and the retry default. Shared so analyze and replay wire identical semantics
+ * instead of copies; the fix-mode twin lives at `orchestrator/fix-session-gates.ts` (the
+ * gate-refusing stubs of the universal system.md surface are runner-owned steps, also shared by
+ * fix's frozen list).
  */
 import type * as v from 'valibot';
 import type { RegistrationGuard, ToolRegistry } from '../agent/tool-registry';
@@ -24,7 +24,7 @@ import { FULL_PAGE_CAPTURE_INCOMPLETE_KIND } from '../analyzer/full-page-capture
 
 /**
  * Read-only diagnostic failures tolerated for one tool before it is quarantined for the rest of the
- * run; the legacy loop's per-step retry budget default was 3 (`isQuarantinableDiagnosticFailure`).
+ * run.
  */
 const DIAGNOSTIC_QUARANTINE_BUDGET = 3;
 
@@ -45,9 +45,9 @@ export interface DiagnosticQuarantineRule {
 }
 
 /**
- * The legacy diagnostic set `isQuarantinableDiagnosticFailure` quarantined: evaluate_js read-only
- * policy rejections and inspect_full_page_capture incomplete captures — the exact tool/failure
- * pairs, counted per tool, 3 since last success before the `Quarantined` gate.
+ * The default diagnostic set: evaluate_js read-only policy rejections and inspect_full_page_capture
+ * incomplete captures — the exact tool/failure pairs, counted per tool, 3 since last success before
+ * the `Quarantined` gate.
  */
 export const LEGACY_DIAGNOSTIC_RULES: readonly DiagnosticQuarantineRule[] = [
     { tool: ToolName.EvaluateJs, errorKind: EVALUATE_JS_POLICY_REJECTION_KIND },
@@ -228,12 +228,11 @@ export function adaptRegistryTool(
 }
 
 /**
- * Adapt the session surface of a legacy ToolRegistry to pi session tools: the catalog-versus-
- * registry parameter check, schema lookup with fail-fast naming the missing tool, dispatch
- * closures, the evaluate_js diagnostic quarantine, the gate-refusing stubs of the widened surface
- * (appended in key order, minus any name the registry already registered — a configured guidance
- * source makes lookup_rule_guidance a real tool and filters its stub), and per-execution trace
- * recording.
+ * Adapt the session surface of a ToolRegistry to pi session tools: the catalog-versus-registry
+ * parameter check, schema lookup with fail-fast naming the missing tool, dispatch closures, the
+ * evaluate_js diagnostic quarantine, the gate-refusing stubs of the widened surface (appended in
+ * key order, minus any name the registry already registered — a configured guidance source makes
+ * lookup_rule_guidance a real tool and filters its stub), and per-execution trace recording.
  *
  * @param registry - The mode's registry from createToolRegistry.
  * @param recorder - The run trace recorder.
@@ -314,19 +313,18 @@ function quarantineRefusal(tool: string): ToolGateState {
 }
 
 /**
- * The diagnostic-quarantine policy the legacy loop applied (`isQuarantinableDiagnosticFailure`):
- * after three matching failures since the tool's last success the tool is disabled for the rest of
- * the run, with the legacy notice carried over as the gate reason/remedy. Failure kinds and
- * counters are per tool: quarantining evaluate_js never resets or disables
- * inspect_full_page_capture. Other failures neither count nor reset; the deliberately dropped
- * legacy behavior is the run-ending per-tool failure budget — the run is bounded by maxTurns and
- * request timeouts instead.
+ * The diagnostic-quarantine policy: after three matching failures since the tool's last success the
+ * tool is disabled for the rest of the run, with a notice as the gate reason/remedy. Failure kinds
+ * and counters are per tool: quarantining evaluate_js never resets or disables
+ * inspect_full_page_capture. Other failures neither count nor reset, and there is deliberately no
+ * run-ending per-tool failure budget — the run is bounded by maxTurns and request timeouts
+ * instead.
  *
  * The latch belongs to the quarantine alone, so "for the remainder of this run" is literal: a
  * browser relaunch that re-registers evaluate_js re-establishes availability, not the budget the
  * model already spent on three rejected diagnostics.
  *
- * @param diagnostics - The rule set to match; defaults to the legacy diagnostic pair.
+ * @param diagnostics - The rule set to match; defaults to the evaluate_js/capture diagnostic pair.
  * @returns The quarantine latch.
  */
 export function createDiagnosticQuarantine(

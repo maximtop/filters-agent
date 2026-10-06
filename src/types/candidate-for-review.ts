@@ -2,13 +2,12 @@
  * The candidate an analysis-only run found but could not verify.
  *
  * A run that linted a rule, scored its risk and applied it without a rejection, yet never obtained
- * a verifying review, used to end with the rule surviving only inside its own prose: the terminal
- * outcome carried no rule field, the run result carried `candidatePatch: null`, and the issue
- * comment said "Analysis-only findings, no verified change" (sarkisozleri.bbs.tr, run 34876651317,
- * whose `||increase-rev.cv3-ecf.workers.dev^$domain=sarkisozleri.bbs.tr` was one wildcard away from
- * the fix a maintainer later landed). This is the typed place for that rule. It changes nothing
- * about publication: an unverified candidate is still never a draft PR, and a result carrying one
- * still carries no candidate patch.
+ * a verifying review, would otherwise end with the rule surviving only inside its own prose: the
+ * terminal outcome carries no rule field, the run result carries `candidatePatch: null`, and the
+ * issue comment says "Analysis-only findings, no verified change" — even when the rule is one
+ * wildcard away from the fix a maintainer would land. This is the typed place for that rule. It
+ * changes nothing about publication: an unverified candidate is still never a draft PR, and a
+ * result carrying one still carries no candidate patch.
  */
 import * as v from 'valibot';
 

@@ -566,11 +566,11 @@ function selectEquivalentFileMatch(
  * Select the shared rule in the chosen file whose exact syntax and expression match the candidate.
  *
  * Only the file the agent chose is read. Which file a rule belongs in is the agent's decision, and
- * a shared rule of the same form in another file is no reason to move the edit there: the planner
- * used to search every filter tree and retarget to a unique owner elsewhere, or refuse the
- * candidate when several files held one — which lost a vision-verified consent-platform block
- * (AdguardFilters #242174) whose agent had picked the right file. Inside the chosen file several
- * equivalent expressions may carry the family; the reported domain's cohort picks one.
+ * a shared rule of the same form in another file is no reason to move the edit there: searching
+ * every filter tree and retargeting to a unique owner elsewhere, or refusing the candidate when
+ * several files hold one, loses a vision-verified block whose agent picked the right file. Inside
+ * the chosen file several equivalent expressions may carry the family; the reported domain's cohort
+ * picks one.
  *
  * @param targetPath - Canonical chosen file.
  * @param filePath - Repository-relative chosen file.

@@ -94,7 +94,7 @@ export interface ProxyBlockerBaselineHost extends ProxyBlockerBaselineHostPort {
 /**
  * Create the baseline command boundary backed by locally supplied filter files.
  *
- * The published-baseline module was written against a product CLI: it adds a filter, watches the
+ * The published-baseline module is written against a product CLI: it adds a filter, watches the
  * data directory, and binds the file that appeared to the filter that caused it. That works
  * perfectly here — this host writes exactly one file per add, from bytes the run already downloaded
  * and hashed — whereas the real CLI fetches content in the background and never lets an observer

@@ -197,8 +197,8 @@ export interface AgentRuntimeEnvironmentEvidence {
 
     /**
      * The settings record derived from the blocker state the host read back itself, when this
-     * prepared session's baseline application verified. Launch-time settings pieces are retired in
-     * its favor: the read-back is the run's only settings fact.
+     * prepared session's baseline application verified. The read-back is the run's only settings
+     * fact.
      */
     settingsEvidence?: AdGuardExtensionSettingsEvidence;
 
@@ -211,7 +211,7 @@ export interface AgentRuntimeEnvironmentEvidence {
 
     /**
      * The executable list keys this prepared session's baseline was credited with when the blocker
-     * declares its own selection instead of exposing a host-readable state (32-AFK Decision 3).
+     * declares its own selection instead of exposing a host-readable state.
      *
      * Present exactly when `extensionBaselineReadBack` is absent for a credited session: the two
      * families prove a baseline through different channels, and `sessionBaselineCredited` is the

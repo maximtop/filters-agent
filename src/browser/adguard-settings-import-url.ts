@@ -5,9 +5,9 @@ import { createHash } from 'node:crypto';
  *
  * These are the report front-ends AdGuard publishes; a settings import found on any other host is
  * untrusted text rather than reporter-stated environment, so it may not decide which filters or
- * Stealth state a run reproduces. The importer, the runtime's provenance scan, and the golden
- * validator all read this one set: a report domain AdGuard adds becomes trusted for all three at
- * once, never for one of them while the others reject the same URL.
+ * Stealth state a run reproduces. The importer, the runtime's provenance scan, and any other
+ * validator of report URLs all read this one set: a report domain AdGuard adds becomes trusted for
+ * all of them at once, never for one of them while the others reject the same URL.
  */
 export const TRUSTED_REPORT_SETTINGS_HOSTS: ReadonlySet<string> = new Set([
     'reports.adguard.com',

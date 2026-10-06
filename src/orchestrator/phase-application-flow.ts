@@ -63,15 +63,14 @@ import {
  * `applicationInstructionContent` is derived from too, so the contract in force and its performer
  * can never disagree.
  *
- * This module owns the flow `agent-runtime.ts` used to run inline (`runApplication` through the
- * runner and read-back helpers it composes): the same operations, now taking their runtime
- * dependencies as an explicit host object instead of `this`, so the flow is callable — and testable
- * — without the whole runtime class. `phase-application-flow-host.ts` declares the host and
- * dependency contracts this flow acts through and the shape one application call returns;
- * `phase-application-extension-surface.ts` owns the host's own dealings with the prepared
- * extension's management surface. `phase-application-launch.ts` builds on this module for the
- * launch-time Baseline application; none of these modules imports `agent-runtime.ts`, so the
- * dependency runs one way only.
+ * This module owns the application flow (`runApplication` through the runner and read-back helpers
+ * it composes), taking its runtime dependencies as an explicit host object instead of `this`, so
+ * the flow is callable — and testable — without the whole runtime class.
+ * `phase-application-flow-host.ts` declares the host and dependency contracts this flow acts
+ * through and the shape one application call returns; `phase-application-extension-surface.ts` owns
+ * the host's own dealings with the prepared extension's management surface.
+ * `phase-application-launch.ts` builds on this module for the launch-time Baseline application;
+ * none of these modules imports `agent-runtime.ts`, so the dependency runs one way only.
  */
 
 /**
@@ -212,7 +211,7 @@ export async function runApplication(
     // The declared file-backed target resolves once, before any step runs: a relative target that
     // escapes the run's host-state root is a typed refusal here — the target is never read and no
     // application runs — while an absolute target is honored as-is, as part of the instruction's
-    // trusted content (D20).
+    // trusted content.
     const declaredFileTarget = contract.verification.target;
     const fileTargetResolution =
         declaredFileTarget === undefined
@@ -232,7 +231,7 @@ export async function runApplication(
             ? fileTargetResolution.path
             : null;
     // A Firefox-family build has no unpacked extension to drive and no live state to query: the
-    // declared file is its one state channel, and the host maintains it itself (31-AFK Decision 3).
+    // declared file is its one state channel, and the host maintains it itself.
     // That arm runs before any of the AdGuard route's session pieces are built.
     if (state.extension?.launchFamily === ExtensionLaunchFamily.Firefox) {
         return await runFirefoxFileBackedApplication(
@@ -280,11 +279,11 @@ export async function runApplication(
         expectedStealthEnabledFor(state.settingsProfile, state.extensionBaselineReadBack);
     const blockerSurfaceUrl = await preparedBlockerSurfaceUrl(host, state, readContext);
     let stateRead: AdGuardExtensionStateRead | undefined;
-    // The read-back registry is Decision 1's supply: every method this executor knows how to read
-    // is listed here, and the application procedure refuses any declared method with no reader
-    // before any step runs. The live extension state is the AdGuard route; the file-backed methods
-    // read the exact state the instruction's preparation and application steps maintain, with a
-    // relative target resolved inside the run's own host-state directory.
+    // The read-back registry lists every method this executor knows how to read, and the
+    // application procedure refuses any declared method with no reader before any step runs. The
+    // live extension state is the AdGuard route; the file-backed methods read the exact state the
+    // instruction's preparation and application steps maintain, with a relative target resolved
+    // inside the run's own host-state directory.
     const declaredFileStateReader = fileBlockerStateReader();
     /**
      * Read one declared file-backed blocker state back over the resolved target.

@@ -253,10 +253,10 @@ export type ActionLogEntry = v.InferOutput<typeof ActionLogEntrySchema>;
 /**
  * The record of the application that produced a phase's filtering state.
  *
- * Decision 1 of the issue: the host never trusts the model's self-report alone — the proof carries
- * what the steps were (`actionLog`, assembled by the host from the session trace) and the exact
- * rules content the steps claimed to persist (`appliedRules`), while the schema's phase rules
- * require the extension state read back afterwards to agree.
+ * The host never trusts the model's self-report alone — the proof carries what the steps were
+ * (`actionLog`, assembled by the host from the session trace) and the exact rules content the steps
+ * claimed to persist (`appliedRules`), while the schema's phase rules require the extension state
+ * read back afterwards to agree.
  */
 export const PhaseApplicationProofSchema = v.strictObject({
     method: BlockerVerificationMethodSchema,

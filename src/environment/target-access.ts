@@ -57,10 +57,10 @@ const ACCESS_BY_OBSTRUCTION: Readonly<Record<PageObstruction, TargetAccessClassi
  * Decide whether one observed page could carry a reproduction claim.
  *
  * The main document's status is the browser's own fact. What the page showed in the reported
- * content's place is the vision verdict on the capture the claim rests on: page-text patterns used
- * to decide that half and missed every wording they did not list — pluto.tv's "not available in
- * your location" passed as not reproduced (#241958, 2026-09-23) — while the model that reads the
- * pixels names a sign-in wall or a regional block in any language.
+ * content's place is the vision verdict on the capture the claim rests on: page-text patterns miss
+ * every wording they do not list — a "not available in your location" notice passes as not
+ * reproduced — while the model that reads the pixels names a sign-in wall or a regional block in
+ * any language.
  *
  * @param statusCode - HTTP status of the main document the session's navigation loaded.
  * @param obstruction - Vision verdict on what stood in place of the site's content.

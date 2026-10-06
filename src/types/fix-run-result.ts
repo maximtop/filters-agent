@@ -1224,8 +1224,7 @@ interface NoPatchVerdictRecord {
  * The verdict and the evidence list are assembled from different sources — the verdict from the
  * agent runtime, the sessions from canonical environment execution — so a record can claim more
  * than it holds. The schema rejects such a record, and the runner consults the same predicate
- * before finalizing so it can lower the claim instead of failing the whole run (de.euronews.com
- * #238829, 2026-08-22).
+ * before finalizing so it can lower the claim instead of failing the whole run.
  *
  * @param result - Assembled result carrying its verdict and its session evidence.
  * @returns True when the claim needs no evidence, or when the required sessions are present.
@@ -1431,9 +1430,9 @@ export type CandidateRepositoryEdit = v.InferOutput<typeof RepositoryEditSchema>
 /**
  * Minimal deterministic patch payload consumed by publishers.
  *
- * New runners populate `syntaxKind` and `repositoryEdit` themselves; neither value is accepted from
- * model reasoning. The legacy top-level `insertionPoint` remains readable for old locked run
- * artifacts.
+ * Runners populate `syntaxKind` and `repositoryEdit` themselves; neither value is accepted from
+ * model reasoning. The top-level `insertionPoint` earlier builds wrote remains readable for their
+ * locked run artifacts.
  */
 export type CandidatePatch = v.InferOutput<typeof CandidatePatchSchema>;
 

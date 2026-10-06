@@ -1,13 +1,13 @@
 /**
  * The launch family of one host-prepared extension build: how a browser session loads it.
  *
- * Decision 1 of 31-AFK: the prepared extension carries its launch family, because the two families
- * install an extension through channels that have nothing in common. A Chromium-family build is an
- * unpacked directory the engine loads directly; a Firefox-family build is a signed XPI
- * force-installed through enterprise policies, whose managed storage carries the user filters. The
- * engine, the user-agent family and the between-phases application all follow this descriptor, so
- * it is declared once here — a path-free vocabulary both the Host layer and the model boundary
- * depend on, importing nothing but the manifest-generation vocabulary beside it.
+ * The prepared extension carries its launch family, because the two families install an extension
+ * through channels that have nothing in common. A Chromium-family build is an unpacked directory
+ * the engine loads directly; a Firefox-family build is a signed XPI force-installed through
+ * enterprise policies, whose managed storage carries the user filters. The engine, the user-agent
+ * family and the between-phases application all follow this descriptor, so it is declared once here
+ * — a path-free vocabulary both the Host layer and the model boundary depend on, importing nothing
+ * but the manifest-generation vocabulary beside it.
  */
 import { ExtensionManifestVersion } from './extension-preparation';
 

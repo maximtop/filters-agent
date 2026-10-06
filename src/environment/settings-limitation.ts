@@ -12,8 +12,8 @@ export const SettingsLimitation = {
     /**
      * The requested filter set does not fit Chrome's MV3 limits (the static ruleset count or the
      * static rule budget): the extension enabled what Chrome accepted and disabled the rest, so no
-     * application can bring the read-back set to the requested one. AdguardFilters#242720: 52
-     * requested filters, Chrome kept 2.
+     * application can bring the read-back set to the requested one: a request of 52 filters can
+     * leave Chrome keeping 2.
      */
     Mv3LimitsExceeded: 'mv3_limits_exceeded',
 } as const;

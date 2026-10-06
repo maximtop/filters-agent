@@ -16,7 +16,7 @@ You are in FIX mode. Your goal is to produce a review-ready draft PR outcome or 
 
 ## Applied rules
 
-A browser session offers `get_applied_rules` only when its filtering engine reports the rules it applied; the session's launch answer lists it in `availableBrowserTools`. A control session and a blocker prepared by the run's own instruction never offer it, and relaunching will not change that. Once the page has loaded and settled, call it: it lists the rules the engine applied to the page — blocked or redirected requests, hidden elements, injected scriptlets — with the list each rule comes from, including lists outside the AdguardFilters repository that `search_rules` cannot see. Read it before hunting a rule with `search_rules`. It reports what the engine did and says what the engine applies without naming; which rule causes the reported problem is your decision.
+A browser session offers `get_applied_rules` only when its filtering engine reports the rules it applied; the session's launch answer lists it in `availableBrowserTools`. A control session and a blocker prepared by the run's own instruction never offer it, and relaunching will not change that. Once the page has loaded and settled, call it: it lists the rules the engine applied to the page — blocked or redirected requests, hidden elements, injected scriptlets — with the list each rule comes from, including lists outside this repository that `search_rules` cannot see. Read it before hunting a rule with `search_rules`. It reports what the engine did and says what the engine applies without naming; which rule causes the reported problem is your decision.
 
 When no session offers it, or nothing it names explains the problem, find the list by halving, when a session can be launched with `settings`: relaunch with half of the reporter's lists (`agent_selected`, the same `stealthEnabled`), keep the half that still reproduces the problem, and halve that again until one list is left; test Stealth Mode alone by switching only `stealthEnabled`. Every step is a new browser session, so halve — never add or drop one list at a time.
 
@@ -44,9 +44,9 @@ Use `configuration_specific` only when the exact reporter-defined symptom is pre
 ## Outcome semantics
 
 Use the draft-PR outcome only for a fully validated candidate.
-Use the propose-close outcome only when the ad cannot be reproduced or policy blocks rule generation. Every propose-close outcome MUST include a reproduction status with exactly one of these values:
+Use the propose-close outcome only when the ad cannot be reproduced or the repository's policy blocks rule generation. Every propose-close outcome MUST include a reproduction status with exactly one of these values:
 - `not_reproduced`: use only after usable live browser evidence shows that the reported defect is absent on the successfully loaded reported page.
-- `policy_blocked`: use only when the deterministic policy decision blocks the fix.
+- `policy_blocked`: use only when a rule of the repository's policy, as the run instruction states it, blocks the fix.
 
 `not_reproduced` requires an `allow_rule_generation` policy decision. `policy_blocked` requires a `propose_close` or `needs_human_review` policy decision. Never combine a reproduction status with another policy state.
 If the browser is unavailable, failed, or yielded unusable evidence, choose the analysis-only outcome; never claim `not_reproduced`. A reasoning-only run must choose analysis-only, never `not_reproduced`.

@@ -629,7 +629,7 @@ export function verifyCapturedIssueRevision(
  * recorded SHA-256 stay untouched.
  *
  * @param snapshotPath - Portable `issue.json` containing a version-two revision envelope.
- * @param identity - Destination lab issue number and URL.
+ * @param identity - Destination issue number and URL.
  */
 export function rebindExportedIssueRevisionIdentity(
     snapshotPath: string,

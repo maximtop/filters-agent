@@ -7,9 +7,8 @@ import { samePlacementFamily } from './rule-family';
  * Appending at the end of a sorted file is a visible mistake, not a neutral default: EasyList runs
  * `FOP.py` over its lists and its contributing guide asks for "the correct position following ASCII
  * ascending sorting", so a rule appended after the last line arrives out of place and a maintainer
- * has to move it. A live run against the EasyList fork proposed exactly that — the verified rule
- * was planned `append_eof` into `easylist/easylist_specific_hide.txt`, whose selector order is
- * intact over 99.6% of adjacent lines.
+ * has to move it. `easylist/easylist_specific_hide.txt`, for one, keeps its selector order intact
+ * over 99.6% of adjacent lines, so an `append_eof` plan there lands a verified rule out of place.
  *
  * Sortedness is measured rather than assumed: the same measurement over AdguardFilters
  * `BaseFilter/sections/specific.txt` (0.519) and uAssets `filters/filters-2026.txt` (0.522) shows

@@ -2,11 +2,11 @@
  * The action-log vocabulary of the host's own application steps.
  *
  * Two application paths are performed by the host rather than by a model session — the file-backed
- * one (31-AFK Decision 3) and the built-in AdGuard extension one — and both record what they did
- * into the same `ActionLogEntry` trace a model-driven session records its tool calls into. The
- * action log is evidence of what was done, so for these paths the doer is the host and the steps
- * are named after the operations themselves rather than after a model tool. One declaration for
- * both paths, so a step name can never mean two things.
+ * one and the built-in AdGuard extension one — and both record what they did into the same
+ * `ActionLogEntry` trace a model-driven session records its tool calls into. The action log is
+ * evidence of what was done, so for these paths the doer is the host and the steps are named after
+ * the operations themselves rather than after a model tool. One declaration for both paths, so a
+ * step name can never mean two things.
  */
 
 /**

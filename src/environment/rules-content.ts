@@ -3,11 +3,11 @@ import { createHash } from 'node:crypto';
 /**
  * Content helpers of the blocker state the host reads back and compares.
  *
- * Decision 1 of 11-HITL: the host reads the blocker state itself and credits an application only
- * when that state contains exactly the expected content. Both the readers and the expected side
- * digest through the one normalization, so a digest is always taken over the same bytes wherever it
- * is computed. The helpers live under `src/environment/` because the environment layer consumes
- * them and must not import them back from `src/validator/`.
+ * The host reads the blocker state itself and credits an application only when that state contains
+ * exactly the expected content. Both the readers and the expected side digest through the one
+ * normalization, so a digest is always taken over the same bytes wherever it is computed. The
+ * helpers live under `src/environment/` because the environment layer consumes them and must not
+ * import them back from `src/validator/`.
  */
 
 /**

@@ -70,10 +70,18 @@ jobs:
                   llmApiKey: ${{ secrets.FILTERS_AGENT_LLM_API_KEY }}
                   llmModel: <reasoning model slug>
                   llmVisionModel: <vision model slug>
-                  # Optional: the limits default to those of the model the agent was tuned on. When the
-                  # vision model is a different one, state its completion limit — a gateway that routes
-                  # by the requested cap finds no endpoint for a model whose own limit is lower.
-                  # llmVisionMaxOutputTokens: '65536'
+                  # Required: the reasoning model's context window and completion cap, from your
+                  # provider's model page. A limit above the provider's own fails every request, so
+                  # there are no defaults; a run without them fails before it spends anything.
+                  llmContextWindowTokens: '<context window in tokens>'
+                  llmMaxOutputTokens: '<completion cap in tokens>'
+                  # Required when the vision model differs from the reasoning model: its own
+                  # completion cap. A gateway that routes by the requested cap finds no endpoint
+                  # for a model whose own limit is lower.
+                  # llmVisionMaxOutputTokens: '<vision completion cap in tokens>'
+                  # Optional: 'off' for a reasoning model slug that does not reason, so no
+                  # reasoning parameter is sent; defaults to 'high'.
+                  # llmReasoningEffort: 'off'
                   # Optional: total attempts per LLM request (1-3, default 2). Raise it when your
                   # gateway drops responses mid-stream more than once in a row.
                   # llmRequestMaxAttempts: '3'

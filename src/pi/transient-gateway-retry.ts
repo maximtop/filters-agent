@@ -14,9 +14,10 @@ import { TurnStopReason } from './stop-reason';
  * list. There is no supported hook; extending the decision means reaching into the session object
  * pi hands back.
  *
- * Two shapes are covered, each of them a live campaign run that lost a case to one hiccup: a
- * Cloudflare origin status ahead of the message, and a transport-level stream fault the gateway
- * relays from its upstream as prose. The patterns below carry their own evidence.
+ * Three shapes are covered, each of which otherwise loses a whole run to one hiccup: a Cloudflare
+ * origin status ahead of the message, a transport-level stream fault the gateway relays from its
+ * upstream as prose, and an in-band `finish_reason: error`. The patterns below carry their own
+ * reasoning.
  *
  * `extendTransientGatewayRetry` is that reach, kept to one wrapped method in one module so the
  * whole vendor coupling is visible in one place when the pin moves.
@@ -32,20 +33,19 @@ import { TurnStopReason } from './stop-reason';
  * Why this set — 520 through 527, plus 530: pi-ai's own `RETRYABLE_PROVIDER_ERROR_PATTERN`
  * (`dist/utils/retry.js` of the pinned 0.84.1) enumerates transient HTTP statuses one literal at a
  * time — `429`, `500`, `502`, `503`, `504`, `524` — and stops there. Cloudflare's origin-side range
- * is 520-527 and 530, of which only 524 (a gateway timeout) made pi's list. A live campaign run was
- * answered `520 status code (no body)` on one loop request; pi read the message, found nothing it
- * recognized, ended the turn in error, and the run sealed `provider-failure` after that single
- * attempt — one whole case spent on one edge hiccup that the deleted status-based loop retried as
- * an ordinary 5xx. 524 is kept in the range deliberately: the set means "Cloudflare answered for
- * the origin", and pi already retrying one member of it is not a reason to spell the range with a
- * hole.
+ * is 520-527 and 530, of which only 524 (a gateway timeout) made pi's list. A loop request answered
+ * `520 status code (no body)` gives pi a message it does not recognize, so it ends the turn in
+ * error and the run seals `provider-failure` after that single attempt — one whole run spent on one
+ * edge hiccup that a status-based retry treats as an ordinary 5xx. 524 is kept in the range
+ * deliberately: the set means "Cloudflare answered for the origin", and pi already retrying one
+ * member of it is not a reason to spell the range with a hole.
  *
  * Why anchored at the start: that is where the status lands. For this API pi-ai's
  * `formatProviderError` composes `"<status>: <body>"` with NO provider prefix (the same structural
  * fact `isDeterministicProviderMessage` reads in `run-sealing.ts`), and when the response carries
- * no body at all the OpenAI SDK's own message is `"<status> status code (no body)"` — the exact
- * text the campaign saw. Anchoring is what keeps a token count, an id or a byte size quoted inside
- * a body from being read as a gateway status.
+ * no body at all the OpenAI SDK's own message is `"<status> status code (no body)"`. Anchoring is
+ * what keeps a token count, an id or a byte size quoted inside a body from being read as a gateway
+ * status.
  */
 const TRANSIENT_GATEWAY_STATUS_PATTERN = /^\s*(?:52[0-7]|530)\b/u;
 
@@ -53,14 +53,14 @@ const TRANSIENT_GATEWAY_STATUS_PATTERN = /^\s*(?:52[0-7]|530)\b/u;
  * Wording of a transport-level stream fault an OpenAI-compatible gateway relays from its upstream,
  * anywhere in the composed message.
  *
- * Why this shape at all — a live campaign run was answered, at loop turn 51, with `Upstream error
- * from Together: Stream error: h2 protocol error: error reading a body from connection`. There is
- * no HTTP status in it: the gateway accepted the request, answered 200, and then faulted
- * mid-stream, so the OpenAI SDK composes the message from the in-stream error chunk alone and the
- * status-based pattern above cannot see it. None of pi's substrings match it either — its nearest
- * entries are `connection.?error`, `connection.?lost` and `terminated`, and this text spells the
- * connection failure the other way round. Pi ended the turn in error, the run sealed
- * `provider-failure` after that single attempt, and 15 minutes of investigation went with it.
+ * Why this shape at all — a loop turn can be answered with `Upstream error from Together: Stream
+ * error: h2 protocol error: error reading a body from connection`. There is no HTTP status in it:
+ * the gateway accepted the request, answered 200, and then faulted mid-stream, so the OpenAI SDK
+ * composes the message from the in-stream error chunk alone and the status-based pattern above
+ * cannot see it. None of pi's substrings match it either — its nearest entries are
+ * `connection.?error`, `connection.?lost` and `terminated`, and this text spells the connection
+ * failure the other way round. Pi ends the turn in error, the run seals `provider-failure` after
+ * that single attempt, and the investigation so far goes with it.
  *
  * Why these three phrases and nothing wider:
  *
@@ -88,9 +88,9 @@ const UPSTREAM_STREAM_FAULT_PATTERN =
  * Pi's `mapStopReason` (`dist/api/openai-completions.js` of the pinned 0.84.1) turns any finish
  * reason it does not know into an error turn whose message is exactly `Provider finish_reason:
  * <reason>`. A gateway that routes to several upstreams answers with the bare reason `error` when
- * the chosen upstream fails while generating — a live bench run got it on loop turn 2, 34
- * completion tokens in, and sealed `provider-failure` after that single attempt. The same request
- * sent again reaches another replica, which is what makes it worth retrying.
+ * the chosen upstream fails while generating, and without this pattern the run seals
+ * `provider-failure` after that single attempt. The same request sent again reaches another
+ * replica, which is what makes it worth retrying.
  *
  * Anchored to the whole message and to the bare reason on purpose: `content_filter` is a
  * deterministic verdict on the request's content and must stay terminal, and `network_error` is
@@ -130,8 +130,8 @@ interface RetryDecidingSession {
  *
  * Exported for the single-shot path: a vision or extraction call meets the same gateway faults
  * mid-stream, and pi's transport retry there decides on the HTTP status of the request phase alone
- * — a fault after the headers surfaces as an error message and was never retried, so one stream
- * fault on a candidate's visual review left the review "unavailable" in a live run.
+ * — a fault after the headers surfaces as an error message it never retries, so one stream fault on
+ * a candidate's visual review would leave the review "unavailable".
  *
  * @param message - The failed turn's assistant message, as pi hands it to its own predicate.
  * @returns True when the turn should be retried despite pi classifying it as terminal.

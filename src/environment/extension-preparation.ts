@@ -54,10 +54,9 @@ export const PreparedExtensionSource = {
     /**
      * The operator supplied an unpacked directory (the `ADGUARD_EXTENSION_PATH` channel).
      *
-     * No longer emitted — `ADGUARD_EXTENSION_PATH` was dropped (27-AFK) because both production
-     * callers of `runFixCore` already cleared it before this point; a custom build goes through the
-     * instruction's `## Preparation` section instead. This value stays parseable because run
-     * records and evidence bundles persisted before the drop may still carry it.
+     * Never emitted: the host reads no `ADGUARD_EXTENSION_PATH`, and a custom build goes through
+     * the instruction's `## Preparation` section instead. This value stays parseable because run
+     * records and evidence bundles written by earlier builds may still carry it.
      */
     Preloaded: 'preloaded',
 

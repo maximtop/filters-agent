@@ -1,12 +1,10 @@
 /**
- * The last step both local fix cores share: turning one run's candidate verdict and artifact
- * registry into the serialized {@link FixRunResult}.
+ * The last step of a local fix core: turning one run's candidate verdict and artifact registry into
+ * the serialized {@link FixRunResult}.
  *
- * The legacy and agentic cores reach their verdicts by different routes, but from there on they did
- * the same thing twice — filter the screenshot artifacts, prefer the Phase C HAR and DOM over the
- * run's first ones, choose whose visual review the result carries, and hand the lot to
- * `makeCoreResult`. That assembly lives here once, and each core supplies only the values it
- * genuinely owns.
+ * The assembly filters the screenshot artifacts, prefers the Phase C HAR and DOM over the run's
+ * first ones, chooses whose visual review the result carries, and hands the lot to
+ * `makeCoreResult`. The core supplies only the values it genuinely owns.
  */
 import type { CandidateValidationSelection } from './candidate-validation-selection';
 import type { CoreBrowserState, CoreResultContext } from './fix-core-context';
@@ -31,8 +29,7 @@ import type { ArtifactRef } from '../types/trace';
 /**
  * Artifact types the serialized result lists as this run's screenshots.
  *
- * Declared once because both cores list exactly this set, and a result that silently drops one kind
- * of capture reads as evidence the run never took.
+ * A result that silently drops one kind of capture reads as evidence the run never took.
  */
 const RESULT_SCREENSHOT_ARTIFACT_TYPES = [
     'screenshot',
@@ -130,8 +127,7 @@ export interface FixRunResultAssembly {
      * Whether the result's visual review comes from the verified selection rather than the rejected
      * representative.
      *
-     * The two cores read this from slightly different conditions — the legacy core also requires a
-     * surviving publishable candidate — so each decides it and the assembly only obeys.
+     * The core decides it and the assembly only obeys.
      */
     visualReviewFromVerifiedCandidate: boolean;
 

@@ -8,10 +8,10 @@ import type { BlockerVerificationDeclaration } from '../knowledge/instruction-ap
  * The `BlockerStateReader` seam of the between-phases application: how one executor reads a
  * declared blocker state back.
  *
- * Decision 1 of 11-HITL: after the model's steps, the host reads the state itself — the live
- * extension state, a user-rules file, or managed-storage file by exact content — and the
- * application is credited only when that state contains exactly the expected content. A method the
- * executor supplies no reader for is a typed refusal, never a guess.
+ * After the model's steps, the host reads the state itself — the live extension state, a user-rules
+ * file, or managed-storage file by exact content — and the application is credited only when that
+ * state contains exactly the expected content. A method the executor supplies no reader for is a
+ * typed refusal, never a guess.
  */
 
 /**
@@ -109,8 +109,7 @@ export type BlockerStateReader = (
 
 /**
  * The readers one executor supplies, keyed by verification method. A method with no reader is a
- * typed refusal — Decision 1: the host never guesses how to read a state it was not told how to
- * read.
+ * typed refusal: the host never guesses how to read a state it was not told how to read.
  */
 export type BlockerStateReaderRegistry = Partial<
     Record<BlockerVerificationMethod, BlockerStateReader>

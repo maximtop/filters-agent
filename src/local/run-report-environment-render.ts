@@ -62,10 +62,10 @@ export function renderCliInstallationPreparation(
 /**
  * Render the list selection a declaring blocker's run browsed with.
  *
- * Decision 5 of 32-AFK: a run whose blocker declares its own lists names those lists, and names
- * whatever the reporter had enabled that the selection does not cover — a fidelity signal, never a
- * refusal. A run whose baseline was resolved against the official catalog renders nothing here; its
- * official identities are already the subject of the rest of this block.
+ * A run whose blocker declares its own lists names those lists, and names whatever the reporter had
+ * enabled that the selection does not cover — a fidelity signal, never a refusal. A run whose
+ * baseline was resolved against the official catalog renders nothing here; its official identities
+ * are already the subject of the rest of this block.
  *
  * @param selection - The locked environment-selection snapshot.
  * @returns Zero lines, or the declared selection and its unmatched reported names.

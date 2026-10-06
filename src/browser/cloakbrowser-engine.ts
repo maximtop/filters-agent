@@ -57,9 +57,8 @@ export class CloakBrowserEngine implements IBrowserEngine {
     /**
      * The stealth binary passes no page console API message and no uncaught page error to
      * Playwright, not even through a raw CDP `Runtime.enable` subscription: `page.on('console')`
-     * sees only the browser's own log entries. Verified 2026-09-25 with headless sessions on a
-     * `data:` URL and on a local page; live-run `browser-console.json` artifacts hold nothing
-     * else.
+     * sees only the browser's own log entries. Verified with headless sessions on a `data:` URL and
+     * on a local page; CI `browser-console.json` artifacts hold nothing else.
      */
     readonly consoleCoverage = ConsoleCoverage.BrowserLogOnly;
 

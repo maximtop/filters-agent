@@ -22,10 +22,10 @@ import type {
  * Narrow typed GitHub listing seam for backlog selection.
  *
  * Backlog mode reads which open issues exist and, per visited issue, the trusted history it derives
- * its revision state from — nothing else. This module is the module's whole GitHub surface (AC1): a
+ * its revision state from — nothing else. This module is backlog mode's whole GitHub surface: a
  * newest-first open-issue listing and a per-issue comment read, mapped at the seam before anything
  * derived touches them. The mapped and schema-validated response vocabulary it admits is
- * `backlog-response.ts`. There is no write endpoint here; publishing stays with the 15-AFK
+ * `backlog-response.ts`. There is no write endpoint here; publishing stays with the report
  * publisher.
  *
  * Request budget is part of the contract: the listing item answers every issue-level fact the

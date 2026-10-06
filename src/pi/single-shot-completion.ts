@@ -16,22 +16,21 @@ import { isTransientGatewayFailure } from './transient-gateway-retry';
  *
  * Why an inactivity bound at all: `timeoutMs` reaches the OpenAI SDK as its `timeout`, and the SDK
  * clears that timer in a `finally` the moment the response resolves — that is, when the HEADERS
- * arrive. Nothing below bounds the streamed body for openai-completions, so a gateway that opened a
- * stream and then stopped producing left a single-shot call unbounded. Live run 34876679458
- * (2026-09-13) called `inspect_full_page_capture` at 18:33:36Z and logged nothing until 19:17:29Z,
- * when the gateway's OWN idle timeout ended the stalled stream 44 minutes later with `Upstream idle
- * timeout exceeded`; the run's 60-minute wall-clock guard could not take effect until then and the
- * job ran 90 minutes. The agent loop already bounds exactly this half in `run-guards.ts`, armed on
- * the assistant `message_start` and re-armed on every `message_update`; this is the same bound for
- * the out-of-loop calls, arming on the stream's first event and re-arming on each one after it.
+ * arrive. Nothing below bounds the streamed body for openai-completions, so a gateway that opens a
+ * stream and then stops producing leaves a single-shot call unbounded: an
+ * `inspect_full_page_capture` call can sit silent for 44 minutes until the gateway's OWN idle
+ * timeout ends the stalled stream with `Upstream idle timeout exceeded`, and the run's 60-minute
+ * wall-clock guard cannot take effect until then. The agent loop already bounds exactly this half
+ * in `run-guards.ts`, armed on the assistant `message_start` and re-armed on every
+ * `message_update`; this is the same bound for the out-of-loop calls, arming on the stream's first
+ * event and re-arming on each one after it.
  */
 
 /**
  * Sampling temperature applied when a call passes none.
  *
- * Every migrated structured path ran at explicit 0 (vision-json, reviewer, oracle); the screenshot
- * tool left it unset, which let the gateway default decide — 0 keeps it deterministic and matches
- * the dominant existing behavior.
+ * Structured paths (vision, reviewer, oracle) need deterministic output, and an unset temperature
+ * would let the gateway default decide — 0 keeps every call deterministic.
  */
 const DEFAULT_TEMPERATURE = 0;
 
@@ -45,12 +44,11 @@ const TRANSIENT_RETRY_DELAY_MS = 1_000;
  * Hard bound on one single-shot call's total duration, streamed progress or not.
  *
  * The inactivity bound measures silence, deliberately: a reasoning model that streams its thinking
- * for minutes is alive. It therefore cannot end a generation that never stops. Live run 35066780225
- * (2026-09-16) spent 21 and then 24 minutes inside two vision calls that kept streaming the whole
- * time — cut only by the 30-minute apply_rule deadline and by the provider itself — and those 46
- * minutes were most of its 60-minute investigation. Verified reviews of the same page finish in one
- * to five minutes; a call still going at ten is a runaway, not a slow answer, and the run is better
- * off with a named failure and its remaining budget.
+ * for minutes is alive. It therefore cannot end a generation that never stops: two vision calls
+ * that keep streaming for 21 and then 24 minutes — cut only by the 30-minute apply_rule deadline
+ * and by the provider itself — eat most of a 60-minute investigation. Verified reviews of such a
+ * page finish in one to five minutes; a call still going at ten is a runaway, not a slow answer,
+ * and the run is better off with a named failure and its remaining budget.
  */
 export const SINGLE_SHOT_CALL_CEILING_MS = 10 * 60_000;
 
@@ -150,9 +148,9 @@ export type SingleShotCompletionOptions = Omit<SingleShotCallOptions, 'messages'
  *   transient gateway failure mid-stream — the same set the agent loop's seam retries
  *   (`isTransientGatewayFailure`) — is retried here up to `options.maxRetries` times with a short
  *   growing delay: pi's own transport retry (`maxRetries` on the request) decides on the HTTP
- *   status of the request phase alone, so a fault after the headers surfaced as an error message
- *   and was never retried on this path; a live run's candidate visual review went "unavailable" on
- *   one such fault. A caller abort and every deterministic failure return at once.
+ *   status of the request phase alone, so a fault after the headers surfaces as an error message it
+ *   never retries, and one such fault would leave a candidate visual review "unavailable". A caller
+ *   abort and every deterministic failure return at once.
  */
 export async function completeOnce(
     runtime: PiRuntime,

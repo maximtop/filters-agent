@@ -157,8 +157,8 @@ export async function launchStrictRoutePieces(
     // against the 108-byte sun_path and SIGTRAPs at startup when the route-owned tree's
     // depth overflows it, so TMPDIR must not live inside the route root.
     const tempDir = createStrictRouteTempDir();
-    // Logged before the call, not after: this launch is where two live runs hung for
-    // hours, and a line that only appears on success tells nothing about a hang. The
+    // Logged before the call, not after: this launch can hang for hours, and a line
+    // that only appears on success tells nothing about a hang. The
     // resource snapshot is captured for the same reason: strict-route launch crashes
     // cluster with parallel CI jobs, so every launch records the fd limit, /dev/shm
     // size, and memory headroom it started from.
@@ -233,9 +233,9 @@ export async function launchStrictRoutePieces(
         tempDir.dispose();
         // The route root is deliberately NOT removed: it holds the Chromium log, the
         // teed browser output, and any crashpad dump the dead browser left behind —
-        // exactly the forensics a startup crash needs. In live runs the route root sits
-        // inside the proxy-CLI workspace, which the run wrapper sweeps into the
-        // diagnostics artifact; locally the logged path is the pointer.
+        // exactly the forensics a startup crash needs. In CI the route root sits inside
+        // the proxy-CLI workspace, which the run wrapper sweeps into the diagnostics
+        // artifact; locally the logged path is the pointer.
         logger.warn(
             {
                 routeId: route.routeId,

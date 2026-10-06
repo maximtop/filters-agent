@@ -10,11 +10,11 @@ import { extractInstructionSection, unfencedInstructionLines } from './instructi
  *
  * Every other instruction-dependent role resolves per section — an instruction silent about
  * preparation, `launch:`, `placement:`, issue selection or the report template keeps the built-in
- * behaviour for that role. The application contract was the one exception: as soon as an
- * instruction existed it replaced the built-in application document wholesale, so an instruction
- * written only to link its repository's guidance documents lost the contract entirely. The early
- * file-backed gate cannot catch that (there is no contract to inspect), so the run spent its whole
- * budget and `apply_rule` then refused with `no-application-method`.
+ * behaviour for that role. The application contract is the one exception: an instruction replaces
+ * the built-in application document wholesale, so an instruction written only to link its
+ * repository's guidance documents carries no contract at all. The early file-backed gate cannot
+ * catch that (there is no contract to inspect), so without this declaration the run would spend its
+ * whole budget before `apply_rule` refuses with `no-application-method`.
  *
  * The declaration is one line, in the same shape as the `read:`, `launch:` and `placement:`
  * declarations: `application: <route>`.

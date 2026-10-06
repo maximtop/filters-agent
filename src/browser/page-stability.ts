@@ -99,10 +99,10 @@ export interface PageStabilizationEvidence {
 /**
  * Hard upper bound for one navigation-and-stabilization attempt.
  *
- * Raised from 15s after live runs lost heavy news sites to it: the proxy answered such a page in
- * under a second and a direct navigation finished in 1.4s, yet an ad-laden article with dozens of
- * third-party requests can still miss a 15s `domcontentloaded`. A run that gives up there reports
- * an unreachable target for a site that is merely slow, which is a worse error than waiting.
+ * Forty-five seconds, because a heavy news site can miss a 15s `domcontentloaded` even when the
+ * proxy answers in under a second and a direct navigation finishes in 1.4s: an ad-laden article
+ * with dozens of third-party requests is slow to settle. A run that gives up early reports an
+ * unreachable target for a site that is merely slow, which is a worse error than waiting.
  */
 export const MAX_PAGE_STABILIZATION_TIMEOUT_MS = 45_000;
 

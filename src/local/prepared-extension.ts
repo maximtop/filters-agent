@@ -1,18 +1,17 @@
 /**
  * PreparedExtension — the host-validated extension build every fix run carries into its browser
- * sessions, and the provenance vocabulary that replaces the build-from-source cache record at the
- * runtime seam.
+ * sessions, and its provenance vocabulary at the runtime seam.
  *
  * Exactly ONE PreparedExtension exists per run, prepared before the fix session starts: the host
  * downloads the operator-pinned prebuilt release, or adopts what the short-lived preparation
  * session built from the instruction's `## Preparation` section. The source kind is recorded so run
  * records state where the loaded build came from; the digest pins the exact source bytes and makes
- * substitution detectable. (A third source, an operator-preloaded directory, was dropped in 27-AFK;
- * `PreparedExtensionSource.Preloaded` stays parseable for run records persisted before the drop.)
+ * substitution detectable. (Run records written by earlier builds may still name a third source, an
+ * operator-preloaded directory, so `PreparedExtensionSource.Preloaded` stays parseable.)
  *
- * Decision 1 of 31-AFK: the record carries its launch family, because the two families install
- * through channels with nothing in common — a Chromium unpacked directory, or a Firefox signed XPI
- * force-installed through enterprise policies whose managed storage carries the user filters.
+ * The record carries its launch family, because the two families install through channels with
+ * nothing in common — a Chromium unpacked directory, or a Firefox signed XPI force-installed
+ * through enterprise policies whose managed storage carries the user filters.
  */
 import { readFileSync } from 'node:fs';
 import { access, stat } from 'node:fs/promises';

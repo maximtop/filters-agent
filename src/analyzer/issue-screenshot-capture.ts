@@ -244,8 +244,8 @@ export interface IssueScreenshotCaptureOptions {
      * Diagnostics sink for the per-screenshot download outcome.
      *
      * A failed download is otherwise visible only as prose inside the returned record, which
-     * nothing logs: a live run answered `issueScreenshots: []` for an issue carrying two GitHub
-     * attachments and the log held not one line about it.
+     * nothing logs: a run can answer `issueScreenshots: []` for an issue carrying GitHub
+     * attachments without a single log line about it.
      */
     logger?: Logger;
 }

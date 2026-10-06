@@ -162,10 +162,10 @@ export interface PhaseApplicationFlowHost {
     /**
      * Relaunch one phase session with rebuilt Firefox enterprise policies.
      *
-     * The host-performed file-backed application (31-AFK Decision 3) writes the declared file and
-     * then needs a browser that reads the rebuilt policies, which Firefox does only at startup. The
-     * runtime implements this over the same session factory every other session of the run uses, so
-     * a test drives the relaunch through its own injected factory.
+     * The host-performed file-backed application writes the declared file and then needs a browser
+     * that reads the rebuilt policies, which Firefox does only at startup. The runtime implements
+     * this over the same session factory every other session of the run uses, so a test drives the
+     * relaunch through its own injected factory.
      */
     relaunchPolicySession: PolicySessionRelaunch;
 

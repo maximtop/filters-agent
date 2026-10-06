@@ -37,10 +37,10 @@ import {
  * summarization call pi paid for — so a compacted run still accounts for exactly what it spent.
  *
  * Both observers are non-fatal by design — a trace or usage sink must never break a run it only
- * watches — but a swallowed failure used to leave nothing behind at all: every failure is logged
- * with its observer context through the injected logger. It does NOT change what the turn reports:
- * a trace-recording failure is not a usage failure, the provider's counts are in hand either way,
- * and `usageCompleteness: partial` means one thing only — the provider sent no usage chunk.
+ * watches — but a swallowed failure must still leave a trace: every failure is logged with its
+ * observer context through the injected logger. It does NOT change what the turn reports: a
+ * trace-recording failure is not a usage failure, the provider's counts are in hand either way, and
+ * `usageCompleteness: partial` means one thing only — the provider sent no usage chunk.
  */
 
 /**
@@ -199,9 +199,9 @@ function observeTurnEnd(
             'provider turn failed',
         );
     } else {
-        // A clean turn left no line at all, so a run's timeline had to be inferred from the tool
-        // calls around it: nothing said when the model was thinking, for how long, or what it
-        // asked for next.
+        // Without a line for a clean turn a run's timeline has to be inferred from the tool calls
+        // around it: nothing says when the model was thinking, for how long, or what it asked for
+        // next.
         logger.info(
             {
                 turnIndex: observation.index,
@@ -307,7 +307,7 @@ export function attachSessionTelemetry(options: SessionTelemetryOptions): Sessio
     const detach = options.session.subscribe((event) => {
         if (event.type === 'turn_end') {
             // turn_end always carries the assistant message pi just produced; pi's own type is
-            // authoritative inside the layer (the duck-typed shadow was the layer's old hedge).
+            // authoritative inside the layer.
             const message = event.message as AssistantMessage;
             completions.push(observeTurnEnd(message, turns, model, options.onTurnEnd, logger));
             turns += 1;

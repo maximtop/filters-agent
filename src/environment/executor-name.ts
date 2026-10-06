@@ -25,8 +25,8 @@ export const BoundedIdentifierSchema = v.pipe(
 /**
  * A validated executor name: the registry key one filtering executor is registered under.
  *
- * The vocabulary is deliberately open — the publishable tree registers the browser-extension
- * executor, the lab tree registers executors of its own beside it — so any bounded identifier is a
+ * The vocabulary is deliberately open — this tree registers the browser-extension executor, and
+ * other callers may register executors of their own beside it — so any bounded identifier is a
  * legal name and no closed picklist can spell the set. The shape is exactly
  * `BoundedIdentifierSchema`'s, declared once there and reused here rather than repeated.
  */
@@ -40,8 +40,7 @@ export type ExecutorName = v.InferOutput<typeof ExecutorNameSchema>;
 /**
  * Executor name of the browser-extension executor every public run registers.
  *
- * Declared here so the vocabulary and every src-side consumer share one spelling; the lab tree
- * reuses this constant for its two-executor run sets.
+ * Declared here so the vocabulary and every consumer share one spelling.
  */
 export const BrowserExtensionExecutorName = 'browser_extension' as const;
 

@@ -65,9 +65,9 @@ const PI_AGENT_DIR = '.pi-agent';
  * unconditionally, so whatever is passed here goes to the gateway on every request of every run.
  * The run's real artifacts directory must therefore never be it: it is an absolute operator or CI
  * path (`/…/collections/<uuid>/raw/artifacts`), which would both leak the host layout into the
- * prompt and change the cached prefix per run — a campaign of fifty runs would share no prefix at
- * all, defeating the warm-replica cache reuse the session-affinity headers exist for. One constant
- * keeps the whole prefix byte-identical everywhere; nothing reads or writes the path (session and
+ * prompt and change the cached prefix per run — a batch of fifty runs would share no prefix at all,
+ * defeating the warm-replica cache reuse the session-affinity headers exist for. One constant keeps
+ * the whole prefix byte-identical everywhere; nothing reads or writes the path (session and
  * settings managers are in memory and every resource discovery is disabled), and the tools that do
  * touch the filesystem take the real directory from their own wiring.
  */
@@ -77,8 +77,8 @@ export const SESSION_LOGICAL_CWD = '/agent';
  * Configured bounds for retrying transient provider failures inside a run. Unset members keep pi's
  * defaults (3 retries, 2 s base).
  *
- * Three consequences of running retries through pi rather than through the deleted loop's own
- * transport, none of which the bounds themselves show:
+ * Three consequences of running retries through pi rather than through a transport of our own, none
+ * of which the bounds themselves show:
  *
  * - Transience is pi's MESSAGE-based classification, not an HTTP status: it matches the composed
  *   `"<status>: <body>"` text against a substring/regex list (`overloaded`, `429`, `5xx`,
@@ -91,11 +91,9 @@ export const SESSION_LOGICAL_CWD = '/agent';
  *   status-based transport retry (408/409/429/5xx), which the agent loop leaves disabled — that one
  *   covers the whole 5xx range and therefore needs no extension. One gateway, two classifiers.
  * - Every retried attempt is a fresh agent run, so it emits its own `turn_end`: a transient failure
- *   consumes one of `RunBudgets.maxTurns` and is counted as a completion in the usage report, where
- *   the legacy loop's retries were invisible to `maxIterations`.
- * - There is no per-tool failure budget any more. The legacy loop ended a run after three tool
- *   failures without an intervening success and told the model how much budget was left; pi has no
- *   equivalent, and only the terminal tool's rejection cap survives.
+ *   consumes one of `RunBudgets.maxTurns` and is counted as a completion in the usage report.
+ * - There is no per-tool failure budget: pi has no equivalent of ending a run after repeated tool
+ *   failures, and only the terminal tool's rejection cap ends a run on rejections.
  */
 export interface RunRetryBounds {
     /**
@@ -125,8 +123,7 @@ export interface RunAgentSessionOptions<T> {
      * The session's system prompt text. Passed through verbatim except for the CWD line pi's
      * agent-session constructor unconditionally appends, which names the constant
      * `SESSION_LOGICAL_CWD` and never the run's own directory — so the whole prefix is
-     * byte-identical across runs, machines and CI jobs, which is what the migration's prompt-cache
-     * thesis needs.
+     * byte-identical across runs, machines and CI jobs, which is what prompt-cache reuse needs.
      */
     systemPrompt: string;
 
@@ -357,16 +354,15 @@ export async function runAgentSession<T>(
         // reasoning-effort compatibility detection). The default is `high` — the maintainer's call,
         // and the ceiling this model can carry: with no `thinkingLevelMap` on the catalog entry pi
         // supports `off | minimal | low | medium | high` and clamps anything above `high` down to
-        // it. `LLM_REASONING_EFFORT=off` still reaches the wire shape the deleted loop had (no
-        // reasoning parameter at all), which is what a like-for-like benchmark against it needs.
-        // The literals are pi's own spellings, so `ReasoningEffort` is assignable as-is — a renamed
-        // pi level breaks this line instead of quietly changing the request.
+        // it. `LLM_REASONING_EFFORT=off` sends no reasoning parameter at all. The literals are pi's
+        // own spellings, so `ReasoningEffort` is assignable as-is — a renamed pi level breaks this
+        // line instead of quietly changing the request.
         thinkingLevel: options.reasoningEffort,
     });
     // Applied to every session before the first prompt: pi's own retry classification does not know
-    // the Cloudflare origin statuses this gateway answers with, and its retry settings carry no hook
-    // to teach it. `transient-gateway-retry.ts` holds the whole pinned-vendor seam and the campaign
-    // 520 that motivated it.
+    // the Cloudflare origin statuses this gateway answers with, and its retry settings carry no
+    // hook to teach it. `transient-gateway-retry.ts` holds the whole pinned-vendor seam and the
+    // reasons for it.
     extendTransientGatewayRetry(session, logger);
     // pi checks compaction after EVERY agent run, the one the terminal tool ended included: the
     // last assistant message stops on `toolUse`, so the aborted-skip does not apply, and a run
@@ -379,8 +375,7 @@ export async function runAgentSession<T>(
     void options.terminal.settled.then(endCompaction, endCompaction);
     // Both per-run subscriptions live here, closed in the same finally: the tool-call observation
     // (the single counting point feeding the cap, and the only record of a call pi refused before
-    // execute; moved out of the deleted single-phase settle so it spans both prompt phases) and
-    // the run guards.
+    // execute; attached per run so it spans both prompt phases) and the run guards.
     const unsubscribeToolCalls = toolCalls.attach(session);
     const guards = attachRunGuards(session, {
         budgets: options.budgets,

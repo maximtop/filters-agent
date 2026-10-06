@@ -24,11 +24,11 @@ import {
 /**
  * The application the host runs between two environment phases.
  *
- * Decision 1 of 11-HITL: the application's steps are performed once over the phase lease, while the
- * host reads the blocker state back itself and credits the phase only when that state contains
- * exactly what the goal expects. A missing application or verification section is a recorded
- * refusal before any step runs — nothing here invents a way to apply a rule — and the action log is
- * assembled by the host from what it recorded, never from a model's self-report.
+ * The application's steps are performed once over the phase lease, while the host reads the blocker
+ * state back itself and credits the phase only when that state contains exactly what the goal
+ * expects. A missing application or verification section is a recorded refusal before any step runs
+ * — nothing here invents a way to apply a rule — and the action log is assembled by the host from
+ * what it recorded, never from a model's self-report.
  *
  * Who performs the steps is the runner's business, not this procedure's: an instruction that writes
  * its own `## Rule application` gets a bounded model session, while the built-in AdGuard route is
@@ -36,7 +36,7 @@ import {
  * two paths crediting by one rule.
  *
  * The credit itself lives in `blocker-state-credit.ts`, shared with the host-performed file-backed
- * application (31-AFK Decision 3), so every application path judges a read-back by one rule.
+ * application, so every application path judges a read-back by one rule.
  */
 
 /**

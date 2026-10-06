@@ -248,11 +248,10 @@ export function enforceCandidateSafety(
         }
         // The duplicate check in the proposal is the agent's reading of the rules search showed
         // it, written for the reviewer; it refuses nothing. The one duplicate code settles is the
-        // mechanical one: an exact copy of the candidate already in the checkout. A class the model
-        // chose used to cost a verified fix — nottinghampost.com lost a
-        // `div[class^="sc-"]:has(…)` rule to a `semantic` note about the `aside > …` rule other
-        // Reach plc sites carry, sarkisozleri.bbs.tr one to a `cross-filter` note about EasyList's
-        // own vendor rule.
+        // mechanical one: an exact copy of the candidate already in the checkout. Refusing on the
+        // class the model chose costs verified fixes: a `div[class^="sc-"]:has(…)` rule noted
+        // `semantic` against an `aside > …` rule sibling sites carry, or one noted `cross-filter`
+        // against EasyList's own vendor rule.
         const candidateCanonical = normalized.canonical;
         if (hasExactDuplicate(options.checkoutPath!, candidateCanonical)) {
             throw new CandidateSafetyError('Candidate rule already exists in the checkout.');

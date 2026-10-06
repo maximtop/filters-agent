@@ -1,16 +1,17 @@
 /**
  * Reduction of an HTML document to the readable text a guidance document is served as.
  *
- * A guidance link that answers with HTML used to be stored verbatim: `lookup_rule_guidance` for the
- * uBO syntax topic returned the GitHub page's `<head>` — meta tags, preload hints and inline
- * scripts — and the model got no guidance at all. The run reads these documents as prose, so a
- * document that arrives as markup is reduced to its text before it is stored: the invisible parts
- * are dropped, the structural ones become line breaks, and everything else keeps its own words.
+ * A guidance link that answers with HTML, stored verbatim, would serve the page's `<head>` — meta
+ * tags, preload hints and inline scripts — through `lookup_rule_guidance`, and the model would get
+ * no guidance at all. The run reads these documents as prose, so a document that arrives as markup
+ * is reduced to its text before it is stored: the invisible parts are dropped, the structural ones
+ * become line breaks, and everything else keeps its own words.
  */
 
 /**
  * Elements whose content is never readable prose: it is either machine instructions (script, style,
- * template) or document metadata (head), and a `<head>` dump is exactly the observed defect.
+ * template) or document metadata (head), and a `<head>` dump is exactly the defect this reduction
+ * prevents.
  */
 const DROPPED_ELEMENTS = ['head', 'script', 'style', 'noscript', 'template', 'svg'] as const;
 

@@ -5,9 +5,9 @@ import { RuleKind, findCosmeticSeparator, normalizeRule } from './rule-normalize
  *
  * Maintainers resolve platform-wide symptoms with one shared line per platform — a cosmetic family
  * (`a.com,b.com##.banner`), a consent-state scriptlet family (`a.com,b.com#%#//scriptlet(...)`), or
- * a vendor-loader network family (`||cs.iubenda.com^$domain=a.it|b.it`). The 2026-08-22
- * agent-versus-maintainer comparison found the agent hiding CMP banners per site exactly where
- * maintainers extended such lines, and the planner could only extend cosmetic ones.
+ * a vendor-loader network family (`||cs.iubenda.com^$domain=a.it|b.it`). A planner that can extend
+ * only cosmetic lines leaves the agent hiding CMP banners per site exactly where maintainers extend
+ * such lines, so every one of these kinds is extensible.
  */
 const EXTENSIBLE_FAMILY_KINDS: ReadonlySet<RuleKind> = new Set<RuleKind>([
     RuleKind.Cosmetic,

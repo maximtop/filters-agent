@@ -425,8 +425,8 @@ export interface ProxyBlockerEnvironmentOptions {
     cliVersion: string | null;
 
     /**
-     * Exact executing product label, reported as the actual product. Defaults to the legacy
-     * 'AdGuard CLI' label.
+     * Exact executing product label, reported as the actual product. Defaults to the 'AdGuard CLI'
+     * label.
      */
     product?: string;
 

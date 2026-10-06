@@ -13,17 +13,16 @@ import type { CompletionUsage } from './usage-reporting';
  * (`createSingleShotClient`, `runStructuredSingleShot`) and re-exports nothing, so every consumer
  * imports the vocabulary from here and no symbol has two reachable origins.
  *
- * Nothing here is a `@earendil-works/pi-ai` type, on purpose: analyzer, environment, validator and
- * benchmark code consumes these results, and re-exporting pi's `Usage` and `StopReason` made a
- * harness type change an application-wide type change. Token usage and stop reasons are app-owned
- * (the shared `CompletionUsage` in `./usage-reporting`, the shared `TurnStopReason` set in
+ * Nothing here is a `@earendil-works/pi-ai` type, on purpose: analyzer, environment and validator
+ * code consumes these results, and re-exporting pi's `Usage` and `StopReason` would make a harness
+ * type change an application-wide type change. Token usage and stop reasons are app-owned (the
+ * shared `CompletionUsage` in `./usage-reporting`, the shared `TurnStopReason` set in
  * `./stop-reason`) and mapped from pi's shapes at the boundary in `single-shot.ts`, which is the
  * only module that sees both.
  *
- * Both call paths return the SAME result union. The text path used to carry its own two-arm `Pi*`
- * union whose failure arm was this one with `usage` instead of `usages`, which meant a caller could
- * not write one handler for "the provider did not answer usably" and the metered client needed a
- * second branch to record a text call's usage.
+ * Both call paths return the SAME result union, so a caller writes one handler for "the provider
+ * did not answer usably" and the metered client records a text call's usage without a second
+ * branch.
  */
 
 /**
@@ -163,7 +162,7 @@ export interface SingleShotCallOptions {
     messages: SingleShotMessage[];
 
     /**
-     * Sampling temperature; defaults to 0 (every migrated consumer ran at 0 or unset).
+     * Sampling temperature; defaults to 0.
      */
     temperature?: number;
 
@@ -198,8 +197,7 @@ export interface SingleShotCallOptions {
 
     /**
      * SDK-level transport retries per request, derived once from the configured attempt bound by
-     * `providerMaxRetries` in `./llm-wiring` (`llm.requestMaxAttempts - 1`); the bespoke backoff
-     * semantics retired with the legacy provider.
+     * `providerMaxRetries` in `./llm-wiring` (`llm.requestMaxAttempts - 1`).
      */
     maxRetries?: number;
 
@@ -255,7 +253,7 @@ export interface SingleShotClient {
     structured<T>(options: SingleShotStructuredOptions<T>): Promise<SingleShotResult<T>>;
 
     /**
-     * Run one free-text completion (the golden oracle's screenshot descriptions).
+     * Run one free-text completion (for instance, screenshot descriptions).
      *
      * @param options - Messages and call controls.
      * @returns The shared result union with the reply as its value; `invalid-result` cannot occur
@@ -272,7 +270,7 @@ export interface SingleShotClientDefaults {
      * Completion cap put on the wire (`max_completion_tokens`) for every call of this client unless
      * a call passes its own. Without it a single-shot request carries no cap at all and the
      * provider applies its own default, which a reasoning model's thinking exhausts before the
-     * answer: a live vision verdict ended `length` that way.
+     * answer, so a vision verdict can end `length` with nothing to show.
      */
     maxTokens?: number;
 

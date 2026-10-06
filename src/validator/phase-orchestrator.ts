@@ -743,8 +743,8 @@ export interface ValidationConfig {
     trustedValidationContext?: TrustedValidationContext;
 
     /**
-     * Explicit legacy main-world fallback for unit tests. Production callers must leave this false
-     * or undefined so every verdict-bearing probe uses a Chromium CDP isolated world.
+     * Explicit main-world fallback for unit tests. Production callers must leave this false or
+     * undefined so every verdict-bearing probe uses a Chromium CDP isolated world.
      */
     testOnlyAllowMainWorldProbeFallback?: boolean;
 
@@ -829,7 +829,7 @@ function resolvePhaseCExistingRules(
 }
 
 /**
- * Create the explicit legacy browser-tool evaluator used only by unit tests.
+ * Create the explicit browser-tool evaluator used only by unit tests.
  *
  * @param handlers - Mock browser handlers supplying wrapped `{ result }` payloads.
  * @returns Test-only evaluator compatible with trusted probe functions.
@@ -851,7 +851,7 @@ function createTestOnlyToolEvaluator(handlers: BrowserToolHandlers): TrustedPage
 }
 
 /**
- * Create the explicit legacy Playwright evaluator used only by structural-probe unit tests.
+ * Create the explicit Playwright evaluator used only by structural-probe unit tests.
  *
  * @param page - Mock Playwright page.
  * @returns Test-only evaluator that delegates to the mock page's main world.

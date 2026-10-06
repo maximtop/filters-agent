@@ -4,10 +4,10 @@
  *
  * A terminal decision on a report that carries an import URL needs a session launched with that
  * exact URL. The terminal gate compares digests, so a session launched with an edited URL runs,
- * validates candidates, and only fails at `finish_fix` — with nothing saying what differed. In
- * AdguardFilters#242716 the model dropped two third-party filter IDs from the URL in every launch,
- * and the run sealed after three rejected submissions. The launch check refuses such a request
- * before any browser starts, naming the parameters that differ.
+ * validates candidates, and only fails at `finish_fix` — with nothing saying what differed. A model
+ * that drops two third-party filter IDs from the URL in every launch seals the run after three
+ * rejected submissions. The launch check refuses such a request before any browser starts, naming
+ * the parameters that differ.
  */
 import {
     canonicalAdGuardSettingsImportUrlSha256,

@@ -331,9 +331,8 @@ export type SafeInteractionPlanOutcome =
           /**
            * Bounded model-facing explanation naming the failing step and constraint.
            *
-           * Without it a rejection is uncorrectable: on 2026-08-13/14 the model burned whole
-           * interaction retry budgets re-sending the same invalid shape because the reply said only
-           * "not accepted" (issues 237991, 231213, 237887).
+           * Without it a rejection is uncorrectable: a model told only "not accepted" burns whole
+           * interaction retry budgets re-sending the same invalid shape.
            */
           detail: string;
       };

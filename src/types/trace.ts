@@ -129,8 +129,9 @@ export const RunTraceSchema = v.object({
         totalTokens: v.pipe(v.number(), v.integer(), v.minValue(0)),
     }),
     /**
-     * The run's pi-sourced Usage Summary, set by pi-driven wirings at seal time. Absent on legacy
-     * paths; carries no secrets (model ids, counts, USD only), so it bypasses payload redaction.
+     * The run's pi-sourced Usage Summary, set by pi-driven wirings at seal time. Absent when no
+     * pi-driven wiring sealed the run; carries no secrets (model ids, counts, USD only), so it
+     * bypasses payload redaction.
      */
     usage: v.optional(RunUsageSummarySchema),
 });

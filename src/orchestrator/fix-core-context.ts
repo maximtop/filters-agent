@@ -26,12 +26,11 @@ import { IssueAttachmentKind } from '../types/issue-attachment-kind';
 import { BrowserFallbackReason } from '../types/browser-fallback-reason';
 import type { FixCoreIssueAttachment, FixCoreIssueInput } from './fix-core-inputs';
 /**
- * The fix core's shared result vocabulary: the run budgets both cores are bounded by, the
- * environment and verification labels a finished run is described with, the context and browser
- * state a core result is assembled from, the issue normalization and screenshot materialization
- * every core performs before the model sees anything, and the finalize-time contract failure.
- * Shared by the agentic core and the legacy compatibility core, which is why it is a leaf neither
- * of them owns.
+ * The fix core's shared result vocabulary: the run budgets a core is bounded by, the environment
+ * and verification labels a finished run is described with, the context and browser state a core
+ * result is assembled from, the issue normalization and screenshot materialization every core
+ * performs before the model sees anything, and the finalize-time contract failure. Kept as a leaf
+ * module so the fix core, the result assembly and the run entry can all share it.
  */
 
 /**
@@ -325,9 +324,8 @@ export class FixRunResultContractError extends Error {
  * reported element whose probe ends baseline_symptom_absent, a re-validation whose factual probe
  * stays not_probed — leaves an inconclusive disposition behind, and the canonical projection then
  * strips the accepted candidate's evidence while runStatus patch_proposed survives, so the result
- * dies on its own schema (runs 237885 and 237880, 2026-08-10). The accepted patch is what the run
- * proposes; the projection must answer for that candidate's experiment, not for whichever
- * experiment happened to run last.
+ * dies on its own schema. The accepted patch is what the run proposes; the projection must answer
+ * for that candidate's experiment, not for whichever experiment happened to run last.
  *
  * The pinned digest must equal the digest hashed at experiment time — the validation artifact id
  * embeds its first twelve characters, so any mismatch (for example rule normalization drift) falls

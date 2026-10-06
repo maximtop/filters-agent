@@ -263,10 +263,9 @@ const URL_SCHEME_PATTERN = /^https?:\/\//u;
  * Whether a site URL was copied from the issue rather than composed by the model.
  *
  * The URL itself, or the URL without its scheme and a trailing slash, occurs in the issue text: a
- * reporter who wrote `sitepoint.com` stated the site the model returns as `https://sitepoint.com/`,
- * while a query string the model garbled — a 1.3 KB base64 payload it could not reproduce, in
- * AdguardFilters #242138 — occurs nowhere. A 19-issue census of live extractions found every
- * faithful copy verbatim in its issue and the one garbled copy absent.
+ * reporter who wrote `example.com` stated the site the model returns as `https://example.com/`,
+ * while a query string the model garbled — say a 1.3 KB base64 payload it could not reproduce —
+ * occurs nowhere. A faithful copy occurs verbatim in its issue; a garbled one does not.
  *
  * @param url - The site URL the model returned.
  * @param issueText - The issue text the model was shown.

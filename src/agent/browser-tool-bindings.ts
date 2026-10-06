@@ -128,8 +128,8 @@ export async function registerBrowserTools(
 
     // Use the caller-supplied recorder (browserTools.recorder) so browser-tool artifacts
     // (screenshot/HAR/DOM) and the apply_rule validator's artifacts land on the same
-    // recorder the run owns — readable via recorder.getArtifacts(). Previously a shadow
-    // recorder was constructed here, which orphaned every browser artifact.
+    // recorder the run owns — readable via recorder.getArtifacts(). A recorder constructed here
+    // would orphan every browser artifact.
     const recorder = browserTools.recorder;
     const handlers = createBrowserToolHandlers({
         session,
@@ -187,7 +187,7 @@ export async function registerBrowserTools(
         {
             name: ToolName.GetNetworkLog,
             description:
-                'Return a redacted inventory of every network request collected since session start or the last internal phase reset: requestCount, blockedCount, byType and byHost counts, a requests list giving each distinct request its host, path, resource type, status, thirdParty flag and repeat count, and a blocked list of failed or blocked URLs. Nothing is filtered by URL shape, so the loadable resource behind a symptom — a third-party vendor script or a first-party ad/consent plugin or asset — is always listed. Also writes the full redacted HAR as a JSON artifact and returns an evidenceRef in the form artifact:har:<id>; pass that exact value to policy_check. Sensitive headers (Cookie, Authorization, Set-Cookie) are redacted.',
+                'Return a redacted inventory of every network request collected since session start or the last internal phase reset: requestCount, blockedCount, byType and byHost counts, a requests list giving each distinct request its host, path, resource type, status, thirdParty flag and repeat count, and a blocked list of failed or blocked URLs. Nothing is filtered by URL shape, so the loadable resource behind a symptom — a third-party vendor script or a first-party ad/consent plugin or asset — is always listed. Also writes the full redacted HAR as a JSON artifact and returns an evidenceRef in the form artifact:har:<id>; cite that exact value as the network evidence. Sensitive headers (Cookie, Authorization, Set-Cookie) are redacted.',
             handler: handlers.get_network_log,
         },
         {

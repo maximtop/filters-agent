@@ -1,7 +1,7 @@
 /**
- * The entry's shared input contracts and schemas: the raw sources a caller (the lab CLI, the
- * container action) hands the resolver, the Valibot shapes `entry-run.ts` re-asserts before any
- * seam runs, and the plain `AgentRunInputs` type the resolved run carries from then on.
+ * The entry's shared input contracts and schemas: the raw sources a caller (a CLI, the container
+ * action) hands the resolver, the Valibot shapes `entry-run.ts` re-asserts before any seam runs,
+ * and the plain `AgentRunInputs` type the resolved run carries from then on.
  * `entry-inputs-resolution.ts` owns turning flags and environment into these — this module only
  * declares what they look like, so the contract and its resolution can each stay a manageable
  * size.
@@ -135,11 +135,11 @@ export interface AgentRunInputSources {
     backlogWallClockBudgetMs?: number | undefined;
 
     /**
-     * Executor names actually registered for this run's face — the action's own registry, or the
-     * lab CLI's richer one. The registry is deliberately open (the lab registers executors `src`
-     * cannot know about), so this always travels from the caller's own registry snapshot rather
-     * than a fixed list; omitted skips the check (only test fixtures should omit it). Checked
-     * before any seam runs, so a typo names itself instead of surfacing after a paid run.
+     * Executor names actually registered for this run's face — the action's own registry, or
+     * another caller's richer one. The registry is deliberately open (other callers may register
+     * executors of their own), so this always travels from the caller's own registry snapshot
+     * rather than a fixed list; omitted skips the check (only test fixtures should omit it).
+     * Checked before any seam runs, so a typo names itself instead of surfacing after a paid run.
      */
     knownExecutorNames?: readonly string[] | undefined;
 }

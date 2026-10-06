@@ -94,9 +94,8 @@ export const SkippedFilterSourceKind = {
     /**
      * A name that matches neither catalog: a private list, a DNS filter, or a misspelled name. The
      * run cannot fetch what it cannot identify, so the name is recorded and the baseline runs on
-     * the official filters that did resolve. Failing the whole selection on one such name cost two
-     * desktop runs their investigation before a browser ever opened (AdguardFilters #239516
-     * "Youtube - remove shorts", #242052 "KOR: YousList").
+     * the official filters that did resolve. Failing the whole selection on one such name would
+     * cost the run its investigation before a browser ever opens.
      */
     UnresolvedName: 'unresolved_name',
 } as const;

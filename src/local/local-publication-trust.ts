@@ -94,9 +94,9 @@ export class LocalPublicationTrustError extends Error {
      *
      * The optional detail names the failing check and artifact for job logs — a collection-relative
      * path, an artifact basename, or an inner failure code, never file content or an absolute host
-     * path. Only the code is ever persisted into publication markers; anonymous messages previously
-     * cost a full evidence-archive reproduction to attribute (the 2026-08-10 publish failures said
-     * "unsafe artifact" for what was git rejecting a transport-damaged review checkout).
+     * path. Only the code is ever persisted into publication markers; an anonymous message costs a
+     * full evidence-archive reproduction to attribute (a bare "unsafe artifact" can hide git
+     * rejecting a transport-damaged review checkout).
      *
      * @param code - Stable failure classification.
      * @param detail - Optional bounded diagnostic naming the failed check.

@@ -117,8 +117,8 @@ const GENERAL_SETTINGS_SECTION_KEY = 'general-settings';
  *
  * It is not a preference the payload may leave alone: the extension treats it as authority over
  * {@link SEARCH_ADS_AND_SELF_PROMOTION_FILTER_ID} and re-enables that filter whenever the flag is
- * on, whatever `enabled-filters` said. The first live run applied the prepared `[2, 3]`, the import
- * answered `true`, and the read-back observed `[2, 3, 10]`.
+ * on, whatever `enabled-filters` says: an import of the prepared `[2, 3]` answers `true`, and the
+ * read-back observes `[2, 3, 10]`.
  */
 const ALLOW_ACCEPTABLE_ADS_KEY = 'allow-acceptable-ads';
 
@@ -201,16 +201,13 @@ function setAcceptableAds(
  * expectation alone can never establish a baseline. The build's own most recent export already
  * carries all of that; this loads it fresh over the prepared surface, changes only the fields the
  * expectation names — the filters, their groups, the Acceptable Ads switch that governs one of them
- * and the stealth state — and hands back the complete document unchanged everywhere else, exactly
- * as the retired options-page driver's legacy import path did before the model performed this step
- * itself (`git show 1ea6e065^:src/browser/adguard-settings-import-protocol.ts`).
+ * and the stealth state — and hands back the complete document unchanged everywhere else.
  *
  * The page has only just loaded when this runs, and the extension's background message handlers
- * register asynchronously after it: the very first message a live run sent from here met "Could not
- * establish connection. Receiving end does not exist." from a listener that was not up yet (run
- * 35139965168), and the whole prepared launch was thrown away for it. The export read therefore
- * waits for the extension's readiness first and probes the export the way every host read-back of
- * the blocker state does.
+ * register asynchronously after it: a message sent too early meets "Could not establish connection.
+ * Receiving end does not exist." from a listener that is not up yet, and the whole prepared launch
+ * is thrown away for it. The export read therefore waits for the extension's readiness first and
+ * probes the export the way every host read-back of the blocker state does.
  *
  * @param page - Prepared blocker management surface page the export is read from.
  * @param expectation - The prepared expectation the payload must express.

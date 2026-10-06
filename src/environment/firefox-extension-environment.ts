@@ -2,24 +2,24 @@
  * The filtering environment of a Firefox-family blocker: uBlock Origin force-installed from a
  * signed XPI, running the list selection its instruction declares.
  *
- * Decision 3 of 32-AFK — one adapter per family. The Chromium/AdGuard adapter locks an unpacked
- * build's `manifest.json` and its `ruleset_<id>` bytes, re-locks them before every phase, and
- * credits itself from the AdGuard extension's own live settings. A signed XPI has none of those: no
- * unpacked root, no readable manifest generation, and no `moz-extension://` page the host may
- * drive. So this adapter's readiness is a successful launch with the declared policies applied, and
- * its phases are:
+ * One adapter per family. The Chromium/AdGuard adapter locks an unpacked build's `manifest.json`
+ * and its `ruleset_<id>` bytes, re-locks them before every phase, and credits itself from the
+ * AdGuard extension's own live settings. A signed XPI has none of those: no unpacked root, no
+ * readable manifest generation, and no `moz-extension://` page the host may drive. So this
+ * adapter's readiness is a successful launch with the declared policies applied, and its phases
+ * are:
  *
  * - **A** — Firefox with no extension at all.
  * - **B** — Firefox with the XPI force-installed, the declaration's lists, and an empty user-filters
  *   file.
  * - **C** — the same, plus exactly the candidate line.
  *
- * B and C are reached through the host-side file application the configuration seam performs
- * (31-AFK Decision 3): write the declared file, rebuild the enterprise policies, relaunch — Firefox
- * reads `policies.json` only at startup — and read the file back. The phase proof records that
- * read-back; this adapter never judges it a second time. The one thing it adds is the enabled set:
- * a file read-back cannot see it, and Decision 2 says the proof carries the template's list keys,
- * observed from the declaration rather than guessed or reported as unobserved.
+ * B and C are reached through the host-side file application the configuration seam performs: write
+ * the declared file, rebuild the enterprise policies, relaunch — Firefox reads `policies.json` only
+ * at startup — and read the file back. The phase proof records that read-back; this adapter never
+ * judges it a second time. The one thing it adds is the enabled set: a file read-back cannot see
+ * it, so the proof carries the template's list keys, observed from the declaration rather than
+ * guessed or reported as unobserved.
  */
 import { createHash } from 'node:crypto';
 import * as v from 'valibot';
@@ -154,7 +154,7 @@ export class FirefoxExtensionEnvironmentAdapter implements FilteringEnvironmentA
 
     /**
      * The product and browser this environment really executes with: the declared extension id in
-     * the real Firefox build. Nothing here names AdGuard or Chromium (32-AFK Decision 5).
+     * the real Firefox build. Nothing here names AdGuard or Chromium.
      */
     private readonly actualContext: FilteringEnvironmentAdapterState['actualContext'];
 
@@ -241,10 +241,10 @@ export class FirefoxExtensionEnvironmentAdapter implements FilteringEnvironmentA
     /**
      * Lock the executable baseline the run's instruction declared.
      *
-     * Decision 1: the requested lists carry nothing here — a Firefox-family run resolves no list
-     * against AdGuard's catalog — so the baseline is the declaration's own selection. Its list
-     * files are never opened, so every enabled list is recorded as unattributed: exactly the field
-     * that exists for lists which filter but whose bytes no observer can bind.
+     * The requested lists carry nothing here — a Firefox-family run resolves no list against
+     * AdGuard's catalog — so the baseline is the declaration's own selection. Its list files are
+     * never opened, so every enabled list is recorded as unattributed: exactly the field that
+     * exists for lists which filter but whose bytes no observer can bind.
      *
      * @param request - The executor's list request; a Firefox-family run carries none.
      * @returns Ready adapter state, or a typed limitation.

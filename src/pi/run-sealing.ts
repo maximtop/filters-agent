@@ -226,9 +226,8 @@ const LEADING_STATUS_PATTERN = /^(\d{3}):\s/u;
  * `api: 'openai-completions'`), pi-ai composes `"<status>: <body>"` without a prefix
  * (`formatProviderError`), so a LEADING three-digit status token inside the message is the only
  * structural evidence available. When the message has no leading status (an SDK-folded body or an
- * alternate composition), the answer is `false` — the conservative direction of the legacy
- * `isDeterministicProviderRejection`, which returns true only for a structurally identified
- * deterministic status.
+ * alternate composition), the answer is `false` — the conservative direction: true only for a
+ * structurally identified deterministic status.
  *
  * @param message - Pi's provider-failure message (final failed request).
  * @returns True when the message carries a deterministic rejection status.
@@ -411,13 +410,12 @@ function logExplainedRejection(logger: Logger, sealedAs: SealKind, rejection: un
 /**
  * Run the user task and, when it ends in prose, exactly one nudge — sealing every ending as a typed
  * outcome. The terminal-rejection observation is NOT opened here: `runAgentSession` establishes it
- * for the whole run (spanning both phases) before calling this and closes it in its finally, the
- * run-scoped successor of the deleted single-phase settle's finally.
+ * for the whole run (spanning both phases) before calling this and closes it in its finally.
  *
  * A captured prompt rejection is never dropped: when the transcript or a guard cause explains the
  * ending it is debug-logged alongside the typed seal; when nothing explains it (prose → nudge →
- * prose), it is error-logged as before and folded into the final `diagnoseNoTerminal` call — the
- * FINAL phase's rejection, matching the two-parameter contract of the moved function.
+ * prose), it is error-logged and folded into the final `diagnoseNoTerminal` call — the FINAL
+ * phase's rejection, matching its two-parameter contract.
  *
  * @param session - The built pi session.
  * @param params - The sealing inputs the runner assembled (terminal, user task, nudge, budgets).

@@ -7,9 +7,9 @@ import type { AdGuardExtensionSettingsProfile } from './adguard-extension-settin
  * The observed-state shapes of the AdGuard extension: the message-transport schemas the extension
  * answers with, and the durable evidence records and state reads built over them.
  *
- * Decision 1 of 11-HITL: the host reads the blocker state back itself, so one state shape has
- * exactly one declaration that every consumer imports. The settings-request vocabulary those states
- * are verified against lives in `adguard-extension-settings.ts`.
+ * The host reads the blocker state back itself, so one state shape has exactly one declaration that
+ * every consumer imports. The settings-request vocabulary those states are verified against lives
+ * in `adguard-extension-settings.ts`.
  */
 
 /**
@@ -154,12 +154,11 @@ export interface AdGuardEnabledFilterEvidence {
 
 /**
  * Deterministic settings evidence derived from one host read-back: the blocker state the host
- * verified itself (Decision 1 of 11-HITL), flattened onto the settings-record surface every runtime
- * consumer reads.
+ * verified itself, flattened onto the settings-record surface every runtime consumer reads.
  *
  * All fields come from the {@link AdGuardExtensionStateRead} the host took plus the settings profile
- * the session requested — the retired options-page driver's import-protocol pieces have no producer
- * anymore, so a field it alone could fill is not part of the record.
+ * the session requested, so the record holds no field that only a settings-import protocol could
+ * fill.
  */
 export interface AdGuardExtensionSettingsEvidence {
     /**

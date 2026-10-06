@@ -442,8 +442,8 @@ export interface AgentRuntimeOptions {
 
     /**
      * The run's opaque per-executor dependency bag, forwarded to whichever registration the run
-     * activates. A `lab/`-only executor reads its own name's entry here for the host wiring `src/`
-     * cannot type; absent for a run that wires none (27-AFK).
+     * activates. An executor registered outside this tree reads its own name's entry here for the
+     * host wiring `src/` cannot type; absent for a run that wires none.
      */
     executorDependencies?: ExecutorDependenciesByName;
 }
@@ -839,12 +839,12 @@ function technicalNavigationFallbackReason(
     }
     const fallbackReason = result.fallbackReason as BrowserFallbackReason;
     // Every navigation outcome the site or the network produced counts: this decides whether the
-    // target's per-run budget is charged and whether the failure is remembered at all. A refusal
-    // of our own — the model named a URL off the issue origins, or an unsafe one — says nothing
-    // about the target and is not counted: it used to charge the budget and retire the session,
-    // so three excursions declared a reachable site unavailable (AdguardFilters #242110). The
-    // model may repeat the refused URL, but each repeat is one refused call, bounded by the
-    // iteration budget and the same-tool streak notice.
+    // target's per-run budget is charged and whether the failure is remembered at all. A refusal of
+    // our own — the model named a URL off the issue origins, or an unsafe one — says nothing about
+    // the target and is not counted: charging the budget and retiring the session for it would let
+    // three excursions declare a reachable site unavailable. The model may repeat the refused URL,
+    // but each repeat is one refused call, bounded by the iteration budget and the same-tool streak
+    // notice.
     return isTargetEnvironmentFallbackReason(fallbackReason) &&
         !isAgentRefusalFallback(fallbackReason)
         ? fallbackReason
@@ -1313,8 +1313,7 @@ export class AgentRuntime {
             requestedExecutors: options.agentRuntimeExecutors,
             registry: dependencies.filteringExecutors,
             // A blocker that declares its own list selection supplies the run's executable
-            // baseline; every other run resolves the reported names as it always did (32-AFK
-            // Decision 1).
+            // baseline; every other run resolves the reported names.
             filterBaseline: runDeclaredFilterBaseline(
                 options.preparedExtension,
                 options.issueFacts.enabledFilters.map((filter) => filter.name),
@@ -1356,9 +1355,7 @@ export class AgentRuntime {
         const registry = new ToolRegistry();
         for (const definition of baseRegistry.getDefinitions()) {
             const name = definition.function.name;
-            // Every base tool is copied verbatim, policy_check included: the deterministic policy
-            // oracle is part of the fix session surface (its legacy model-owned-policy prompt
-            // branch was deleted with 4-HITL), and mergeBrowserTools skips base names so the
+            // Every base tool is copied verbatim, and mergeBrowserTools skips base names so the
             // single base registration is never clobbered by a per-session copy.
             registry.register({
                 definition,
@@ -1650,9 +1647,9 @@ export class AgentRuntime {
     ): AgentRuntimeCandidateValidationBinding | undefined {
         const reference = this.candidateValidationReferences.get(validationArtifactId);
         const state = reference ? this.sessionStates.get(reference.sessionId) : undefined;
-        // Every refusal below is logged with what it read: a verified review that never became
-        // a candidate patch left a live run analysis-only with no line saying which predicate
-        // withheld the binding.
+        // Every refusal below is logged with what it read: otherwise a verified review that never
+        // becomes a candidate patch leaves the run analysis-only with no line saying which
+        // predicate withheld the binding.
         const refuse = (reason: string, detail: Record<string, unknown> = {}): undefined => {
             createLogger({ verbose: this.options.verbose ?? false }).info(
                 { validationArtifactId, reason, ...detail },
@@ -1834,11 +1831,10 @@ export class AgentRuntime {
      *
      * The tools themselves succeeded — the session is open and must stay usable, so the page can be
      * captured as evidence — but the reported page was withheld, and repeating the navigation from
-     * this runner rarely changes that. Without this accounting a walled target made every terminal
+     * this runner rarely changes that. Without this accounting a walled target makes every terminal
      * vision requirement unsatisfiable while never unlocking the bounded-exhaustion exemption: the
-     * model was told to capture a page the site refused to serve (run 237512, 2026-08-10, four
-     * Yandex SmartCaptcha landings across two sessions; #242315, 2026-09-23, a Yahoo Mail link that
-     * redirects to a sign-in page, sealed after three refused endings).
+     * model is told to capture a page the site refuses to serve (a captcha landing in every
+     * session, or a link that redirects to a sign-in page) until the run seals.
      *
      * The only evidence source is the vision model classifying a session capture — judged over the
      * actual pixels, it covers redirects to another origin and walls that keep the original URL
@@ -3025,9 +3021,9 @@ export class AgentRuntime {
         try {
             const extension = request.extension === 'prepared' ? this.preparedExtension : undefined;
             const createSession = this.dependencies.createBrowserSession ?? BrowserSession.create;
-            // Decision 2 of 31-AFK: the engine and the extension channel follow the prepared
-            // build's launch family, and so does the user-agent family — a page filtered by uBO in
-            // Firefox must be served the browser that is really running it.
+            // The engine and the extension channel follow the prepared build's launch family, and
+            // so does the user-agent family — a page filtered by uBO in Firefox must be served the
+            // browser that is really running it.
             const launchChannel = extension
                 ? preparedExtensionLaunchChannel(this.preparedSessionLaunchHost(), extension)
                 : undefined;
@@ -3073,10 +3069,10 @@ export class AgentRuntime {
                     artifactsDir: this.options.artifactsDir,
                     headless: this.options.headless,
                     noSandbox: this.options.noSandbox,
-                    // A plain extension launch (Decision 2 of 11-HITL): no settings or user-rule
-                    // pieces — the launch route's Baseline application plus the host read-back
-                    // produce the session's settings proof after creation. The channel carries
-                    // exactly one family's fields, so the session never sees a mixed configuration.
+                    // A plain extension launch: no settings or user-rule pieces — the launch
+                    // route's Baseline application plus the host read-back produce the session's
+                    // settings proof after creation. The channel carries exactly one family's
+                    // fields, so the session never sees a mixed configuration.
                     ...(launchChannel === undefined ? {} : launchChannel.extensionChannel),
                 };
                 createdSession = await createSession(config);
@@ -3180,9 +3176,9 @@ export class AgentRuntime {
                     this.latestVerifiedSettingsSessionId = sessionId;
                 }
             } else if (baselineOutcome?.kind === LaunchBaselineOutcomeKind.Declared) {
-                // A blocker that declares its own list selection is credited from that declaration
-                // (32-AFK Decision 3); there is no live state to read back, so the session carries
-                // the declared keys instead of a read-back record.
+                // A blocker that declares its own list selection is credited from that declaration;
+                // there is no live state to read back, so the session carries the declared keys
+                // instead of a read-back record.
                 sessionState.declaredBaselineListKeys = baselineOutcome.listKeys;
                 if (extension) {
                     this.latestVerifiedSettingsSessionId = sessionId;
@@ -3415,8 +3411,7 @@ export class AgentRuntime {
     /**
      * The browser-observed settings the adapter locks and rechecks its baseline with.
      *
-     * The host read-back taken at launch is the source of truth: the options-page driver that once
-     * captured the settings evidence is retired.
+     * The host read-back taken at launch is the source of truth.
      *
      * @param state - Active prepared Extension session with its read-back record.
      * @returns The observed filter identity sets.
@@ -3561,7 +3556,7 @@ export class AgentRuntime {
     ): Promise<EnvironmentAdapterLimitation | null> {
         // This runs both eagerly after activation and lazily from the candidate path, so it must
         // be idempotent. Building a second adapter re-binds the actual execution context, which
-        // the environment host refuses — a live run reached apply_rule and lost it to exactly
+        // the environment host refuses — a run would reach apply_rule and lose it to exactly
         // that, after the whole investigation had already been paid for.
         if (this.filteringEnvironmentAdapter && this.filteringEnvironmentRecorder) {
             return this.filteringEnvironmentDisposition?.failure ?? null;
@@ -3572,8 +3567,8 @@ export class AgentRuntime {
             detail: 'The locked environment lacks complete preparation proof.',
         };
         // A blocker that declares its own list selection resolves nothing against AdGuard's
-        // catalog (32-AFK Decision 1): the declaration is the run's executable baseline and the
-        // environment requests no official list at all.
+        // catalog: the declaration is the run's executable baseline and the environment requests
+        // no official list at all.
         const firefoxLaunch = firefoxPreparedLaunch(state.extension);
         // A launched blocker's read-back is a fact the adapter replays whole; only ids the reporter
         // merely had enabled converge onto the AdGuard catalog, with the rest recorded as the
@@ -3725,7 +3720,7 @@ export class AgentRuntime {
         args: Record<string, unknown>,
         signal?: AbortSignal,
     ): Promise<Record<string, unknown>> {
-        // Verification entry refusal (AC2): parse the run instruction's application contract before
+        // Verification entry refusal: parse the run instruction's application contract before
         // anything can open. A run whose instruction cannot describe how to apply and verify a rule
         // is refused here with the gap recorded to run evidence — the phases are never opened and
         // no application method is ever invented.
@@ -3759,12 +3754,11 @@ export class AgentRuntime {
         const interactionPlan = candidate.revealPlan;
         // baselineSymptomAbsentCounts (written below, where an experiment concludes
         // baseline_symptom_absent) records a verdict per candidate ledger key and already asks
-        // the model to stop after the second one via retryable: false; that ask went
-        // unheeded in live run 32706975563 task #199909 (tradingview.com, 2026-08-24), which
-        // reran phases A and B a third time for the byte-identical candidate rule, paying for two
-        // more full-page-vision browser phases (~40 images) a controlled experiment could not
-        // possibly settle: the baseline had already twice shown, cleanly, that the symptom
-        // description named nothing the candidate could be judged against. This refusal makes the
+        // the model to stop after the second one via retryable: false. A model can ignore that
+        // ask and rerun phases A and B a third time for the byte-identical candidate rule, paying
+        // for two more full-page-vision browser phases (~40 images) a controlled experiment
+        // cannot possibly settle: the baseline has already twice shown, cleanly, that the symptom
+        // description names nothing the candidate can be judged against. This refusal makes the
         // stop hard instead of advisory, before any phase can open. A different candidate rule
         // keys separately and still gets its own two experiments.
         // Different reveal steps put the page into a different state, so they earn the candidate
@@ -3863,10 +3857,10 @@ export class AgentRuntime {
             artifactsDir: this.options.artifactsDir,
             vision: this.options.vision,
             // The reporter's own material leads and the model's per-candidate description follows
-            // as what this one rule targets. It used to be the other way round — the model's
-            // description won outright — and the review then verified a sitepoint.com candidate
-            // against the three ad units it happened to cover while the header banner the reporter
-            // had also named stayed on the page. See `composeReporterSymptomScope`.
+            // as what this one rule targets. Were the model's description to win outright, the
+            // review would verify a candidate against the ad units it happens to cover while a
+            // header banner the reporter also named stays on the page. See
+            // `composeReporterSymptomScope`.
             reporterSymptom:
                 composeReporterSymptomScope({
                     reportedProblem: this.options.issueFacts.userComment,
@@ -4178,7 +4172,7 @@ export class AgentRuntime {
     private mergeBrowserTools(browserRegistry: ToolRegistry): void {
         for (const definition of browserRegistry.getDefinitions()) {
             const name = definition.function.name;
-            if (name === 'policy_check' || this.baseToolNames.has(name)) {
+            if (this.baseToolNames.has(name)) {
                 continue;
             }
             this.registry.register({
@@ -4210,8 +4204,8 @@ export class AgentRuntime {
                         }
                         // The guidance precondition holds only where guidance exists. A run
                         // without a rule-guidance session advertises lookup_rule_guidance as a
-                        // gated stub, and demanding the call anyway blocked every candidate on
-                        // the built-in AdGuard route: live run 35135670034 could validate nothing.
+                        // gated stub, and demanding the call anyway would block every candidate
+                        // on the built-in AdGuard route.
                         if (
                             !this.guidanceConsulted &&
                             this.baseToolNames.has('lookup_rule_guidance')
@@ -4291,8 +4285,7 @@ export class AgentRuntime {
                             ? candidateLedgerKey(operation, normalized.canonical)
                             : '';
                         if (!canonical) {
-                            // Historically a canonical-less candidate fell through to the legacy
-                            // Playwright-emulation validator; with that path removed the refusal
+                            // No other validator takes a canonical-less candidate, so the refusal
                             // must be typed here instead of surfacing as a missing tool.
                             return {
                                 error:
@@ -4369,12 +4362,11 @@ export class AgentRuntime {
                         }
                     }
                     // In production candidates always take the environment-adapter path: the
-                    // registry no longer carries any apply_rule implementation. The dispatch
-                    // fallthrough exists only for unit tests that inject createBrowserRegistry
-                    // with their own apply_rule fixture to drive runtime-level contracts without
-                    // faking a whole environment adapter — unless that test also replaced the
-                    // run's executor set, which is the registry-driven flow this runtime exists
-                    // for.
+                    // registry carries no apply_rule implementation. The dispatch fallthrough
+                    // exists only for unit tests that inject createBrowserRegistry with their own
+                    // apply_rule fixture to drive runtime-level contracts without faking a whole
+                    // environment adapter — unless that test also replaced the run's executor set,
+                    // which is the registry-driven flow this runtime exists for.
                     const commonEnvironmentApply =
                         this.dependencies.createBrowserRegistry === undefined ||
                         this.dependencies.observeEnvironmentPhase !== undefined ||
@@ -4458,8 +4450,8 @@ export class AgentRuntime {
 
         if (name === 'open_page' && typeof result.url === 'string') {
             // A site's own redirect keeps the reported page: `google.com` lands on `www.google.com`,
-            // `http` on `https`. Comparing origins refused every such landing, and the run could
-            // neither inspect the page it had loaded nor finish (AdguardFilters#241312).
+            // `http` on `https`. Comparing origins would refuse every such landing, and the run
+            // could neither inspect the page it had loaded nor finish.
             const navigatedUrl = canonicalTargetUrl(result.url);
             if (
                 navigatedUrl &&

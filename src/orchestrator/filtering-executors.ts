@@ -36,9 +36,9 @@ export interface ExecutorRuntimeHost {
  * Opaque per-executor dependency bag threaded from the run into its activation context, keyed by
  * executor name. `src/` never inspects a value here — an executor reads only its own name's entry
  * and casts it back to the shape it defined, exactly as it would cast any other same-process,
- * self-authored value. This is how a `lab/`-only executor receives per-run host wiring without
- * `src/` importing `lab/` to type it, and without the wiring living in module state shared — and
- * clobbered — across concurrent runs (27-AFK).
+ * self-authored value. This is how an executor registered outside this tree receives per-run host
+ * wiring without `src/` importing its module to type it, and without the wiring living in module
+ * state shared — and clobbered — across concurrent runs.
  */
 export type ExecutorDependenciesByName = Readonly<Partial<Record<ExecutorName, unknown>>>;
 
@@ -125,7 +125,7 @@ export interface ExecutorAdapterContext {
      * Verified Firefox-family blocker environment inputs, when the run's prepared build is a signed
      * XPI force-installed through enterprise policies. Exactly one of this and
      * {@link ExecutorAdapterContext.extensionOptions} is present for an extension-executing run: the
-     * two families share an executor name but not an adapter (32-AFK Decision 3).
+     * two families share an executor name but not an adapter.
      */
     firefoxExtensionOptions?: FirefoxExtensionEnvironmentOptions;
 
@@ -245,8 +245,8 @@ export class FilteringExecutorRegistry {
 }
 
 /**
- * The process's executor registry. The publishable tree imports the extension registration; the lab
- * tree adds its own executors beside it by importing their modules.
+ * The process's executor registry. This tree imports the extension registration; other callers may
+ * register executors of their own beside it by importing their modules.
  */
 export const filteringExecutors = new FilteringExecutorRegistry();
 

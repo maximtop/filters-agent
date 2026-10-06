@@ -6,9 +6,8 @@ import type { ImageContent, Message } from '@earendil-works/pi-ai';
  * (system entries merge into the one system prompt, user entries become text or
  * text-plus-image-parts messages) and image intake (screenshot file path or in-memory bytes become
  * pi image content parts, with MIME sniffing and the vision byte cap enforced before any request
- * leaves the module). The cap and MIME classification carried over from the legacy screenshot
- * handling; owned by the input side of the single-shot mechanism so the call-path module stays
- * inside the repo's ~500-line module rule.
+ * leaves the module). Owned by the input side of the single-shot mechanism so the call-path module
+ * stays inside the repo's ~500-line module rule.
  *
  * The same limits decide, before a request is even planned, whether a stored full-page overview may
  * be offered to vision at all ({@link visionOverviewRefusal}); every caller that makes that
@@ -51,12 +50,12 @@ export const MAX_VISION_IMAGE_BYTES = 6 * 1024 * 1024;
  * A provider fits a multimodal image inside a bounded square of about 2048 px on its long side, so
  * a page eight times taller than wide arrives about 256 px wide — the narrowest width at which
  * blocks of a page still read as blocks rather than as a stripe. Past that the model cannot see the
- * page and answers from the prompt instead of the pixels: in the nottinghampost.com review the
- * 375x10334 px mobile overview (aspect 27.5:1, 1.3 MB, well inside the byte cap) arrived ~74 px
- * wide and the model reported ten "remaining blank reserved ad-slot bands, approximately 998x286"
- * quoted straight out of the symptom text, while the viewport screenshot and the
- * original-resolution tiles of that same state showed every band gone. That fabricated inventory
- * rejected a correct candidate, so an overview past this ratio is not sent at all.
+ * page and answers from the prompt instead of the pixels: a 375x10334 px mobile overview (aspect
+ * 27.5:1, 1.3 MB, well inside the byte cap) arrives ~74 px wide, and the model can report
+ * "remaining blank reserved ad-slot bands" quoted straight out of the symptom text while the
+ * viewport screenshot and the original-resolution tiles of that same state show every band gone.
+ * Such a fabricated inventory rejects a correct candidate, so an overview past this ratio is not
+ * sent at all.
  */
 export const MAX_LEGIBLE_OVERVIEW_ASPECT_RATIO = 8;
 
@@ -109,7 +108,7 @@ export interface VisionOverviewGeometry {
  * never demand inspection of an artifact the inventory withheld, or send one the plan refused.
  *
  * Geometry a producer did not record refuses nothing: an overview of unknown size or extent is
- * offered exactly as it was before the aspect rule existed.
+ * offered as is.
  *
  * @param overview - What the runner knows about the stored overview.
  * @returns The refusal keeping this overview out of vision, or null when it may be sent.
@@ -232,8 +231,8 @@ function sniffImageMime(bytes: Uint8Array): VisionImageMime {
  * Materialize one caller image input into a pi image content part, enforcing the byte cap.
  *
  * Pi's openai-completions adapter sends image parts as `image_url` data URIs and drops the OpenAI
- * `detail` hint, so the `'high'`/`'low'` hints the migrated consumers used are not sent at all — an
- * accepted loss, not a gap something later fills.
+ * `detail` hint, so no `'high'`/`'low'` hint is sent at all — an accepted loss, not a gap something
+ * later fills.
  *
  * @param image - File path or in-memory bytes.
  * @returns The pi image content part.

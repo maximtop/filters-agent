@@ -6,9 +6,9 @@ import { createLogger, type Logger } from '../logger/logger';
  *
  * `text` alone is nearly always the bare word "Uncaught": the thrown value lives in
  * `exception.description` (for an Error, its name, message and stack) and the location in
- * `lineNumber`/`columnNumber`. A live run logged a failed safe-interaction click as "Trusted page
- * evaluation failed: Uncaught" with `failureDetail: unknown`, which named nothing about what the
- * page threw.
+ * `lineNumber`/`columnNumber`. Logging `text` alone turns a failed safe-interaction click into
+ * "Trusted page evaluation failed: Uncaught" with `failureDetail: unknown`, which names nothing
+ * about what the page threw.
  *
  * @param exception - The `exceptionDetails` record of a `Runtime.evaluate` response.
  * @returns The thrown value's description (first line) with the text and location, when present.

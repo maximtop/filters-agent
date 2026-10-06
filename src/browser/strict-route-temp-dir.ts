@@ -8,8 +8,8 @@ import { join } from 'node:path';
  * `$TMPDIR/org.chromium.Chromium.XXXXXX/SingletonSocket` and guards the copy into
  * `sockaddr_un::sun_path` with `CHECK(path.length() < 108)` on Linux glibc — a browser whose
  * `TMPDIR` is deeper than ~60 characters dies on SIGTRAP during startup, before its own logging
- * initializes. The strict route's route-owned directory tree is exactly that deep (the lab cycle's
- * `<route root>/evidence-browser-<cycle>/tmp` shape is ~90 characters), so the browser's temporary
+ * initializes. The strict route's route-owned directory tree is exactly that deep (a `<route
+ * root>/evidence-browser-<cycle>/tmp` shape is ~90 characters), so the browser's temporary
  * directory must live under a short, flat path instead. The directory holds only the dead singleton
  * socket and browser scratch: everything with diagnostic value (profile, XDG directories carrying
  * crashpad dumps, logs) stays route-owned.

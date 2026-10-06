@@ -24,10 +24,9 @@ import {
 /**
  * The shared full-page vision machinery: the runner capture contract, the canonical screenshot
  * identities it names, the provider-safe image batching, and the one structured vision call that
- * inventories a single batch — plus the inventory shape every caller aggregates into. Both
- * full-page entry points build on exactly this: `full-page-capture-inspection.ts` inspects a
- * capture the model already took, and `full-page-visual-inventory.ts` takes its own capture before
- * the first candidate. Kept in its own leaf so neither of them has to import the other.
+ * inventories a single batch — plus the inventory shape every caller aggregates into.
+ * `full-page-capture-inspection.ts` builds on exactly this to inspect a capture the model already
+ * took.
  */
 
 /**

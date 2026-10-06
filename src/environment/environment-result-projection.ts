@@ -154,7 +154,7 @@ function projectArtifact(
  * Project common Extension proof into the existing settings evidence shape.
  *
  * @param phase - Filtered canonical phase.
- * @returns Legacy-compatible settings or undefined without Extension proof.
+ * @returns Settings in the compatibility evidence shape, or undefined without Extension proof.
  */
 function projectPhaseSettings(phase: EnvironmentPhaseEvidence): AgentSettingsEvidence | undefined {
     const extension = phase.proof.extension;
@@ -587,10 +587,9 @@ function executionBindingsAgree(execution: FilteringEnvironmentExecution): boole
 /**
  * Why canonical execution could not be projected into the retained compatibility fields.
  *
- * Each refusal names one exact invariant. The projection previously answered only `null`, and the
- * caller turned that into "Canonical environment execution cannot be projected safely" — a run that
- * had already produced a vision-verified patch died on that sentence with no way to tell which of
- * the seven checks refused it (mlekovitka.pl #238941, 2026-08-23).
+ * Each refusal names one exact invariant. A bare refusal surfaces only as "Canonical environment
+ * execution cannot be projected safely", and a run that has already produced a vision-verified
+ * patch would die on that sentence with no way to tell which of the seven checks refused it.
  */
 export const EnvironmentProjectionRefusal = {
     BindingsDisagree: 'bindings_disagree',

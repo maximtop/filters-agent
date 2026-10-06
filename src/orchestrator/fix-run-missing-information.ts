@@ -2,10 +2,10 @@
  * The missing-information harvest: the post-seal read over the delivered-frontier observations that
  * turns the run's recorded gaps into the capped `FixRunResult.missingInformation` block.
  *
- * Two channels carry the same record shape, in role (plan Decisions 3/6): the model-owned
- * `report_missing_information` tool result — the primary channel for agent-discovered gaps — and
- * the deterministic not-linked guidance notice, whose tool result embeds the subject/detail the run
- * harvests even when the model never calls the tool.
+ * Two channels carry the same record shape, in role: the model-owned `report_missing_information`
+ * tool result — the primary channel for agent-discovered gaps — and the deterministic not-linked
+ * guidance notice, whose tool result embeds the subject/detail the run harvests even when the model
+ * never calls the tool.
  */
 import * as v from 'valibot';
 import type { Logger } from 'pino';

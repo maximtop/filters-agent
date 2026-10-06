@@ -4,9 +4,9 @@
  * A report that carries a settings import URL is decided only from a verified `reported_on_current`
  * session launched with that exact URL. When the reporter's filter set does not fit Chrome's MV3
  * limits no such session can exist: the extension keeps what Chrome enabled and disables the rest,
- * so the launch Baseline ends unverified with `SettingsLimitation.Mv3LimitsExceeded`.
- * AdguardFilters#242720 sealed after every `finish_fix` was rejected for want of that session — 52
- * filters requested, 50 static rulesets allowed, 2 kept.
+ * so the launch Baseline ends unverified with `SettingsLimitation.Mv3LimitsExceeded`. Without a
+ * waiver such a run seals after every `finish_fix` is rejected for want of that session — for
+ * example 52 filters requested, 50 static rulesets allowed, 2 kept.
  *
  * This record turns that proof into the waiver: once a `reported_on_current` launch with one of the
  * reporter's own URLs (the same digest rule the launch check and the terminal gate apply) ends with

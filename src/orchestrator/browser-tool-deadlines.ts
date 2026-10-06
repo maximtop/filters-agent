@@ -12,7 +12,7 @@ import { APPLICATION_SESSION_BUDGET_MS } from '../validator/phase-application-co
  * Hard deadline for one browser tool call.
  *
  * The loop's wall-clock budget is checked between turns, so it cannot end a turn that never
- * returns: one live run hung inside a browser launch and sat there for over two hours despite a
+ * returns: a call hung inside a browser launch has been seen to sit for over two hours despite a
  * one-hour budget. This bounds the call itself, and the model is told the tool timed out so it can
  * choose a different move.
  */
@@ -47,11 +47,10 @@ export const BROWSER_LAUNCH_DEADLINE_MS =
  * in every phase; very tall pages (tens of thousands of pixels) legitimately exceed the generic
  * browser bound while still making progress, so the candidate path gets its own limit.
  *
- * Thirty minutes, raised from fifteen on 2026-09-15: every phase ends in vision calls, and on a
- * reasoning vision model at the gateway's throughput of the hour those ran 200-260 s each (4-9k
- * reasoning tokens per verdict), so a validation that was progressing normally — sessions launched,
- * phases applied, verdicts arriving — was cut at 15 minutes twice in one live run and the run spent
- * its whole wall-clock budget re-trying it. Each vision call is separately bounded by the
+ * Thirty minutes: every phase ends in vision calls, and on a reasoning vision model those can run
+ * 200-260 s each (4-9k reasoning tokens per verdict), so a 15-minute limit cuts a validation that
+ * is progressing normally — sessions launched, phases applied, verdicts arriving — and the run
+ * spends its whole wall-clock budget re-trying it. Each vision call is separately bounded by the
  * single-shot inactivity deadline and the vision tool deadline, so this limit only has to cover a
  * validation that is making progress, not one that hangs.
  */

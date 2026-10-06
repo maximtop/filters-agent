@@ -6,16 +6,16 @@ import type { ApplicationInstructionRefusal } from '../knowledge/instruction-app
 import type { BlockerStateRead, BlockerStateReaderRegistry } from './blocker-state-readers';
 
 /**
- * The declared vocabulary of the between-phases rules application (11-HITL): the goal a run
- * performs toward, its typed outcomes, the bounded session bounds, and the runner seam the
- * orchestrator implements the application itself over.
+ * The declared vocabulary of the between-phases rules application: the goal a run performs toward,
+ * its typed outcomes, the bounded session bounds, and the runner seam the orchestrator implements
+ * the application itself over.
  *
- * Decision 1 of 11-HITL fixes the shape both sides code against: something performs the
- * instruction's steps, the host reads the state back itself and credits only an exact match, and
- * the action log comes from the host's own record of what ran, never from a model's self-report.
- * Two kinds of runner satisfy that seam today — a bounded model session for an instruction that
- * writes its own application steps, and the host's own fixed message protocol on the built-in
- * AdGuard route — and the procedure around them cannot tell which it was handed.
+ * The shape both sides code against: something performs the instruction's steps, the host reads the
+ * state back itself and credits only an exact match, and the action log comes from the host's own
+ * record of what ran, never from a model's self-report. Two kinds of runner satisfy that seam today
+ * — a bounded model session for an instruction that writes its own application steps, and the
+ * host's own fixed message protocol on the built-in AdGuard route — and the procedure around them
+ * cannot tell which it was handed.
  */
 
 /**
@@ -99,10 +99,9 @@ export type PhaseApplicationOutcomeKind =
  * Why this value: application is a bounded procedure of enumerated steps, not an investigation. The
  * built-in AdGuard instruction's flow is six steps (open the options page, wait for the bootstrap,
  * import, confirm, save, report), several of them repeat a message, and a call pi rejects spends a
- * turn too. Ten turns left a live model no headroom for that: every application session of two
- * bench runs ended at the cap without its terminal payload (35139965168, 35146720762). This is one
- * shared bound for every application instruction, never a per-blocker knob, raised at the
- * maintainer's call (2026-09-17) with those runs as the recorded finding.
+ * turn too. Ten turns leave a live model no headroom for that: application sessions capped at ten
+ * end at the cap without their terminal payload. This is one shared bound for every application
+ * instruction, never a per-blocker knob.
  */
 export const APPLICATION_SESSION_MAX_TURNS = 16;
 
@@ -113,12 +112,11 @@ export const APPLICATION_SESSION_MAX_TURNS = 16;
  * host-performed AdGuard runner is bounded by its readiness deadline and the abort signal.
  *
  * Why this value: the 30-minute apply_rule deadline hosts two model-driven application passes plus
- * the observation phases they bracket. A pass is paced by the model, not by the browser: the bench
- * model takes 20-50 seconds a turn, so the enumerated steps alone outlast the earlier three-minute
- * budget, and every application session of two live runs ended without its terminal payload
- * (35139965168, 35146720762 — the recorded finding this raise answers, at the maintainer's call,
- * 2026-09-17). Six minutes fits the steps at that pace and leaves the observations more than half
- * of the deadline. One shared bound for every application instruction, never a per-blocker knob.
+ * the observation phases they bracket. A pass is paced by the model, not by the browser: a typical
+ * model takes 20-50 seconds a turn, so the enumerated steps alone outlast a three-minute budget,
+ * and application sessions under one end without their terminal payload. Six minutes fits the steps
+ * at that pace and leaves the observations more than half of the deadline. One shared bound for
+ * every application instruction, never a per-blocker knob.
  */
 export const APPLICATION_SESSION_BUDGET_MS = 6 * 60_000;
 

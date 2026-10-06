@@ -4,11 +4,10 @@
  *
  * A tracker or analytics report has nothing to see: the symptom is a request the page makes, and a
  * vision review that judges the reporter's symptom by images finds no instance before the rule and
- * cannot verify anything after it. AdguardFilters #242153 (nudostar.com, `||alaphoid.com^`) reached
- * `apply_rule` and ended `baseline_symptom_absent` for exactly that reason. The network logs the
- * phases already record answer the question directly: the baseline lets the requests through, the
- * candidate blocks every one of them, and blocking them did not make the page reach for another
- * third party instead.
+ * cannot verify anything after it, so a tracker host block judged by images alone ends
+ * `baseline_symptom_absent`. The network logs the phases already record answer the question
+ * directly: the baseline lets the requests through, the candidate blocks every one of them, and
+ * blocking them did not make the page reach for another third party instead.
  */
 import * as v from 'valibot';
 import type { NetworkRequestEntry } from '../browser/browser-interfaces';
@@ -82,8 +81,8 @@ const TRACKING_RESOURCE_TYPES: ReadonlySet<string> = new Set([
  * URL schemes of requests that leave the browser for a host. Everything else in a phase log is
  * served locally: an MV3 blocker's `$redirect` resources arrive as `chrome-extension://<per-session
  * id>/web-accessible-resources/redirects/…`, whose "host" is a fresh random id in every session,
- * and read as a new third party in every candidate phase — both network candidates of the 18:35Z
- * pass on 2026-09-22 reported one. `blob:` and `data:` carry no host at all.
+ * and would read as a new third party in every candidate phase. `blob:` and `data:` carry no host
+ * at all.
  */
 const NETWORK_SCHEMES: ReadonlySet<string> = new Set(['http:', 'https:', 'ws:', 'wss:']);
 

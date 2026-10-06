@@ -1,12 +1,12 @@
 /**
  * The one credit rule of an application: how the host judges the blocker state it read back.
  *
- * Decision 1 of 11-HITL fixed what an application may claim — the candidate is credited only when
- * the state carries exactly the candidate rule, the baseline only when it carries no user rule at
- * all, and both only when the enabled filter set the read-back can observe still equals the
- * prepared one. Decision 3 of 31-AFK added a second application path (the host's own file-backed
- * application, with no model session at all), so the judgment lives here rather than inside either
- * path: both credit by one rule, and a state that would fail in one can never pass in the other.
+ * An application may claim only this: the candidate is credited only when the state carries exactly
+ * the candidate rule, the baseline only when it carries no user rule at all, and both only when the
+ * enabled filter set the read-back can observe still equals the prepared one. There are two
+ * application paths (the between-phases procedure and the host's own file-backed application, with
+ * no model session at all), so the judgment lives here rather than inside either path: both credit
+ * by one rule, and a state that would fail in one can never pass in the other.
  */
 import type { ActionLogEntry, BlockerVerificationMethod } from '../environment/environment-proofs';
 import {
@@ -224,8 +224,8 @@ function judgeEnabledFilterSet(input: BlockerStateCreditInput): PhaseApplication
         // A mismatch the extension itself reports as MV3 limits exceeded is not an application
         // that went wrong: Chrome refused the requested static rulesets as a whole, the extension
         // kept what Chrome accepted and disabled the rest, and no re-application can reach the
-        // prepared set. AdguardFilters#242720 sealed on the bare mismatch detail because the cause
-        // was dropped here before the limits branch below was ever reached.
+        // prepared set. Checked before the generic mismatch below, so a run never seals on the
+        // bare mismatch detail with the cause dropped.
         if (read.limitsExceeded === true) {
             return judgeMv3LimitsMismatch(input, prepared, observed);
         }
@@ -246,9 +246,8 @@ function judgeEnabledFilterSet(input: BlockerStateCreditInput): PhaseApplication
         };
     }
     // Requested/options credit alone proves a filter is switched on, never that its MV3 ruleset
-    // actually compiled and activated within the browser's limits — the deleted options-page
-    // driver rejected both gaps, and a reader that can observe them (the live extension state)
-    // must still be held to the same bar.
+    // actually compiled and activated within the browser's limits, so a reader that can observe
+    // both gaps (the live extension state) is held to that bar.
     if (read.limitsExceeded === true) {
         logger.warn(
             { goal: goal.kind },

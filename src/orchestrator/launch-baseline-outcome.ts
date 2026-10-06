@@ -22,7 +22,7 @@ export const LaunchBaselineOutcomeKind = {
 
     /**
      * The session's baseline is the run instruction's own declaration, credited without a live
-     * state read: the family has none the host can read (32-AFK Decision 3).
+     * state read: the family has none the host can read.
      */
     Declared: 'declared',
 
@@ -118,9 +118,9 @@ export type LaunchBaselineOutcome =
 /**
  * What the model is told when the requested filter set does not fit Chrome's MV3 limits.
  *
- * AdguardFilters#242720: the reporter's import URL enabled 52 filters, Chrome allows 50 static
- * rulesets, and every `finish_fix` was rejected for want of a verified reporter-parity session that
- * could never exist. The guidance says what can be done instead and what to tell the reporter,
+ * A reporter's import URL can enable more filters than Chrome's 50 static rulesets (52, for
+ * example), and then every `finish_fix` is rejected for want of a verified reporter-parity session
+ * that can never exist. The guidance says what can be done instead and what to tell the reporter,
  * whose own MV3 browser cannot run that set either.
  */
 const MV3_LIMITS_EXCEEDED_GUIDANCE: readonly string[] = [

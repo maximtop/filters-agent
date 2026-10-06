@@ -16,10 +16,10 @@ import { LOCAL_RUN_OUTPUT_MARKER_NAME } from './output-directory';
  * The digest-bound lock of one local fix-agent run directory: its versioned manifest schema, the
  * artifact digest helpers that build it, and the verifier that re-proves a locked run from disk.
  *
- * One version is readable: the one this build writes. A directory locked before the pi usage
- * migration binds a per-attempt `llm-usage.jsonl` ledger and a ledger-shaped summary whose writers
- * no longer exist, so it is refused by number rather than half-verified against an artifact set
- * this build cannot produce.
+ * One version is readable: the one this build writes. A version-2 directory, locked by an earlier
+ * build, binds a per-attempt `llm-usage.jsonl` ledger and a ledger-shaped summary this build does
+ * not write, so it is refused by number rather than half-verified against an artifact set this
+ * build cannot produce.
  */
 
 /**
@@ -35,11 +35,11 @@ export const LOCAL_RUN_MANIFEST_FILE_NAME = 'agent-run-manifest.json';
 /**
  * Persisted `schemaVersion` of a locked run manifest.
  *
- * A version names one exact artifact set, because that set is what verification re-proves. The pi
- * usage migration removed a bound artifact (`llm-usage.jsonl`) and replaced the meaning of another,
- * so it took a new number: a build reading only version 2 must reject a version 3 run outright
- * rather than verify a manifest whose missing ledger it cannot notice, and this build rejects a
- * version 2 run for the mirror-image reason.
+ * A version names one exact artifact set, because that set is what verification re-proves. Version
+ * 3 drops a bound artifact (`llm-usage.jsonl`) and changes the meaning of another, so it has its
+ * own number: a build reading only version 2 must reject a version 3 run outright rather than
+ * verify a manifest whose missing ledger it cannot notice, and this build rejects a version 2 run
+ * for the mirror-image reason.
  */
 export const LocalRunManifestVersion = {
     /**
@@ -118,8 +118,8 @@ export type LocalRunManifest = v.InferOutput<typeof UsageSummaryLocalRunManifest
 const LOCAL_RUN_MANIFEST_ARTIFACT = 'Locked run manifest';
 
 /**
- * Top-level names a locked run directory may contain. Anything else — the retired `llm-usage.jsonl`
- * included — is a foreign artifact in a run this build locked.
+ * Top-level names a locked run directory may contain. Anything else — the version-2
+ * `llm-usage.jsonl` included — is a foreign artifact in a run this build locked.
  */
 const LOCKED_RUN_TOP_LEVEL_PATHS: ReadonlySet<string> = new Set([
     LOCAL_RUN_OUTPUT_MARKER_NAME,
@@ -138,8 +138,8 @@ const LOCKED_RUN_TOP_LEVEL_PATHS: ReadonlySet<string> = new Set([
  *
  * @param value - Decoded JSON read from a run manifest artifact.
  * @returns The parsed manifest.
- * @throws UnsupportedArtifactVersionError When the manifest declares any other version, the retired
- *   ledger-era version 2 included.
+ * @throws UnsupportedArtifactVersionError When the manifest declares any other version, the
+ *   ledger-shaped version 2 included.
  */
 export function parseLocalRunManifest(value: unknown): LocalRunManifest {
     return readVersionedDocument(value, {
@@ -189,7 +189,7 @@ function verifyArtifactDigest(
  * Verify the usage accounting a locked run binds: the pi-sourced Usage Summary, proven by digest
  * and then read in the one shape this build interprets.
  *
- * A summary of the retired ledger shape under a current manifest is a mixed pair — a forged or
+ * A summary in the version-2 ledger shape under a current manifest is a mixed pair — a forged or
  * hand-edited run — and reaches the caller as the typed version rejection naming it, never as a
  * half-verified run.
  *

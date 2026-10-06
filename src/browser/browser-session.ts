@@ -432,10 +432,10 @@ export class BrowserSession implements IBrowserSession {
      * Close the browser session and release all resources. Idempotent.
      *
      * The close is hard-bounded and never throws: on a page wedged mid-navigation the protocol
-     * close can block forever (two 2026-08-16 live analyses each sat 66+ minutes inside
-     * `close_browser` until the CI SIGTERM killed the process group), so a close that misses its
-     * deadline escalates to a SIGKILL of every process carrying this session's unique profile path,
-     * and directory cleanup plus the outcome log run on every path.
+     * close can block forever (a close after a navigation timeout has been seen to sit for over an
+     * hour inside `close_browser` until the CI SIGTERM killed the process group), so a close that
+     * misses its deadline escalates to a SIGKILL of every process carrying this session's unique
+     * profile path, and directory cleanup plus the outcome log run on every path.
      */
     async close(): Promise<void> {
         if (this.isClosedFlag) {
@@ -455,7 +455,6 @@ export class BrowserSession implements IBrowserSession {
             forceKill: () => {
                 // The pid recorded at launch is the handle every family has; the marker scan adds
                 // the strays of a persistent context (a renderer reparented away from the group).
-                // A plain launch used to reach here with neither and could only be abandoned.
                 let killed = 0;
                 if (this.browserProcessPid !== undefined) {
                     killed += forceKillBrowserProcessTree(this.browserProcessPid, this.logger);

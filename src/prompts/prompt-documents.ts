@@ -38,7 +38,7 @@ export const PromptDocumentName = {
 
     /**
      * Rule-application user task: the short-lived session that performs the instruction's
-     * application steps on the phase lease between two environment phases (11-HITL).
+     * application steps on the phase lease between two environment phases.
      */
     ApplicationTask: 'tasks/application',
 
@@ -105,25 +105,24 @@ export const PromptDocumentName = {
     RejectionCliRouteLaunch: 'rejections/cli-route-launch',
 
     /**
-     * Built-in AdGuard application instruction — the converted options-page driver: the steps that
-     * apply the reporter's settings and the candidate to user filters, plus the verification
-     * declaration the host reads back (Decision 2 of 11-HITL).
+     * Built-in AdGuard application instruction — the options-page steps that apply the reporter's
+     * settings and the candidate to user filters, plus the verification declaration the host reads
+     * back.
      */
     InstructionsAdguardExtension: 'instructions/adguard-extension',
 
     /**
-     * Shipped example instruction — the uBlock Origin in Firefox instance of the "Instruction for
-     * the agent" entity, for a uAssets-style filter repository that copies it in as its run
-     * instruction: preparation of the signed uBO release with Firefox policies and managed storage,
-     * rule application through the declared user-filters file, the `managed-storage-file`
-     * verification declaration, issue selection, and the report template.
+     * Shipped example instruction for uBlock Origin in Firefox, for a uAssets-style filter
+     * repository that copies it in as its run instruction: preparation of the signed uBO release
+     * with Firefox policies and managed storage, rule application through the declared user-filters
+     * file, the `managed-storage-file` verification declaration, issue selection, and the report
+     * template.
      */
     InstructionsUblockOriginFirefox: 'instructions/ublock-origin-firefox',
 
     /**
-     * Shipped example instruction — the Edge with the MV2 build of the AdGuard Browser Extension
-     * instance of the "Instruction for the agent" entity (User Story 2 scenario 3, decision D21),
-     * for a filter-list repository that copies it in as its run instruction: preparation of branded
+     * Shipped example instruction for Edge with the MV2 build of the AdGuard Browser Extension, for
+     * a filter-list repository that copies it in as its run instruction: preparation of branded
      * Edge and the current release's `edge.zip` MV2 build from the public releases API, rule
      * application through the AdGuard options page, the live `extension-state user-rules`
      * verification declaration, issue selection, and the report template.
@@ -131,11 +130,10 @@ export const PromptDocumentName = {
     InstructionsEdgeMv2: 'instructions/edge-mv2',
 
     /**
-     * Shipped example instruction — the uBlock Origin Lite in Chromium instance of the "Instruction
-     * for the agent" entity (User Story 2 scenario 2), for a filter-list repository that copies it
-     * in as its run instruction: preparation of the current uBOLite Chromium release from the
-     * public releases API under the exact-suffix asset matcher, rule application through the
-     * custom-filters file with Developer mode enabled, the `user-rules-file` verification
+     * Shipped example instruction for uBlock Origin Lite in Chromium, for a filter-list repository
+     * that copies it in as its run instruction: preparation of the current uBOLite Chromium release
+     * from the public releases API under the exact-suffix asset matcher, rule application through
+     * the custom-filters file with Developer mode enabled, the `user-rules-file` verification
      * declaration, issue selection, and the report template carrying the reduced-engine
      * verification caveat.
      */
@@ -155,9 +153,8 @@ export const PROMPT_DOCUMENT_NAMES = Object.values(PromptDocumentName);
 /**
  * Document storage layout: Markdown files next to this module, anchored at `import.meta.url` —
  * under tsx/tsc ESM that always names this module file, and URL-resolution is what reads the corpus
- * wherever the module travels next to its `documents/` directory. The CJS `__filename` fallback
- * form existed only for the deleted committed bundle; the repository ships sources, so there is no
- * second anchor mechanism.
+ * wherever the module travels next to its `documents/` directory. The repository ships sources, not
+ * a bundle, so there is no CJS `__filename` fallback anchor.
  */
 const DEFAULT_DOCUMENTS_DIR = fileURLToPath(new URL('documents/', import.meta.url));
 

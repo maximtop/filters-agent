@@ -111,10 +111,10 @@ async function convergeExpectedFilterIds(
 /**
  * Run the prepared session's Baseline application right after its launch.
  *
- * The launch route no longer relies on launch-time settings pieces: the instruction's steps
- * (exactly like phase B in the environment route) plus the host read-back produce the session's
- * settings record, and `settingsVerified` is gated on that record. The expected filter set is the
- * state the exact requested settings name — the pre-read defaults plus the required IDs for a
+ * The launch route does not rely on launch-time settings pieces: the instruction's steps (exactly
+ * like phase B in the environment route) plus the host read-back produce the session's settings
+ * record, and `settingsVerified` is gated on that record. The expected filter set is the state the
+ * exact requested settings name — the pre-read defaults plus the required IDs for a
  * defaults-plus-required request — degraded onto the filters the installed build catalog actually
  * carries.
  *
@@ -142,8 +142,8 @@ export async function launchExtensionBaseline(
     // extension state, converges the requested filter set against the build's bundled catalog and
     // credits the session from a state read-back. A Firefox-family build has none of those — no
     // unpacked directory, no driveable extension page — so its baseline is the instruction's own
-    // declaration, applied by the browser when it force-installed the XPI (32-AFK Decision 3), and
-    // its phases are credited by the host-performed file-backed application between them.
+    // declaration, applied by the browser when it force-installed the XPI, and its phases are
+    // credited by the host-performed file-backed application between them.
     if (extension && extension.launchFamily === ExtensionLaunchFamily.Firefox) {
         const declared = launchFirefoxDeclaredBaseline(extension, logger);
         if (declared === null) {

@@ -1,17 +1,16 @@
 /**
  * The executable filter baseline a run declares instead of resolving.
  *
- * Decision 1 of 32-AFK: for a Firefox-family preparation nothing is resolved against AdGuard's
- * official catalog. The run's executable baseline is the list selection of the instruction's own
- * managed-storage declaration — the `selectedFilterLists` the blocker reads at startup, plus the
- * user-filters pseudo-list the candidate rule is applied through — and the reporter's own filter
- * names are compared against that selection for the report only.
+ * For a Firefox-family preparation nothing is resolved against AdGuard's official catalog. The
+ * run's executable baseline is the list selection of the instruction's own managed-storage
+ * declaration — the `selectedFilterLists` the blocker reads at startup, plus the user-filters
+ * pseudo-list the candidate rule is applied through — and the reporter's own filter names are
+ * compared against that selection for the report only.
  *
  * The two names this module knows (`selectedFilterLists`, `user-filters`) are the uBlock Origin
- * managed-storage convention the decision names verbatim; the rest of the template's shape stays
- * the instruction's own business. The lookup is keyed off the declared user-filters key path rather
- * than a hardcoded `adminSettings`, so an instruction that nests its settings elsewhere still
- * resolves.
+ * managed-storage convention; the rest of the template's shape stays the instruction's own
+ * business. The lookup is keyed off the declared user-filters key path rather than a hardcoded
+ * `adminSettings`, so an instruction that nests its settings elsewhere still resolves.
  */
 import * as v from 'valibot';
 import type { FirefoxExtensionLaunch } from './extension-launch';
@@ -41,8 +40,8 @@ const SELECTED_FILTER_LISTS_MEMBER = 'selectedFilterLists';
 /**
  * The pseudo-list through which a blocker applies the user filters the host maintains.
  *
- * Decision 1's "plus `user-filters`": without it in the selection the candidate rule is never
- * applied at all, so it belongs to the executable baseline whether or not the template spells it.
+ * Without it in the selection the candidate rule is never applied at all, so it belongs to the
+ * executable baseline whether or not the template spells it.
  */
 export const USER_FILTERS_LIST_NAME = 'user-filters';
 

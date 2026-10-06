@@ -119,10 +119,10 @@ export function serializeAgentSettingsEvidence(
 /**
  * Publish the settings a declared-baseline session ran with.
  *
- * A blocker that declares its own list selection is credited from that declaration (32-AFK Decision
- * 3): there is no live state to read back, so the declared keys are the enabled set. The MV3 fields
- * do not apply to such a blocker — it has no rulesets, no Stealth mode and no rule limits — and the
- * record says so plainly rather than inventing an observation.
+ * A blocker that declares its own list selection is credited from that declaration: there is no
+ * live state to read back, so the declared keys are the enabled set. The MV3 fields do not apply to
+ * such a blocker — it has no rulesets, no Stealth mode and no rule limits — and the record says so
+ * plainly rather than inventing an observation.
  *
  * @param profileKind - The settings profile the model selected for the session.
  * @param listKeys - The declared list selection the session was credited with.

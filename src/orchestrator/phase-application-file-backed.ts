@@ -2,12 +2,12 @@
  * The file-backed arm of the between-phases application flow, and the projection both arms map
  * their result through.
  *
- * Decision 3 of 31-AFK: when the run's prepared build is a Firefox-family one, the application is
- * the host's own work — it writes the declared file, rebuilds the enterprise policies, relaunches
- * the session and reads the file back (`file-backed-application.ts`). No model session runs, so
- * none of the AdGuard route's session pieces (the options-page surface, the settings payload, the
- * live-extension read) are built for it. This module is that arm plus the one mapping from an
- * application result onto the environment's configuration seam, shared with the model-driven arm in
+ * When the run's prepared build is a Firefox-family one, the application is the host's own work —
+ * it writes the declared file, rebuilds the enterprise policies, relaunches the session and reads
+ * the file back (`file-backed-application.ts`). No model session runs, so none of the AdGuard
+ * route's session pieces (the options-page surface, the settings payload, the live-extension read)
+ * are built for it. This module is that arm plus the one mapping from an application result onto
+ * the environment's configuration seam, shared with the model-driven arm in
  * `phase-application-flow.ts`.
  */
 import type { IBrowserSession } from '../browser/browser-interfaces';

@@ -1,7 +1,7 @@
 /**
  * The host-side extension preparation a fix run performs before its fix session starts.
  *
- * Decision (a) of the issue plan, in order:
+ * In order:
  *
  * 1. The instruction carries a `## Preparation` section — a short-lived preparation session performs
  *    the blocker steps and names its result; the payload's extension directory is validated to
@@ -11,9 +11,7 @@
  *    `PinnedRelease`. A missing section never fails the run.
  *
  * A custom build for local testing goes through the instruction's `## Preparation` section (step 1)
- * rather than a preloaded-directory channel: `ADGUARD_EXTENSION_PATH` was dropped (27-AFK) because
- * both production callers of `runFixCore` already cleared it before reaching this module, so it was
- * unreachable dead configuration.
+ * rather than a preloaded-directory channel.
  *
  * Contract for every failure: there is NO second attempt — a failed download, digest, unpack, or
  * placement throws the typed error with the full captured output, and the fix run fails named. The

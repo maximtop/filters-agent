@@ -62,7 +62,7 @@ function listFilesPerDirectory(relPaths: readonly string[]): Map<string, number>
  * Derive a filter name from a file's path relative to the checkout root.
  *
  * Two real repository layouts have to be told apart, and the checkout's own shape is what tells
- * them apart (32-AFK Decision 4):
+ * them apart:
  *
  * - One directory per filter, as AdguardFilters ships it — a single `filter.txt`, or a `sections/`
  *   subtree of parts that all belong to the same distributed list. The top-level directory names

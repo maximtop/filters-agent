@@ -236,7 +236,7 @@ export function validateTerminalOutcome(
                 maximumTechnicalAttempts: MAX_TECHNICAL_BROWSER_FAILURES_PER_TARGET,
                 // A page that loads fine but shows a wall is neither a verified navigation nor a
                 // technical failure; only vision confirming the wall moves such a run forward
-                // (#242315 relaunched three times on this refusal and was sealed).
+                // (without it, a run relaunches on this refusal until it is sealed).
                 guidance: [
                     'When open_page succeeds but a sign-in page, a regional block or a bot check ' +
                         'stands in for the reported page, capture it with screenshot and classify ' +

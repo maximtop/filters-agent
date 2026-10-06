@@ -1,5 +1,5 @@
 /**
- * The entry's input resolution: every way of running — the lab CLI and the container action alike —
+ * The entry's input resolution: every way of running — a CLI and the container action alike —
  * resolves its flags and environment into one validated `AgentRunInputs` here before any seam runs.
  * The resolver is pure over `(env, sources)`: no file system, no clock, no network, so a wrong
  * invocation fails during resolution, naming every independent problem in one combined error (the
@@ -131,9 +131,9 @@ function nameUnknownExecutorMessage(
 /**
  * Render the message fired when a GitHub seam has to read but no token configured.
  *
- * Names the `GITHUB_TOKEN` environment variable both faces genuinely read (the action's
- * `githubToken` input lands there too) rather than a flag: the lab CLI has no `--no-comment` flag
- * at all, on `fix` or `backlog`, so that spelling never named anything real on either face.
+ * Names the `GITHUB_TOKEN` environment variable every face genuinely reads (the action's
+ * `githubToken` input lands there too) rather than a `--no-comment` flag, which no face of the
+ * entry has.
  *
  * @param reason - What reads through GitHub.
  * @returns The message naming the variable and how it is shared with report comments.

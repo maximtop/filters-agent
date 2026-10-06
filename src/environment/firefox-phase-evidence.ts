@@ -67,10 +67,10 @@ export interface DeclaredBaselineInput {
 /**
  * Lock the executable baseline a run's instruction declared.
  *
- * Decision 1 of 32-AFK: the declaration's list selection is the baseline. No list file is ever
- * opened, so the provenance carries no resources and names every enabled list unattributed —
- * exactly the field that exists for lists which filter but whose bytes no observer can bind — and
- * the aggregate digest is taken over the declaration instead of over bytes.
+ * The declaration's list selection is the baseline. No list file is ever opened, so the provenance
+ * carries no resources and names every enabled list unattributed — exactly the field that exists
+ * for lists which filter but whose bytes no observer can bind — and the aggregate digest is taken
+ * over the declaration instead of over bytes.
  *
  * @param input - The declared facts of the run's blocker.
  * @returns The locked baseline, or the validation issues that stopped it.
@@ -174,8 +174,8 @@ export interface FirefoxPhaseProofInput {
  *
  * Phase A loads no blocker, so it carries none. For B and C the credited application supplies the
  * user-filter facts, and the enabled set is the declaration's own selection: the file read-back
- * cannot observe it, and the declaration is what the browser applied at startup (Decision 2), so
- * reporting it is an observation rather than a guess.
+ * cannot observe it, and the declaration is what the browser applied at startup, so reporting it is
+ * an observation rather than a guess.
  *
  * @param input - The phase, the credited application, and the run's declared facts.
  * @returns The blocker proof, or null when the phase ran unfiltered or was never credited.

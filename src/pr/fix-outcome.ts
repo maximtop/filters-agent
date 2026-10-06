@@ -56,11 +56,11 @@ export type FixOutcomeKind = (typeof FixOutcomeKind)[keyof typeof FixOutcomeKind
 
 /**
  * Ceiling on the model-authored summary, enforced at the schema so the text is complete by
- * construction: the reviewer asked for whole sentences from the agent instead of a mechanical
- * mid-sentence cut, and a bound the model must fit is the only way to guarantee no downstream
- * truncation. Raised from 400 because a model writes to the feel of the instruction rather than a
- * character count, so a tight ceiling turned honest summaries into rejected submissions; the
- * instruction, not the bound, is what keeps the text short.
+ * construction: a reviewer needs whole sentences from the agent, not a mechanical mid-sentence cut,
+ * and a bound the model must fit is the only way to guarantee no downstream truncation. The ceiling
+ * is generous because a model writes to the feel of the instruction rather than a character count,
+ * so a tight ceiling turns honest summaries into rejected submissions; the instruction, not the
+ * bound, is what keeps the text short.
  */
 export const MAX_SUMMARY_LENGTH = 1_000;
 

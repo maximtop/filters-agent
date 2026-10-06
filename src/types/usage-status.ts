@@ -1,19 +1,14 @@
 /**
  * The usage-accounting honesty vocabularies, declared once for the whole codebase: how completely a
- * run's provider replies reported usage, how much of it could be priced, and the two campaign-era
- * spellings of the same two questions.
+ * run's provider replies reported usage, how much of it could be priced, and the older spellings of
+ * the same two questions.
  *
- * Both eras live here TOGETHER rather than merged, and the merge is not available: each spelling is
- * pinned by an artifact already on disk. `costCoverage`/`usageCompleteness` are persisted fields of
+ * Both spellings live here TOGETHER rather than merged, and the merge is not available: each one is
+ * pinned by documents already on disk. `costCoverage`/`usageCompleteness` are persisted fields of
  * the v2 run usage summary (`RunUsageSummarySchema`), and `costStatus`/`telemetryHealth` are
- * persisted fields of every campaign artifact — including pre-migration ones, which is also why
- * `CostStatus` keeps the `Reported` and `Mixed` members pi can no longer produce (see
- * `campaign-cost-status.ts`). Renaming either set to the other's literals stops one of the two
- * formats parsing.
- *
- * What the merge would have removed is here instead: the correspondence between the two eras is
- * stated once, as the two tables below, so no consumer re-derives it and no module grows a private
- * mapper whose name collides with a different function of the same name.
+ * persisted fields of run artifacts written by earlier builds, which is also why `CostStatus` keeps
+ * the `Reported` and `Mixed` members pi does not produce. Renaming either set to the other's
+ * literals stops one of the two formats parsing.
  */
 
 /**
@@ -80,7 +75,8 @@ export const COST_COVERAGE_VALUES = Object.values(CostCoverage);
 export type CostCoverage = (typeof CostCoverage)[keyof typeof CostCoverage];
 
 /**
- * How trustworthy a run's LLM cost figure is. Persisted as `costStatus` in every campaign artifact.
+ * How trustworthy a run's LLM cost figure is. Persisted as `costStatus` in run artifacts written by
+ * earlier builds.
  */
 export const CostStatus = {
     Reported: 'reported',
@@ -97,7 +93,7 @@ export type CostStatus = (typeof CostStatus)[keyof typeof CostStatus];
 
 /**
  * Whether provider usage telemetry covered every request of a run. Persisted as `telemetryHealth`
- * in every campaign artifact.
+ * in run artifacts written by earlier builds.
  */
 export const TelemetryHealth = {
     Healthy: 'healthy',

@@ -66,12 +66,12 @@ export interface FixResultEnvironmentExecution {
  */
 interface ProvisionalCompatibilityResult {
     /**
-     * Browser sessions assembled by the legacy runtime path.
+     * Browser sessions assembled by the agent runtime before canonical projection.
      */
     browserSessions?: AgentBrowserSessionEvidence[];
 
     /**
-     * Candidate evidence assembled by the legacy runtime path.
+     * Candidate evidence assembled by the agent runtime before canonical projection.
      */
     candidateValidationEvidence?: AgentCandidateValidationEvidence;
 
@@ -84,7 +84,7 @@ interface ProvisionalCompatibilityResult {
 /**
  * Collect screenshot paths that belonged to the superseded Extension compatibility view.
  *
- * @param provisionalResult - Result assembled from the legacy runtime caches.
+ * @param provisionalResult - Result assembled from the agent runtime's caches.
  * @returns Paths that must be replaced by canonical phase projections.
  */
 function supersededEnvironmentScreenshotPaths(provisionalResult: object): Set<string> {
@@ -125,7 +125,7 @@ function supersededEnvironmentScreenshotPaths(provisionalResult: object): Set<st
  *
  * @param provisionalResult - Result containing trace, issue, and diagnostic artifacts.
  * @param projected - Canonical environment-owned artifact paths.
- * @returns One deterministic artifact view without legacy environment evidence.
+ * @returns One deterministic artifact view without runtime-assembled environment evidence.
  */
 function mergeCanonicalEnvironmentArtifactPaths(
     provisionalResult: object,
@@ -174,12 +174,12 @@ export async function completeFixResultAfterEnvironmentCleanup<T extends object>
     );
     const outcome = projectEnvironmentExecution(environmentExecution);
     if (!('projected' in outcome)) {
-        // Refusing to attach unprojectable canonical evidence is right; throwing here was not.
-        // A run that had already proven a candidate through A/B/C died on this line and its patch
-        // was discarded with it (mlekovitka.pl #238941). The result keeps the evidence the agent
-        // runtime recorded and simply carries no canonical execution, which every downstream
-        // invariant already tolerates — while the named refusal makes the canonical defect
-        // diagnosable from the run that hit it.
+        // Refusing to attach unprojectable canonical evidence is right; throwing here is not: a run
+        // that has already proven a candidate through A/B/C would die on this line and its patch
+        // would be discarded with it. The result keeps the evidence the agent runtime recorded and
+        // simply carries no canonical execution, which every downstream invariant already tolerates
+        // — while the named refusal makes the canonical defect diagnosable from the run that hit
+        // it.
         lifecycle.onProjectionRefused?.(outcome.refusal);
         return provisionalResult;
     }

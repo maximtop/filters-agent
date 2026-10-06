@@ -1,11 +1,11 @@
 /**
  * The launch declaration a preparation session seals in its terminal payload.
  *
- * Decision 1 of 31-AFK: an instruction whose blocker is installed as a signed Firefox XPI declares
- * that family in the preparation payload — the extension id, the XPI it downloaded, the
- * managed-storage document the extension reads, and the key path inside that document which must
- * hold the user-filters file content. The model never writes a policies file; the host builds the
- * enterprise policies from this declaration at every launch.
+ * An instruction whose blocker is installed as a signed Firefox XPI declares that family in the
+ * preparation payload — the extension id, the XPI it downloaded, the managed-storage document the
+ * extension reads, and the key path inside that document which must hold the user-filters file
+ * content. The model never writes a policies file; the host builds the enterprise policies from
+ * this declaration at every launch.
  *
  * This module is the one rule for reading that declaration. The terminal tool validates the payload
  * with it, so the model can correct a malformed declaration inside its own session, and the result

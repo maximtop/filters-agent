@@ -193,7 +193,7 @@ export function resolveLocalRunOutputDir(
  * Validate a local run output path while preserving external-path compatibility.
  *
  * Paths outside the workspace remain supported. Paths inside the workspace are restricted to the
- * ignored project-local `tmp/` tree so a typo cannot overwrite source or benchmark fixtures.
+ * ignored project-local `tmp/` tree so a typo cannot overwrite source or test fixtures.
  *
  * @param outputDir - Absolute caller-selected or default output directory.
  * @param workspaceRoot - Absolute project root that owns the local `tmp/` tree.
@@ -226,9 +226,9 @@ export function validateLocalRunOutputDir(outputDir: string, workspaceRoot: stri
  * Materialize one output directory and return the canonical path used for every later mutation.
  *
  * Existing symlink components below the workspace root are rejected before directory creation, so a
- * nominal `tmp/` destination cannot redirect cleanup into tracked source or benchmark fixtures.
- * External output remains supported, but an existing nonempty leaf must already contain the exact
- * regular ownership marker before any caller may clean it.
+ * nominal `tmp/` destination cannot redirect cleanup into tracked source or test fixtures. External
+ * output remains supported, but an existing nonempty leaf must already contain the exact regular
+ * ownership marker before any caller may clean it.
  *
  * @param outputDir - Absolute caller-selected output directory.
  * @param workspaceRoot - Absolute project root that owns the local `tmp/` boundary.

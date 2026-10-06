@@ -309,11 +309,10 @@ const RUN_RECORD_PSEUDONYMIZED_KEYS: readonly string[] = ['sessionId'];
 /**
  * Convert an object to deterministic sanitized JSON bytes and reject residual exact secrets.
  *
- * ONE redaction pass. It used to be two — `redactPayload` over the output of a second walker with a
- * second key table, which had to be exempted in lockstep with the first and once blanked the usage
- * summary's own price table. The surviving pass keeps both tables' verdicts: `redactPayload`'s
- * generic credential rules, plus {@link STORAGE_SENSITIVE_KEY_PATTERNS} — the same list the deleted
- * walker read, so publication blanks exactly what it blanked before, PII shapes included.
+ * ONE redaction pass: `redactPayload`'s generic credential rules plus
+ * {@link STORAGE_SENSITIVE_KEY_PATTERNS}, PII shapes included. A second walker with its own key
+ * table would have to be exempted in lockstep with the first, and can blank the usage summary's own
+ * price table.
  *
  * Those PII shapes are why publication states a key table at all. The generic rules name
  * credentials and say nothing about people, while publication answers the stricter question of what

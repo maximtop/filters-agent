@@ -7,6 +7,8 @@ import {
     type LoadedInstruction,
 } from '../knowledge/instruction-loader';
 import type { KnowledgeGuidanceSource, RuleGuidanceSource } from '../knowledge/rule-guidance';
+import { LinkedDocumentDownloadError } from '../knowledge/linked-document-downloader';
+import type { Logger } from '../logger/logger';
 import type { PiRuntime } from '../pi/runtime';
 import type { SingleShotClient } from '../pi/single-shot-types';
 import type { RunUsageCollector } from '../pi/usage-collector';
@@ -134,7 +136,7 @@ export interface FixCoreOptions {
     repository?: string;
 
     /**
-     * Publication repository base SHA used to detect a moved lab branch.
+     * Publication repository base SHA used to detect a moved base branch.
      */
     baseSha?: string;
 
@@ -169,6 +171,13 @@ export interface FixCoreOptions {
     knowledgeGuidanceSource?: KnowledgeGuidanceSource;
 
     /**
+     * Loads the rule guidance a run falls back to when it carries neither an instruction nor a
+     * prepared KnowledgeBase; see {@link resolveRunRuleGuidance}. Called only when the investigation
+     * starts, so a run that ends before it never downloads anything.
+     */
+    loadDefaultRuleGuidance?: () => Promise<RuleGuidanceSource>;
+
+    /**
      * The run instruction loaded at run start, when this run carries one. Its linked documents
      * replace the KnowledgeBase behind lookup_rule_guidance for the whole run — see
      * {@link resolveRuleGuidanceSource} for the one dispatch; its text rides the fix task's
@@ -194,17 +203,16 @@ export interface FixCoreOptions {
          * Executor names this run locks from the registry, in request order.
          *
          * Absent resolves every registered executor of the process the run enters; an unknown name
-         * fails before any session artifact, naming it and the registered set. Lab cycles pass
-         * their two-executor set explicitly, so a run without the special binary still reaches its
-         * typed preparation limitation instead of losing the desktop executor.
+         * fails before any session artifact, naming it and the registered set. A caller can pass
+         * its executor set explicitly, so a run without an executor's special binary still reaches
+         * its typed preparation limitation instead of losing the desktop executor.
          */
         executors?: readonly string[];
 
         /**
          * Opaque per-executor dependency bag threaded into the run's activation context, keyed by
-         * executor name. Every caller that wants a `lab/`-only executor to activate against real
-         * host wiring — the lab's own local cycle and, since 27-AFK, its backlog run through this
-         * same public engine — supplies it here instead of module state.
+         * executor name. Every caller that wants an executor registered outside this tree to
+         * activate against real host wiring supplies it here instead of module state.
          */
         executorDependencies?: ExecutorDependenciesByName;
     };
@@ -294,4 +302,40 @@ export function resolveRuleGuidanceSource(
         return toInstructionGuidanceSource(options.instruction);
     }
     return options.knowledgeGuidanceSource;
+}
+
+/**
+ * Resolve the rule guidance the investigation serves: the instruction's or the prepared
+ * KnowledgeBase's when the run has one, otherwise the default the run's loader provides.
+ *
+ * The default is best effort. A download that fails leaves the run on the not-applicable stub, the
+ * way a run without any guidance has always worked, and the log says why.
+ *
+ * @param options - The core options holding the guidance sources and the default loader.
+ * @param logger - Diagnostics sink for a default that could not be loaded.
+ * @returns The guidance source, or undefined when the run has none.
+ */
+export async function resolveRunRuleGuidance(
+    options: Pick<
+        FixCoreOptions,
+        'instruction' | 'knowledgeGuidanceSource' | 'loadDefaultRuleGuidance'
+    >,
+    logger: Logger,
+): Promise<RuleGuidanceSource | undefined> {
+    const configured = resolveRuleGuidanceSource(options);
+    if (configured !== undefined || options.loadDefaultRuleGuidance === undefined) {
+        return configured;
+    }
+    try {
+        return await options.loadDefaultRuleGuidance();
+    } catch (error) {
+        if (!(error instanceof LinkedDocumentDownloadError)) {
+            throw error;
+        }
+        logger.warn(
+            { err: error },
+            'default rule guidance could not be downloaded; the run continues without it',
+        );
+        return undefined;
+    }
 }

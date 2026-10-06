@@ -63,11 +63,10 @@ const MAX_STATE_IDENTIFIER_CHARS = 256;
 /**
  * Ceiling on one storage value returned to the model, in characters.
  *
- * Restored unchanged from the removed `get_storage`. The probe's purpose is key names and short
- * flags: a persistence check reads a boolean, a `set-local-storage-item` rule needs the key and a
- * small value. 200 characters keeps every real flag intact while collapsing data caches — a
- * streaming site cached its entire TMDB movie catalog in localStorage and one untruncated dump
- * weighed 5.9 MB, overflowed the model's context in a single turn, and retired report 239587.
+ * The probe's purpose is key names and short flags: a persistence check reads a boolean, a
+ * `set-local-storage-item` rule needs the key and a small value. 200 characters keeps every real
+ * flag intact while collapsing data caches — a streaming site can cache its entire movie catalog in
+ * localStorage, and one untruncated 5.9 MB dump overflows the model's context in a single turn.
  */
 const MAX_STORAGE_VALUE_CHARS = 200;
 

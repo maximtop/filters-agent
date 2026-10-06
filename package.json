@@ -1,10 +1,11 @@
 {
-    "name": "adguard-filters-agent",
+    "name": "filters-agent",
     "version": "0.1.0",
-    "description": "Browser-first AI agent for investigating AdguardFilters issues",
+    "description": "Browser-first AI agent that investigates filter-list issues and verifies candidate rules",
     "type": "module",
     "scripts": {
-        "typecheck": "tsc --noEmit -p tsconfig.json"
+        "typecheck": "tsc --noEmit -p tsconfig.json",
+        "build:adguard-cli": "node --import tsx scripts/build-adguard-cli-module.ts adguard-cli"
     },
     "dependencies": {
         "@earendil-works/pi-ai": "0.84.1",

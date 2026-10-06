@@ -61,6 +61,18 @@ export const LLM_MAX_OUTPUT_TOKENS_VAR = 'LLM_MAX_OUTPUT_TOKENS';
 export const LLM_VISION_MAX_OUTPUT_TOKENS_VAR = 'LLM_VISION_MAX_OUTPUT_TOKENS';
 
 /**
+ * Environment variable carrying the reasoning effort of the loop session's requests. The one place
+ * this name is spelled; the action's `llmReasoningEffort` input binding imports it.
+ */
+export const LLM_REASONING_EFFORT_VAR = 'LLM_REASONING_EFFORT';
+
+/**
+ * Environment variable carrying the reasoning effort of the single-shot calls. The one place this
+ * name is spelled; the action's `llmSingleShotReasoningEffort` input binding imports it.
+ */
+export const LLM_SINGLE_SHOT_REASONING_EFFORT_VAR = 'LLM_SINGLE_SHOT_REASONING_EFFORT';
+
+/**
  * Environment variable carrying the total provider attempts per request. The one place this name is
  * spelled; the action's `llmRequestMaxAttempts` input binding imports it.
  */
@@ -76,8 +88,8 @@ export const GITHUB_TOKEN_VAR = 'GITHUB_TOKEN';
 /**
  * Total provider attempts per request when `LLM_REQUEST_MAX_ATTEMPTS` names none.
  *
- * Two — the initial attempt plus one retry — is what the legacy bespoke provider applied, kept so a
- * single transient gateway failure is absorbed without a failing turn being paid for three times.
+ * Two — the initial attempt plus one retry — absorbs a single transient gateway failure without a
+ * failing turn being paid for three times.
  *
  * This is the ONLY place the bound is defaulted. `requestMaxAttempts` is a required configuration
  * field, so every consumer derives from a value that is always present — `providerMaxRetries` in
@@ -96,68 +108,16 @@ const DEFAULT_REQUEST_MAX_ATTEMPTS = 2;
  * this while tokens keep arriving is left alone; a stream that stops producing for this long is
  * not, and the run's total duration is bounded by the wall-clock budget instead.
  *
- * Raised from 120 s on 2026-09-05: with `LLM_REASONING_EFFORT` at `high` the reasoning model's
- * thinking regularly outlived two minutes, and four of six campaign runs that day carried "Request
- * timed out." turns — each one a retried request, two more minutes of wall clock and an attempt the
- * usage report can only mark unreported. The ceiling is the honest default until the gateway
- * reports a per-request maximum of its own.
+ * Why the ceiling: with `LLM_REASONING_EFFORT` at `high` the reasoning model's thinking regularly
+ * outlives two minutes, and a two-minute deadline leaves most runs carrying "Request timed out."
+ * turns — each one a retried request, two more minutes of wall clock and an attempt the usage
+ * report can only mark unreported. The ceiling is the honest default until the gateway reports a
+ * per-request maximum of its own.
  */
 const DEFAULT_REQUEST_TIMEOUT_MS = 300_000;
 
 /**
- * Context window registered for the gateway's models when the configuration names none.
- *
- * This is a live bound, not documentation: pi measures its auto-compaction threshold against it
- * (`contextWindow − reserveTokens`, a 16,384-token reserve by default) and clamps every request's
- * `max_completion_tokens` to what is left of it. Registering a window smaller than the model's real
- * one therefore buys lossy summarizations — and a cold prompt cache after each one — at a fraction
- * of the context actually available.
- *
- * 1,048,576 is the model's own limit as the gateway states it: the HTTP 400 that ended report
- * 239587 (run 33278625818) weighed a 1,048,577-token request against "the model's 1,048,576 limit",
- * the same incident `MAX_TOOL_RESULT_BYTES` records. A deployment whose model differs sets
- * `LLM_CONTEXT_WINDOW_TOKENS`.
- */
-export const DEFAULT_MODEL_CONTEXT_WINDOW_TOKENS = 1_048_576;
-
-/**
- * Completion cap registered for the LOOP (reasoning) model when the configuration names none.
- *
- * Pi always sends a cap — it puts `maxTokens`, clamped to the remaining window, on every request as
- * `max_completion_tokens`, and a catalog entry cannot omit it — where the deleted loop sent none
- * and took the gateway's own default. So the cap has to be chosen, and for the loop the safe
- * direction is the model's real ceiling, not a small one: reasoning and answer share this budget
- * (`reasoningEffort` defaults to `high`, whose thinking budget alone is 16,384 tokens), so a cap a
- * thinking burst can exhaust truncates the terminal submission that follows it and seals the run
- * no-terminal after it has already been paid for.
- *
- * 384,000 is what the gateway itself advertises for `deepseek-v4-flash`: `GET
- * <LLM_BASE_URL>/models` reports `top_provider.max_completion_tokens: 384000` beside
- * `context_length: 1050000` (read 2026-09-05). It is a ceiling, not a reservation — nothing is
- * charged for headroom a turn does not use — and pi clamps it down to what is left of the
- * registered window on every request. A deployment on another model sets `LLM_MAX_OUTPUT_TOKENS`.
- */
-export const DEFAULT_MODEL_MAX_OUTPUT_TOKENS = 384_000;
-
-/**
- * Completion cap registered for the VISION model when the configuration names none.
- *
- * The same value as the loop's, deliberately: the cap is a ceiling, not a reservation, and a
- * reasoning model spends it on thinking before the verdict. With a separate 8,192 cap a live run on
- * `deepseek-v4.1-flash` (OpenRouter) ended a vision verdict with stop reason `length` — the model
- * reasoned past the cap and the answer never came — while its single-shot calls as a whole spent
- * 173k of 177k output tokens on reasoning. There is nothing to gain from bounding a verdict below
- * the model's ceiling; a deployment that wants a lower one sets `LLM_VISION_MAX_OUTPUT_TOKENS`.
- *
- * Where it applies: this is the vision catalog entry's `maxTokens`, and
- * `createConfiguredSingleShotClient` sends it as `max_completion_tokens` on every single-shot
- * request bound to that entry — pi's typed completion path sends only what a call passes, so
- * without that a vision request carried no cap at all and the provider's own default applied.
- */
-export const DEFAULT_VISION_MAX_OUTPUT_TOKENS = DEFAULT_MODEL_MAX_OUTPUT_TOKENS;
-
-/**
- * Reasoning effort every request carries when `LLM_REASONING_EFFORT` names none.
+ * Reasoning effort every loop request carries when `LLM_REASONING_EFFORT` names none.
  *
  * `high` is the maintainer's call, and it is also the ceiling for the model this runtime registers:
  * that catalog entry is `reasoning: true` with no `thinkingLevelMap`, so pi's supported set is `off
@@ -180,15 +140,26 @@ const DEFAULT_REASONING_EFFORT = ReasoningEffort.High;
  * Two steps below the loop's `high`, at the maintainer's call. A single-shot call answers one
  * bounded structured question — extract the report from an issue, describe one screenshot — and its
  * thinking is paid on the run's critical path with nothing to plan across turns; the loop keeps
- * `high` because it plans an investigation across many turns. `medium` (2026-09-15) came after a
- * run spent 22 minutes inside the intake extraction and its vision calls spent 173k of 177k output
- * tokens on reasoning. `low` (2026-09-17) came after the vision calls kept running away at
- * `medium`: three a run streamed past the ten-minute call ceiling — half of a 60-minute
- * investigation — and a candidate review that runs away comes back inconclusive, which throws the
- * whole experiment away. The level reaches the wire on every single shot of a model registered as
- * reasoning, which includes the vision role whenever it shares the reasoning model's slug.
+ * `high` because it plans an investigation across many turns. Above `medium` a run has spent 22
+ * minutes inside the intake extraction and its vision calls 173k of 177k output tokens on
+ * reasoning. Even at `medium` the vision calls run away: three a run have streamed past the
+ * ten-minute call ceiling — half of a 60-minute investigation — and a candidate review that runs
+ * away comes back inconclusive, which throws the whole experiment away. The level reaches the wire
+ * on every single shot of a model registered as reasoning, which includes the vision role whenever
+ * it shares the reasoning model's slug.
  */
 const DEFAULT_SINGLE_SHOT_REASONING_EFFORT = ReasoningEffort.Low;
+
+/**
+ * Schema of one model limit in tokens, failing with a message that names the variable to set.
+ *
+ * @param envVar - The environment variable the limit is read from.
+ * @returns The limit's schema.
+ */
+function tokenLimitSchema(envVar: string) {
+    const message = `${envVar} must name the model's limit in tokens`;
+    return v.pipe(v.number(message), v.integer(message), v.minValue(1, message));
+}
 
 const CoreConfigSchema = v.object({
     llm: v.object({
@@ -205,9 +176,12 @@ const CoreConfigSchema = v.object({
         requestMaxAttempts: v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(3)),
         reasoningEffort: v.picklist(REASONING_EFFORT_VALUES),
         singleShotReasoningEffort: v.picklist(REASONING_EFFORT_VALUES),
-        contextWindowTokens: v.pipe(v.number(), v.integer(), v.minValue(1)),
-        maxOutputTokens: v.pipe(v.number(), v.integer(), v.minValue(1)),
-        visionMaxOutputTokens: v.pipe(v.number(), v.integer(), v.minValue(1)),
+        // The three model limits have no default: they belong to the model the deployment names,
+        // and a limit above the provider's own fails every request with HTTP 400. See
+        // `buildRawLlmLimits` for the one derived value.
+        contextWindowTokens: tokenLimitSchema(LLM_CONTEXT_WINDOW_TOKENS_VAR),
+        maxOutputTokens: tokenLimitSchema(LLM_MAX_OUTPUT_TOKENS_VAR),
+        visionMaxOutputTokens: tokenLimitSchema(LLM_VISION_MAX_OUTPUT_TOKENS_VAR),
     }),
     headless: v.boolean(),
     /**
@@ -238,13 +212,12 @@ const CoreConfigSchema = v.object({
      * Wall-clock budget for one agent investigation before the loop seals it over the collected
      * evidence.
      *
-     * Unset, the in-code 60-minute default applies (local runs, benchmarks). The live analysis
-     * container must set it lower: it runs up to two whole-process agent attempts inside one CI job
-     * bounded at 90 minutes, and evidence ships only after the container script finishes — with the
-     * 60-minute default, two attempts arithmetically outgrow the job (2×60 > 90) and the CI
-     * backstop kills the second one with every artifact lost (rigla.ru, 2026-08-15: two 90-minute
-     * jobs, zero evidence). Each layer must end well before the one above it: this budget < the
-     * per-attempt shell timeout < the CI job timeout.
+     * Unset, the in-code 60-minute default applies (local runs, benchmarks). A CI analysis
+     * container must set it lower when it runs up to two whole-process agent attempts inside one CI
+     * job bounded at 90 minutes and evidence ships only after the container script finishes — with
+     * the 60-minute default, two attempts arithmetically outgrow the job (2×60 > 90) and the CI
+     * backstop kills the second one with every artifact lost. Each layer must end well before the
+     * one above it: this budget < the per-attempt shell timeout < the CI job timeout.
      */
     agentInvestigationBudgetMs: v.optional(
         v.pipe(v.number(), v.integer(), v.minValue(300_000), v.maxValue(3_600_000)),
@@ -321,6 +294,29 @@ function parseOptionalNumber(value: string | undefined): number | undefined {
 }
 
 /**
+ * Read the three model limits, raw for the schema to validate.
+ *
+ * None has a default: a limit is a property of the model the deployment names, and a value above
+ * the provider's own fails every request with HTTP 400. The vision cap is the one derived value:
+ * when both roles name one model it is that model's cap, so a deployment on a single model states
+ * each limit once.
+ *
+ * @param env - Environment source supplied by the caller.
+ * @returns The raw `contextWindowTokens`, `maxOutputTokens` and `visionMaxOutputTokens` values.
+ */
+function buildRawLlmLimits(env: Record<string, string | undefined>): Record<string, unknown> {
+    const maxOutputTokens = parseOptionalNumber(env[LLM_MAX_OUTPUT_TOKENS_VAR]);
+    const sharesModel = env[LLM_VISION_MODEL_VAR] === env[LLM_MODEL_VAR];
+    return {
+        contextWindowTokens: parseOptionalNumber(env[LLM_CONTEXT_WINDOW_TOKENS_VAR]),
+        maxOutputTokens,
+        visionMaxOutputTokens:
+            parseOptionalNumber(env[LLM_VISION_MAX_OUTPUT_TOKENS_VAR]) ??
+            (sharesModel ? maxOutputTokens : undefined),
+    };
+}
+
+/**
  * Build the GitHub-independent raw configuration shared by both loaders.
  *
  * @param env - Environment source supplied by the caller.
@@ -346,21 +342,10 @@ function buildRawCoreConfig(env: Record<string, string | undefined>): Record<str
             // loudly. Coercing a typo to the default here would leave the operator believing a
             // level is in force that no request ever carries — the exact drift this field exists
             // to make visible.
-            reasoningEffort: env.LLM_REASONING_EFFORT ?? DEFAULT_REASONING_EFFORT,
+            reasoningEffort: env[LLM_REASONING_EFFORT_VAR] ?? DEFAULT_REASONING_EFFORT,
             singleShotReasoningEffort:
-                env.LLM_SINGLE_SHOT_REASONING_EFFORT ?? DEFAULT_SINGLE_SHOT_REASONING_EFFORT,
-            // The three catalog limits are defaulted HERE and nowhere else, like the bounds above:
-            // every layer that registers a model reads a value that is always present, so a
-            // deployment's configured limit can never be shadowed by a downstream fallback.
-            contextWindowTokens:
-                parseOptionalNumber(env[LLM_CONTEXT_WINDOW_TOKENS_VAR]) ??
-                DEFAULT_MODEL_CONTEXT_WINDOW_TOKENS,
-            maxOutputTokens:
-                parseOptionalNumber(env[LLM_MAX_OUTPUT_TOKENS_VAR]) ??
-                DEFAULT_MODEL_MAX_OUTPUT_TOKENS,
-            visionMaxOutputTokens:
-                parseOptionalNumber(env[LLM_VISION_MAX_OUTPUT_TOKENS_VAR]) ??
-                DEFAULT_VISION_MAX_OUTPUT_TOKENS,
+                env[LLM_SINGLE_SHOT_REASONING_EFFORT_VAR] ?? DEFAULT_SINGLE_SHOT_REASONING_EFFORT,
+            ...buildRawLlmLimits(env),
         },
         headless: parseBool(env.HEADLESS, true),
         noSandbox: parseBool(env.NO_SANDBOX, false),

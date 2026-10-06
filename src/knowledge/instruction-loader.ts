@@ -24,9 +24,9 @@ import {
 /**
  * Checkout-relative path probed when the run supplies no explicit instruction path.
  *
- * Decision 2: the default lives under `.github/filters-agent/`, so it never collides with a
- * repository's own root `AGENTS.md` — the coding agent's file, which is never a run instruction. An
- * explicit `instructionPath` override always wins over this default.
+ * The default lives under `.github/filters-agent/`, so it never collides with a repository's own
+ * root `AGENTS.md` — the coding agent's file, which is never a run instruction. An explicit
+ * `instructionPath` override always wins over this default.
  */
 export const DEFAULT_INSTRUCTION_PATH = '.github/filters-agent/AGENTS.md';
 

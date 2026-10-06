@@ -2,11 +2,11 @@
  * Bounded parallelism for independent provider calls.
  *
  * A candidate review inventories a page tile by tile, and every tile is its own vision completion.
- * They used to run one after another: live run 35214481330 spent 70 of its 83 minutes inside 48
- * vision calls, a long page (six tiles, three page states) took about two dozen calls per
- * experiment, and no experiment reached its verdict inside the 30-minute deadline. The calls do not
- * depend on each other, so they run side by side — bounded, because a provider rate-limits a key
- * that opens too many completions at once.
+ * Run one after another they are too slow: a long page (six tiles, three page states) takes about
+ * two dozen calls per experiment, and a run can spend most of its time inside vision calls with no
+ * experiment reaching its verdict inside the 30-minute deadline. The calls do not depend on each
+ * other, so they run side by side — bounded, because a provider rate-limits a key that opens too
+ * many completions at once.
  */
 
 /**

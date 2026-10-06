@@ -42,8 +42,8 @@ export interface NetworkLogRequestSummary {
  * The complete model-facing inventory of one phase's network activity.
  *
  * Every request reaches the model: identical requests collapse into one entry carrying a count, and
- * nothing is filtered by resource type or by URL shape. The previous summary surfaced only URLs
- * matching the substring `/ad` or `doubleclick`, which hid exactly the loaders maintainers block
+ * nothing is filtered by resource type or by URL shape. A summary that surfaces only URLs matching
+ * a substring such as `/ad` or `doubleclick` hides exactly the loaders maintainers block
  * (`cs.iubenda.com`, `cdn.selly.pl`, `ptfg.flyertrip.com/static/img/campain/`).
  */
 export interface NetworkLogInventory {

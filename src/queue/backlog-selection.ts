@@ -151,8 +151,7 @@ function isOwnReportComment(comment: BacklogIssueComment, reportAuthorLogin: str
  *
  * Contract: the issue's reporter is always trusted, and the comment's optional `author_association`
  * is trusted when the uppercased value is in the configured trusted roles. Logins compare
- * case-insensitively; an absent association is simply untrusted, matching the lab's fail-closed
- * trust model.
+ * case-insensitively; an absent association is simply untrusted, so trust fails closed.
  *
  * @param comment - One mapped issue comment.
  * @param history - The comment's issue history, whose summary carries the reporter login.

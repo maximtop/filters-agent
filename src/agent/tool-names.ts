@@ -56,11 +56,6 @@ export const ToolName = {
     SearchRules: 'search_rules',
 
     /**
-     * Decides whether filter policy allows generating a rule at all.
-     */
-    PolicyCheck: 'policy_check',
-
-    /**
      * Validates a candidate rule's syntax.
      */
     LintRule: 'lint_rule',

@@ -3,8 +3,8 @@
  * allowed to publish — extracting the proposal, deciding whether the runner-bound proof selected in
  * `candidate-validation-selection.ts` is complete, and gating the patch on browser evidence.
  *
- * It lives beside the fix cores rather than inside the GitHub-hosted runner because all three fix
- * paths — hosted, legacy local, and agentic — reach the same verdict from the same evidence.
+ * It lives beside the fix core rather than inside it so the verdict depends only on the evidence
+ * handed to it.
  */
 import { createHash } from 'node:crypto';
 import * as v from 'valibot';
@@ -223,8 +223,8 @@ export function deriveFixRunStatus(
  *
  * Browser measurements remain evidence only. This function checks mechanical provenance and
  * evidence binding; it never interprets whether page content is semantically correct. Every refusal
- * is named: a live run that lost a verified candidate here could not say which of a dozen bindings
- * had slipped, and the answer cost a day of reruns.
+ * is named: without the name, a run that loses a verified candidate here cannot say which of a
+ * dozen bindings slipped.
  *
  * @param factual - Parsed collect-only candidate experiment artifact.
  * @param candidatePatch - Candidate patch expected in Phase C.
@@ -290,7 +290,7 @@ export function candidatePatchVerificationRefusal(
 
     const candidateRuleHash = createHash('sha256').update(candidatePatch.rule).digest('hex');
     // A candidate validated more than once carries an execution suffix, so the identity is
-    // compared through the parser rather than against the bare legacy form.
+    // compared through the parser rather than against the bare unsuffixed form.
     const reviewIdentity = parseCandidateValidationArtifactId(review.validationArtifactId);
     if (
         review.candidateRuleHash !== candidateRuleHash ||
@@ -399,8 +399,7 @@ export function candidatePatchVerificationRefusal(
 /**
  * One fix path's inputs to the shared candidate verdict.
  *
- * The three defaulted fields are the only places the hosted, legacy, and agentic paths genuinely
- * disagree; every other step of the verdict is identical for all three.
+ * The three defaulted fields are the path-specific gates; every other step of the verdict is fixed.
  */
 export interface CandidateVerdictRequest {
     /**
@@ -438,7 +437,7 @@ export interface CandidateVerdictRequest {
      *
      * The agentic path binds a verified candidate to the exact browser session that proved it, and
      * a candidate with no such environment is not verified however good its review reads. The
-     * hosted and legacy paths have no per-session binding to check.
+     * default suits a path with no per-session binding to check.
      */
     boundToVerifiedEnvironment?: boolean;
 
@@ -458,9 +457,9 @@ export interface CandidateVerdictRequest {
     /**
      * Whether a candidate may publish when the run validated nothing at all, defaulting to no.
      *
-     * The hosted runner allows it — a run that never reached apply_rule still publishes the model's
-     * proposal as a draft for a human to judge. Both local cores refuse: their whole purpose is the
-     * runner-bound proof, so an unproven candidate is downgraded to analysis-only.
+     * Allowing it lets a run that never reached apply_rule publish the model's proposal as a draft
+     * for a human to judge. The local fix core refuses: its whole purpose is the runner-bound
+     * proof, so an unproven candidate is downgraded to analysis-only.
      */
     publishableWithoutValidation?: boolean;
 }
@@ -516,13 +515,11 @@ export interface CandidateVerdict {
  * factual-validation gate, then the browser-evidence gate — so it lives here once instead of being
  * restated by each fix path.
  *
- * `hasAnyValidation` deliberately takes the widest of the definitions the three paths carried
- * before they shared this function: a traced apply_rule dispatch _or_ a persisted validation
- * artifact. The legacy and agentic cores read the trace alone, so a run whose trace was truncated
- * after the artifact landed now reports a validation rejection where it once reported no validation
- * at all. That is the fail-closed direction — the artifact is proof the runner did judge this exact
- * candidate, and forgiving it would let a truncated trace publish an unproven rule as if nothing
- * had ever been tried.
+ * `hasAnyValidation` deliberately takes the widest definition: a traced apply_rule dispatch _or_ a
+ * persisted validation artifact. A run whose trace was truncated after the artifact landed reports
+ * a validation rejection rather than no validation at all. That is the fail-closed direction — the
+ * artifact is proof the runner did judge this exact candidate, and forgiving it would let a
+ * truncated trace publish an unproven rule as if nothing had ever been tried.
  *
  * @param request - The run's candidate evidence and the three path-specific gates.
  * @returns The verdict and the publishable candidate it leaves.

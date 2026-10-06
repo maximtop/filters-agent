@@ -59,7 +59,7 @@ export function parseLiveRunBinding(input: unknown): LiveRunBinding {
 /**
  * Render the exact trusted marker stored in a private live mirror issue.
  *
- * @param binding - Queue-selected report, prompt, filters, and lab identity.
+ * @param binding - Queue-selected report, prompt, filters, and source commit identity.
  * @returns Hidden canonical marker.
  */
 export function renderLiveMirrorMarker(binding: LiveRunBinding): string {
@@ -71,7 +71,7 @@ export function renderLiveMirrorMarker(binding: LiveRunBinding): string {
 /**
  * Parse a unique live mirror marker from an issue body.
  *
- * @param body - Current private lab issue body.
+ * @param body - Current private mirror issue body.
  * @returns Strict binding or null when the issue is not a live mirror.
  */
 export function parseLiveMirrorMarker(body: string | null): LiveRunBinding | null {

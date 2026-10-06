@@ -44,7 +44,7 @@ export interface AgentRuntimeListCatalogInputs {
 export interface AgentRuntimeListCatalogBundle {
     /**
      * The walked placement map, or null when the walk failed (the failure is logged); a null map is
-     * never handed to the tool factory, which then walks its own as before.
+     * never handed to the tool factory, which then walks its own.
      */
     placementMap: PlacementMap | null;
 

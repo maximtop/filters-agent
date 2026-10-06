@@ -27,13 +27,12 @@ export function replyRefused(reply: unknown): boolean {
 /**
  * Pause between two settings imports while the extension still refuses the document.
  *
- * `getIsAppInitialized` turns true before a fresh install has finished settling: live run
- * 35210877115 got `true` in 4 ms, then `applySettingsJson` answered `false` within half a second
- * and the enabled set read back empty, in four phases out of eight — while the same import took
- * three seconds and succeeded in the others. The model-driven application never met that window
- * only because a model turn took 20-50 seconds. The import's own answer is the one readiness signal
- * the protocol gives for it, so the host repeats the import, unhurried, until it is accepted or the
- * readiness budget ends.
+ * `getIsAppInitialized` turns true before a fresh install has finished settling: it can answer
+ * `true` in 4 ms, then `applySettingsJson` answers `false` within half a second and the enabled set
+ * reads back empty in some phases, while in others the same import takes three seconds and
+ * succeeds. A model-driven application never meets that window only because a model turn takes
+ * 20-50 seconds. The import's own answer is the one readiness signal the protocol gives for it, so
+ * the host repeats the import, unhurried, until it is accepted or the readiness budget ends.
  */
 const SETTINGS_IMPORT_SETTLE_DELAY_MS = 2_000;
 

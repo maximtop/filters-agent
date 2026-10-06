@@ -2,7 +2,7 @@
  * The shared composition-layer intake extraction of the per-issue engines: `extractIntakeReport`
  * (the runtime wiring every post-runner tooling flow shares, `src/intake/extract-issue-facts.ts`)
  * followed by the facts projection, so a filled report maps onto the run's issue facts before the
- * outcome returns. The shared entry and the lab's local runner both consume this module, so the
+ * outcome returns. The shared entry and other per-issue runners all consume this module, so the
  * intake composition exists exactly once for that role; consumers keep their own failure mappings
  * for skips and extraction errors.
  */

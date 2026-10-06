@@ -41,7 +41,6 @@ const FIX_SESSION_SURFACE: readonly ToolName[] = [
     ToolName.FetchIssue,
     ToolName.SelectEnvironment,
     ToolName.UpdateObservedIntent,
-    ToolName.PolicyCheck,
     ToolName.GetDetail,
     ToolName.LookupRuleGuidance,
     ToolName.ReportMissingInformation,

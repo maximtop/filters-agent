@@ -29,20 +29,19 @@ const DEFAULT_FULL_PAGE_TILE_LIMIT = 48;
  * Number of viewport heights ("screens") the DEFAULT capture inspects when the caller supplies no
  * explicit `tileWindow`.
  *
- * Live task #199909 (tradingview.com) tiled the entire document of an endless-feed page and
- * produced roughly 20 vision artifacts for a single full-page inventory, across 7 inventories in
- * that one task; measured over a 40-task live run, 5 such tasks consumed 58% of all vision images.
- * A page this long behaves like a feed, and scrolling it to the bottom proves nothing about the
- * reported issue, so the DEFAULT plan (no caller-supplied window) is capped to the first
- * `DEFAULT_FULL_PAGE_WINDOW_SCREENS` viewport heights. This never clips an explicitly supplied
- * `tileWindow` (e.g. the selector-derived window from `measureElementTileWindow`), which may
- * legitimately point below this cap and always wins verbatim.
+ * Tiling the entire document of an endless-feed page produces roughly 20 vision artifacts for a
+ * single full-page inventory, and a task can take several inventories; over a 40-task run, 5 such
+ * tasks consumed 58% of all vision images. A page this long behaves like a feed, and scrolling it
+ * to the bottom proves nothing about the reported issue, so the DEFAULT plan (no caller-supplied
+ * window) is capped to the first `DEFAULT_FULL_PAGE_WINDOW_SCREENS` viewport heights. This never
+ * clips an explicitly supplied `tileWindow` (e.g. the selector-derived window from
+ * `measureElementTileWindow`), which may legitimately point below this cap and always wins
+ * verbatim.
  *
- * Five, not the ten this shipped with (review decision, 2026-08-30): a 9-screen page slipped under
- * the old cap and one task still spent 98 vision images, and by the fifth screen of a long page the
- * content is the same repeating feed — anything the default sweep would learn below, it has already
- * learned above. Symptoms at a known depth are unaffected: the selector-derived window is exempt
- * from the cap by design.
+ * Five screens: a 9-screen page slips under a ten-screen cap and can still cost a task 98 vision
+ * images, and by the fifth screen of a long page the content is the same repeating feed — anything
+ * the default sweep would learn below, it has already learned above. Symptoms at a known depth are
+ * unaffected: the selector-derived window is exempt from the cap by design.
  */
 const DEFAULT_FULL_PAGE_WINDOW_SCREENS = 5;
 

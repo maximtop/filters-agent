@@ -207,12 +207,12 @@ async function inventoryImages(
 /**
  * Prompt lines telling one inventory pass what to do with page damage it sees in its state.
  *
- * An AFTER pass sees a flaw without knowing whether the candidate caused it, and the BEFORE passes
- * used to list no flaws at all, so the synthesis had nothing to compare against: on
- * nottinghampost.com a card whose "AD FEATURE" label has always overlapped its headline came back
- * from the AFTER tiles as text collision, and the review reported pageIntegrity regressed for a
- * candidate that touched nothing near it. The BEFORE passes therefore list the page's own flaws
- * under a fixed prefix, and the synthesis discounts AFTER damage that matches one.
+ * An AFTER pass sees a flaw without knowing whether the candidate caused it, and with no BEFORE
+ * flaws listed the synthesis has nothing to compare against: a card whose "AD FEATURE" label has
+ * always overlapped its headline comes back from the AFTER tiles as text collision, and the review
+ * reports pageIntegrity regressed for a candidate that touched nothing near it. The BEFORE passes
+ * therefore list the page's own flaws under a fixed prefix, and the synthesis discounts AFTER
+ * damage that matches one.
  *
  * @param state - Whether the pass looks at the control or the candidate-applied document.
  * @returns Prompt lines for that state's damage reporting.

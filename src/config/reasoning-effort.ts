@@ -20,8 +20,8 @@
  * high`. `xhigh` and `max` do exist in pi's own `ThinkingLevel` union, but they are unsupported for
  * this model: `clampThinkingLevel` folds them straight back down to `high`, so offering them would
  * only let a deployment configure a value that silently means something else. `off` is kept because
- * it is the only way to send no reasoning parameter at all, which is the wire shape the
- * pre-migration loop had — the like-for-like benchmark setting.
+ * it is the only way to send no reasoning parameter at all — the like-for-like setting when
+ * benchmarking against requests that carried none.
  */
 export const ReasoningEffort = {
     /**

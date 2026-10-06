@@ -1,13 +1,12 @@
 /**
  * Configuration→pi wiring: the two mappings from the validated `llm` configuration slice onto pi's
  * factories that every mode, runner and evaluator needs — the runtime handle and the out-of-loop
- * single-shot client, metered when the run collects usage. Both were open-coded at every call site
- * (five vision clients, ten runtimes), so a change to the retry derivation or the runtime fields
- * had to be repeated to stay consistent. The injection seams stay with the callers: a site that
- * accepts an injected runtime or vision client still resolves its own `dependencies.*` first and
- * only calls these helpers for the default. An injected client is then used exactly as given:
- * metering belongs to the client this module builds, and re-wrapping a caller's own metered client
- * would count its completions twice.
+ * single-shot client, metered when the run collects usage. Keeping them here means a change to the
+ * retry derivation or the runtime fields is made once instead of at every call site. The injection
+ * seams stay with the callers: a site that accepts an injected runtime or vision client still
+ * resolves its own `dependencies.*` first and only calls these helpers for the default. An injected
+ * client is then used exactly as given: metering belongs to the client this module builds, and
+ * re-wrapping a caller's own metered client would count its completions twice.
  */
 import type { Api, Model } from '@earendil-works/pi-ai';
 import type { LlmConfig } from '../config/config';
@@ -54,6 +53,7 @@ export async function createPiRuntimeFromConfig(
         maxOutputTokens: llm.maxOutputTokens,
         visionMaxOutputTokens: llm.visionMaxOutputTokens,
         providerRouting: llm.providerRouting,
+        reasoningEffort: llm.reasoningEffort,
     });
 }
 
@@ -96,14 +96,14 @@ export function createConfiguredSingleShotClient(
         ceilingMs: SINGLE_SHOT_CALL_CEILING_MS,
         maxRetries: providerMaxRetries(llm),
         // The role's configured completion cap, sent explicitly: pi's typed completion path sends
-        // only what the call passes, so without this a single-shot request carried no cap and the
-        // provider's own default cut a reasoning model's vision verdict at `length`.
+        // only what the call passes, so without this a single-shot request carries no cap and the
+        // provider's own default can cut a reasoning model's vision verdict at `length`.
         maxTokens: model.maxTokens,
         // The single-shot level, one setting for every single-shot call the run makes (the loop
         // sessions carry `llm.reasoningEffort`). It reaches the wire only for a model registered
         // `reasoning: true`, so it is inert on a client bound to the vision model and live on one
-        // bound to a reasoning model (the intake extraction, the benchmark reviewer's); wiring it
-        // once here is what keeps those from diverging.
+        // bound to a reasoning model (the intake extraction, a reviewer); wiring it once here is
+        // what keeps those from diverging.
         reasoningEffort: llm.singleShotReasoningEffort,
         logger: options.logger,
     });

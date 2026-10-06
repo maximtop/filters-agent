@@ -8,9 +8,8 @@ import { ExtensionManifestVersion } from '../environment/extension-preparation';
  * extension's background runtime inside a persistent context and derives the stable extension ID
  * the options-page transport needs.
  *
- * Decision 2 of 11-HITL retired the options-page driver; this module carries the location and
- * pacing helpers the surviving state read-back shares, moved verbatim from the retired module so
- * the message-based reads keep one home.
+ * This module carries the location and pacing helpers the state read-back shares, so the
+ * message-based reads keep one home.
  */
 
 /**

@@ -7,10 +7,9 @@ import { parse, type AnyNode, type MemberExpression, type Node, type Pattern } f
  * update or delete whose target is page state, a call of a method that mutates the page, or a call
  * that defers or hides code. Variables the expression declares are its own, and so are the object
  * and array literals it declares, so walking a parent chain with a loop variable, counting with
- * `++`, or filling a local `out` object is read-only. The lexer this replaces could not tell a
- * local from the page and refused all of those; over three scheduled passes it rejected 25 of 26
- * read-only diagnostics, quarantined the tool in three runs, and one of them (AdguardFilters
- * #242044) then spent its whole 35-minute budget probing selectors through `stabilize_page`.
+ * `++`, or filling a local `out` object is read-only. A text-level lexer cannot tell a local from
+ * the page and refuses all of those — nearly every real read-only diagnostic — which quarantines
+ * the tool and leaves a run spending its whole budget probing selectors through `stabilize_page`.
  */
 /**
  * Literal patterns that are never valid in a read-only evaluate_js diagnostic, matched on the raw

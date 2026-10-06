@@ -25,8 +25,7 @@ import {
  * Inspection of one already captured full page: bounded structured vision batches over the runner's
  * overview and original-resolution tiles, the coverage accounting that decides which exact
  * artifacts remain uninspected, and the persisted inventory artifact the retry guidance is read
- * from. Split out of `full-page-visual-inventory.ts`, which owns the pre-candidate capture flow;
- * the shared batching machinery both use lives in `full-page-visual-batches.ts`.
+ * from. The batching machinery it builds on lives in `full-page-visual-batches.ts`.
  */
 
 /**

@@ -71,11 +71,11 @@ export const SAFE_TOKEN_METRIC_KEYS = new Set([
     'cachewritetokens',
     // The Usage Summary's per-model price table, every key `UsageModelRatesSchema` declares.
     // These are configured USD prices, not credentials, and the schema requires numbers: without
-    // the exemption every rate published beside a run became "[redacted]" and the artifact failed
+    // the exemption every rate published beside a run becomes "[redacted]" and the artifact fails
     // its own re-parse, which fails the whole publication closed after the run has already been
-    // paid for. Read from the schema rather than listed here: a hand-copied list missed
-    // `cacheWriteUsdPerMillionTokens` when the schema gained it, and live run 34033583239 threw
-    // away all eight of its finished analyses on exactly that key.
+    // paid for. Read from the schema rather than listed here: a hand-copied list misses a key the
+    // schema gains (such as `cacheWriteUsdPerMillionTokens`), and every finished analysis of the
+    // run is then thrown away on exactly that key.
     ...Object.keys(UsageModelRatesSchema.entries).map((key) => key.toLowerCase()),
 ]);
 

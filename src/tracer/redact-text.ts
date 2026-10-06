@@ -3,9 +3,9 @@
  *
  * Whole-value credential verdicts, sensitive header lines, URL userinfo and query parameters, JWTs
  * embedded anywhere in free text, token prefixes, exact host secrets and unsafe control characters.
- * It used to be two tables — the browser evidence redactor carried a second copy of the
- * header/URL/JWT half — which meant every new exemption had to be taught twice and one pass could
- * scrub what the other preserved.
+ * Keeping one table matters: with a second copy of the header/URL/JWT half (in the browser evidence
+ * redactor, say) every new exemption has to be taught twice and one pass can scrub what the other
+ * preserves.
  *
  * One table, two scopes: {@link RedactionScope} says whether a pass is writing an artifact to disk
  * or answering the model mid-run, and the rules that rewrite PAGE-AUTHORED text rather than

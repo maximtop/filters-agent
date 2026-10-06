@@ -9,9 +9,9 @@ traces
 coverage
 tmp
 .live/docker-output
-# `lab/`, `tests/` and `scripts/` are deliberately kept: the lab recipe (`Dockerfile`) does an
-# unqualified `COPY . .` and builds them. Nothing in either image reads `.sdd` or the golden e2e
-# case fixtures (screenshots, only `test:e2e` and the test suite read them).
+# Local and test-only data no image reads: spec drafts and the screenshot fixtures of the
+# end-to-end cases. Source directories stay in the context, so a recipe that copies the whole
+# tree still receives them.
 .sdd
 lab/benchmark/e2e/cases
 *.log

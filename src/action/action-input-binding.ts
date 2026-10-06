@@ -19,7 +19,9 @@ import {
     LLM_MAX_OUTPUT_TOKENS_VAR,
     LLM_MODEL_VAR,
     LLM_PROVIDER_ROUTING_VAR,
+    LLM_REASONING_EFFORT_VAR,
     LLM_REQUEST_MAX_ATTEMPTS_VAR,
+    LLM_SINGLE_SHOT_REASONING_EFFORT_VAR,
     LLM_VISION_MAX_OUTPUT_TOKENS_VAR,
     LLM_VISION_MODEL_VAR,
 } from '../config/config';
@@ -176,8 +178,8 @@ const AgentActionInputName = {
 
     /**
      * The `llmContextWindowTokens` input; lands in the `LLM_CONTEXT_WINDOW_TOKENS` environment
-     * variable. The three limit inputs exist because the defaults are the limits of the model the
-     * agent was tuned on: a workflow that names another model states that model's limits here.
+     * variable. Mandatory like the completion cap below: a model's limits have no default, so a
+     * workflow without them fails at start, naming the variable, before the run spends anything.
      */
     llmContextWindowTokens: 'llmContextWindowTokens',
 
@@ -188,10 +190,23 @@ const AgentActionInputName = {
 
     /**
      * The `llmVisionMaxOutputTokens` input; lands in the `LLM_VISION_MAX_OUTPUT_TOKENS` environment
-     * variable. A gateway that routes by the requested cap finds no endpoint for a vision model
-     * whose own limit is below the default, so a distinct vision model usually needs this one.
+     * variable. Mandatory when the vision model differs from the reasoning model; when both inputs
+     * name one model, its value is `llmMaxOutputTokens`.
      */
     llmVisionMaxOutputTokens: 'llmVisionMaxOutputTokens',
+
+    /**
+     * The `llmReasoningEffort` input; lands in the `LLM_REASONING_EFFORT` environment variable the
+     * loop session's level is read from. `off` is how a workflow runs a model that does not
+     * reason.
+     */
+    llmReasoningEffort: 'llmReasoningEffort',
+
+    /**
+     * The `llmSingleShotReasoningEffort` input; lands in the `LLM_SINGLE_SHOT_REASONING_EFFORT`
+     * environment variable the intake extraction and vision verdicts read their level from.
+     */
+    llmSingleShotReasoningEffort: 'llmSingleShotReasoningEffort',
 
     /**
      * The `llmRequestMaxAttempts` input; lands in the `LLM_REQUEST_MAX_ATTEMPTS` environment
@@ -228,6 +243,8 @@ const AGENT_ACTION_INPUT_ENV_VAR: Partial<Record<AgentActionInputName, string>> 
     [AgentActionInputName.llmContextWindowTokens]: LLM_CONTEXT_WINDOW_TOKENS_VAR,
     [AgentActionInputName.llmMaxOutputTokens]: LLM_MAX_OUTPUT_TOKENS_VAR,
     [AgentActionInputName.llmVisionMaxOutputTokens]: LLM_VISION_MAX_OUTPUT_TOKENS_VAR,
+    [AgentActionInputName.llmReasoningEffort]: LLM_REASONING_EFFORT_VAR,
+    [AgentActionInputName.llmSingleShotReasoningEffort]: LLM_SINGLE_SHOT_REASONING_EFFORT_VAR,
     [AgentActionInputName.llmRequestMaxAttempts]: LLM_REQUEST_MAX_ATTEMPTS_VAR,
 };
 
@@ -405,9 +422,9 @@ export function mapAgentRunSources(
     }
     const sources: AgentRunInputSources = {
         repository: repositorySource(actionEnv),
-        // Tolerated-absence contract pinned (19-HITL review finding 3): an origin URL would need a
-        // git adapter the action face does not have, and precedence makes it unreachable behind
-        // the runner-guaranteed GITHUB_REPOSITORY. `null` means "no origin to read, never a
+        // Tolerated-absence contract: an origin URL would need a git adapter the action face does
+        // not have, and precedence makes it unreachable behind the runner-guaranteed
+        // GITHUB_REPOSITORY. `null` means "no origin to read, never a
         // failure" to the resolver.
         checkoutOriginUrl: null,
         issueNumber: numericActionInput(

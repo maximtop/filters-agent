@@ -5,17 +5,16 @@
  * filters-agent/ublock/user-filters.txt`), and that file is the host's state, not repository
  * content: between phases the host writes the candidate rule into it, reads it back, and a Firefox
  * launch carries its current content into managed storage. Resolving such a target against the
- * run's checkout put that file inside the repository, where every later walk of the checkout read
- * the run's own candidate back as repository content — the safety gate's duplicate scan rejected a
- * verified candidate as already present, and the verdict's recomputed hostname baseline drifted
- * away from the hash the apply-time context had recorded (the sarkisozleri.bbs.tr run lost its
- * candidate exactly that way). A directory outside the checkout removes the question by
- * construction: no checkout walk can reach it.
+ * run's checkout puts that file inside the repository, where every later walk of the checkout reads
+ * the run's own candidate back as repository content — the safety gate's duplicate scan rejects a
+ * verified candidate as already present, and the verdict's recomputed hostname baseline drifts away
+ * from the hash the apply-time context recorded, so the run loses its candidate. A directory
+ * outside the checkout removes the question by construction: no checkout walk can reach it.
  *
  * Anchored at `os.tmpdir()`, like every other private directory a run creates for itself (browser
- * profiles, the Firefox launch home): it is the one writable place the GitHub container action, the
- * lab runners and a desktop run all agree on, and every run already depends on it for its browser
- * profiles.
+ * profiles, the Firefox launch home): it is the one writable place the GitHub container action,
+ * other CI runners and a desktop run all agree on, and every run already depends on it for its
+ * browser profiles.
  */
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';

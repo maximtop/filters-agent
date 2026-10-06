@@ -32,9 +32,8 @@ export interface FixTerminalHost {
  * The vocabulary is large (issue_screenshot_analysis_required, report_only_full_vision_required,
  * candidate_visual_confirmation_required, ...), so the composer is generic: the error line plus the
  * required action and guidance when present, followed by every structured field as JSON. The
- * structured tail is not decoration: the retired agent loop returned the whole rejection object,
- * and dropping it cost live run 34003130266 four fix runs — a rejection whose prose named the wrong
- * prerequisite carried the right one only in `currentVisionRequirement.nextAction`.
+ * structured tail is not decoration: a rejection whose prose names the wrong prerequisite can carry
+ * the right one only in `currentVisionRequirement.nextAction`, and dropping the tail seals runs.
  *
  * @param rejection - The structured host rejection.
  * @returns The flat reason string shown to the model.

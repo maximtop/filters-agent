@@ -3,8 +3,8 @@
  *
  * The two launch families have nothing in common to print: the Chromium line loads an unpacked
  * AdGuard build and can name its directory and manifest generation, while a Firefox-family run
- * force-installs a signed XPI under a published extension id and has neither. Decision 5 of 32-AFK:
- * a uBO run names uBO, and nothing prints "AdGuard" or "Chromium + MV3 only" for it.
+ * force-installs a signed XPI under a published extension id and has neither. A uBO run names uBO,
+ * and nothing prints "AdGuard" or "Chromium + MV3 only" for it.
  */
 import { ExtensionLaunchFamily } from '../environment/extension-launch';
 import type { PreparedExtensionProvenance } from '../environment/environment-proofs';

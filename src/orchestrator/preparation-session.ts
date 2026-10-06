@@ -1,12 +1,12 @@
 /**
  * The preparation stage as a short-lived mode session.
  *
- * Decision (a) of the issue plan: when the run instruction carries a `## Preparation` section, the
- * host performs nothing — the model performs the blocker steps in this one session, bounded to the
- * two step tools of `preparation-tools.ts` and sealed by the `finish_preparation` terminal. The
- * session reuses the shared launch procedure (`launchModeSession`) with the same recorder and usage
- * collector the fix run already owns, so every preparation turn lands in the run trace; the trace
- * is deliberately left unsealed, because the fix run that follows owns the seal.
+ * When the run instruction carries a `## Preparation` section, the host performs nothing — the
+ * model performs the blocker steps in this one session, bounded to the two step tools of
+ * `preparation-tools.ts` and sealed by the `finish_preparation` terminal. The session reuses the
+ * shared launch procedure (`launchModeSession`) with the same recorder and usage collector the fix
+ * run already owns, so every preparation turn lands in the run trace; the trace is deliberately
+ * left unsealed, because the fix run that follows owns the seal.
  *
  * The step-failure latch is the phase's verdict mechanism: a first non-zero (or timed-out) step
  * latches the shared gate, the two step tools refuse everything afterwards, a `done` payload is
@@ -113,9 +113,9 @@ const PREPARATION_TERMINAL_COMMAND_MAX_LENGTH = 2_000;
  * `extensionDir` is required in effect for a `done` payload of the Chromium family — the core's
  * wiring rejects a done payload without a resolvable, existing directory — but stays optional in
  * the schema so a missing directory is the core's typed run failure naming it, not a schema bounce
- * the model retries. The Firefox-family fields (31-AFK Decision 1) are optional for the same reason
- * and for one more: the terminal's own host validation refuses an incomplete Firefox declaration by
- * name, with guidance the model can act on inside its session.
+ * the model retries. The Firefox-family fields are optional for the same reason and for one more:
+ * the terminal's own host validation refuses an incomplete Firefox declaration by name, with
+ * guidance the model can act on inside its session.
  */
 export const PreparationTerminalSchema = v.strictObject({
     status: v.picklist(PREPARATION_TERMINAL_STATUS_VALUES),

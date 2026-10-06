@@ -169,7 +169,7 @@ export interface LocalRunConfig {
     instructionPath?: string;
 
     /**
-     * Trusted report/revision identity for a hosted live run, absent from local benchmarks.
+     * Trusted report/revision identity for a hosted live run, absent from local runs.
      */
     liveBinding?: LiveRunBinding;
 }

@@ -6,9 +6,9 @@
 /**
  * Extract a hostname from the first parseable URL in the list.
  *
- * Wraps `new URL(...).hostname` in a try/catch (review finding 4) so malformed or unusual URLs from
- * the issue body do not throw. Iterates the list and uses the first URL that parses. If none parse,
- * falls back to a heuristic extraction (strip protocol and path).
+ * Wraps `new URL(...).hostname` in a try/catch so malformed or unusual URLs from the issue body do
+ * not throw. Iterates the list and uses the first URL that parses. If none parse, falls back to a
+ * heuristic extraction (strip protocol and path).
  *
  * @param urls - The reported site URLs from the issue facts.
  * @returns The extracted hostname (may be a heuristic fallback).
@@ -44,7 +44,7 @@ function sanitizeDomain(domain: string): string {
 /**
  * Derive the `fix/<N>-<domain>` branch name from the issue number and reported site URLs.
  *
- * This is the function referenced by review finding 4: it never throws on malformed URLs.
+ * It never throws on malformed URLs.
  *
  * @param issueNumber - The GitHub issue number.
  * @param reportedSiteUrls - The reported site URLs from the issue facts.

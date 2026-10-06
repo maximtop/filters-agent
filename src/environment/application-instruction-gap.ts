@@ -11,8 +11,8 @@
 /**
  * Stable refusal classes for an instruction whose application contract is missing or malformed.
  *
- * This is the AC2 record vocabulary: a run whose instruction cannot describe how to apply and
- * verify a rule records which part is missing and invents nothing.
+ * A run whose instruction cannot describe how to apply and verify a rule records which part is
+ * missing and invents nothing.
  */
 export const ApplicationInstructionGap = {
     /**

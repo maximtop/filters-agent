@@ -3,7 +3,7 @@
  *
  * Step 4 of `src/prompts/documents/instructions/adguard-extension.md`: a successful settings import
  * is not proof of the expected filter set — the extension re-enables some filters from settings of
- * its own after an import, and a live run read back `[2, 3, 10]` against the prepared `[2, 3]` — so
+ * its own after an import, so a read-back can show `[2, 3, 10]` against the prepared `[2, 3]` — so
  * the host reads the enabled set back, turns off what the expectation does not name, and re-reads,
  * a bounded number of times. Nothing is ever enabled here: the import is the only step that turns
  * filters on, and the protocol has no enable counterpart at all.
@@ -27,10 +27,10 @@ import type { Logger } from '../logger/logger';
  * How many times the host may turn unexpected filters off and re-read the enabled set.
  *
  * Why this value: a successful `applySettingsJson` is not proof of the expected set — the extension
- * re-enables some filters from settings of its own after an import, and a live run read back `[2,
- * 3, 10]` against the prepared `[2, 3]`. One more read-and-disable pass settles that; three bounds
- * a build that keeps re-enabling from looping forever, and is the count the built-in instruction
- * document has always specified (the retired options-page driver used the same).
+ * re-enables some filters from settings of its own after an import: a read-back of the prepared
+ * `[2, 3]` can show `[2, 3, 10]`. One more read-and-disable pass settles that; three bounds a build
+ * that keeps re-enabling from looping forever, and is the count the built-in instruction document
+ * specifies.
  */
 const FILTER_RECONCILIATION_ROUNDS = 3;
 

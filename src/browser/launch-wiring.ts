@@ -216,11 +216,10 @@ async function launchFirefoxPoliciesPieces(
 /**
  * Launch a persistent context with the unpacked prepared extension and nothing else.
  *
- * Decision 2 of 11-HITL: the options-page driver is retired, so the launch applies no settings and
- * captures no evidence pieces — the session boots the extension's own defaults, and the run's
- * application instruction (performed against the lease session) is the one mechanism that brings
- * the blocker to the prepared state. The host reads the blocker state back itself over the returned
- * context.
+ * The launch applies no settings and captures no evidence pieces — the session boots the
+ * extension's own defaults, and the run's application instruction (performed against the lease
+ * session) is the one mechanism that brings the blocker to the prepared state. The host reads the
+ * blocker state back itself over the returned context.
  *
  * @param inputs - Session-level launch inputs shared by every family branch.
  * @returns The launched context, page, profile directory, and the persistent context itself.
