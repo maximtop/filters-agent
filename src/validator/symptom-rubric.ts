@@ -104,6 +104,27 @@ export const REPORTER_SCOPE_RUBRIC = [
 ];
 
 /**
+ * Rubric lines telling every review prompt what the symptom is and what resolves it.
+ *
+ * On a site that gates its videos behind cookie consent, the reporter complained that the video did
+ * not play, and the screenshot showed the gray "enable cookies to view videos" placeholder. The
+ * candidate hid the placeholder, described its own target as "video placeholder overlay", and the
+ * review verified it: the placeholder was gone, while the video was as unavailable as before. The
+ * reporter's complaint defines the symptom, and a gating placeholder stands for the content it
+ * withholds — so hiding it leaves that symptom in place.
+ */
+export const SYMPTOM_DEFINITION_RUBRIC = [
+    "The reporter's complaint and screenshot define the symptom. A description of what the",
+    'candidate targets only helps locate it and never redefines what counts as fixed.',
+    'A placeholder or overlay that gates content behind an action — "enable cookies to view',
+    'this video", "disable your ad blocker to see this", "accept to load the map or',
+    'comments" — is a symptom of broken functionality: the defect is the withheld content.',
+    'Hiding such a placeholder does not resolve it; only the gated content appearing or',
+    'working does. Where that content is still absent after the candidate, the same symptom',
+    'remains, whether the placeholder is still shown or was hidden.',
+];
+
+/**
  * Residue rubric lines for the final text-only synthesis prompt.
  *
  * For breakage reviews the `adLayoutResidue` field is repurposed as the filtering-regression guard:

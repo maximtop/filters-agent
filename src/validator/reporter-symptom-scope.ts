@@ -120,7 +120,8 @@ export function composeReporterSymptomScope(material: ReporterSymptomMaterial): 
                   '',
                   '',
                   'WHAT THIS ONE CANDIDATE TARGETS — one part of the symptom above, not the limit',
-                  'of this review:',
+                  'of this review. It helps locate the symptom and never redefines it or what',
+                  'counts as fixed:',
                   candidateTarget,
               ];
     const reporterLines = [

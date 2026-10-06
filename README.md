@@ -258,6 +258,48 @@ The link labels are what bind the documents: a label containing `syntax`, `polic
 documents instead of the pinned AdGuard KnowledgeBase. A topic whose role you did not link is
 answered by a notice saying so, which the run's report carries as missing information.
 
+### Your own rules for the agent
+
+Rules your maintainers keep applying by hand go into the same instruction file, in plain prose under
+a `##` heading of their own. The run puts the whole instruction into the agent's task word for word,
+and tells the agent that it governs over its default guidance. Write each rule the way you would
+explain it to a new maintainer: the situation, the rule to write, the rule not to write, and why. A
+real issue with the rule you rejected and the rule you wrote teaches the agent faster than the
+principle alone.
+
+Continuing the guidance-only instruction above:
+
+```markdown
+## Maintainer rules
+
+### Anti-adblock popups: disable the detector, do not hide the popup
+
+When a site shows an anti-adblock popup or wall, do not propose a cosmetic rule that hides the
+popup: the detector keeps running, so the site can still lock content or show the popup in another
+layout. Find the script that detects the blocker and neutralize it with a scriptlet, usually
+`set-constant` or `abort-on-property-read` on the detector's property.
+
+Example, AdguardTeam/AdguardFilters#243463 (wzielonej.pl):
+
+- Hides the popup only: `wzielonej.pl###tie-popup-adblock`
+- Disables the detector: `wzielonej.pl#%#//scriptlet("set-constant", "tie.ad_blocker_detector", "")`
+```
+
+Three limits apply:
+
+- Some `##` headings carry a function: a heading containing `preparation`, `application`,
+  `verification`, `selection`, `which issues` or `report template` is read as that part of the
+  instruction. Name your rules' heading something else, such as `## Maintainer rules`.
+- The built-in policy check comes first and your rules cannot relax it: a first-party ad, a paywall
+  and a German anti-adblock report end without a rule, and another anti-adblock wall needs a captured
+  network log before a rule is written. Your rules can be stricter than that.
+- Each linked document role binds one document. Linking your own policy document replaces the
+  AdGuard filter policy rather than adding to it, so rules that extend it belong in the instruction
+  text.
+
+The instruction, without its linked documents, is capped at 16 000 characters; a longer one fails
+the run at start rather than being cut.
+
 ### Where an accepted rule goes
 
 You do not have to tell the action anything for this to work. The agent chooses the list from what
