@@ -14,6 +14,7 @@
 
 import type { Octokit } from '@octokit/rest';
 import type { Logger } from '../logger/logger';
+import type { FixRunResult, VerifiedCandidateScreenshotPaths } from '../types/fix-run-result';
 
 /**
  * Branch of the analyzed repository that receives the screenshots when the workflow names none.
@@ -22,6 +23,24 @@ import type { Logger } from '../logger/logger';
  * prunes the whole set.
  */
 export const DEFAULT_REPORT_SCREENSHOTS_BRANCH = 'filters-agent-screenshots';
+
+/**
+ * The screenshot pair the report shows under "Without and with the rule", when it shows one.
+ *
+ * The pair illustrates the rule the report publishes. A verified experiment's screenshots survive
+ * on a result that publishes no rule — the safety gate downgraded its draft, or the model finished
+ * on another outcome — and there they would show a change the report never names.
+ *
+ * @param result - The run result the report renders.
+ * @returns The verified pair behind the published rule, or undefined when there is no such rule.
+ */
+export function publishedRuleScreenshots(
+    result: FixRunResult,
+): VerifiedCandidateScreenshotPaths | undefined {
+    return result.candidatePatch === null
+        ? undefined
+        : result.artifactPaths.verifiedCandidateScreenshots;
+}
 
 /**
  * Display width of each screenshot in the comment, in pixels.

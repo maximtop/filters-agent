@@ -37,7 +37,7 @@ import {
 import { AgentTerminationReason } from '../types/agent-termination-reason';
 import { InfrastructureFailureReason } from '../types/infrastructure-failure-reason';
 import { RunMode, TraceEventType } from '../types/trace';
-import { enforceCandidateSafety } from './candidate-safety';
+import { enforceCandidateSafety, logCandidateSafetyDecision } from './candidate-safety';
 import { branchNameDomain, deriveBranchName } from './fix-branch-name';
 import {
     candidatePatchFromOutcome,
@@ -404,24 +404,14 @@ export async function runAgenticFixCore(
             ...(declaredPlacement === undefined ? {} : { declaredPlacement }),
         });
         const outcome = candidateSafety.outcome;
-        if (candidateSafety.rejectionReason !== null) {
-            logger.warn(
-                {
-                    rule:
-                        terminal.outcome === FixOutcomeKind.DraftPr
-                            ? terminal.ruleProposal.rule
-                            : undefined,
-                    rejectionReason: candidateSafety.rejectionReason,
-                },
-                'candidate safety gate downgraded the accepted draft to analysis-only',
-            );
-        }
+        logCandidateSafetyDecision(logger, terminal, candidateSafety);
         const proposedCandidate = candidatePatchFromOutcome(
             outcome,
             config.repositoryPath,
             declaredPlacement,
         );
-        // The rule an analysis-only run found and could not verify. It has no publication path by
+        // The rule an analysis-only run found and could not verify — the model's own, or the draft
+        // the safety gate above downgraded, with the gate's reason. It has no publication path by
         // design; carrying it typed is what stops it from surviving only inside the reasoning
         // prose, where a maintainer has to dig it out.
         const candidateForReview =

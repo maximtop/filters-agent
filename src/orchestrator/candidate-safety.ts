@@ -8,11 +8,16 @@ import {
     isSingleLineRule,
     normalizeRule,
 } from '../repo/rule-normalizer';
-import { RuleType } from '../types/rule-proposal';
+import { RuleType, type RuleProposal } from '../types/rule-proposal';
+import {
+    MAX_CANDIDATE_FOR_REVIEW_RULE_CHARACTERS,
+    MAX_UNVERIFIED_REASON_CHARACTERS,
+} from '../types/candidate-for-review';
 import { candidateScopeProblem, normalizeScopeDomain } from './candidate-scope';
 import type { DeclaredPlacementSet } from '../types/declared-placement';
 import { planRepositoryEdit } from '../repo/repository-edit';
 import { parseSafeCssInjectionRule } from '../rules/safe-css-injection';
+import type { Logger } from '../logger/logger';
 
 /**
  * Repository and issue context needed for deterministic candidate validation.
@@ -48,11 +53,26 @@ export interface CandidateSafetyOptions {
 }
 
 /**
+ * A rule-type label the gate replaced with the type parsed from the rule text.
+ */
+export interface RuleTypeCorrection {
+    /**
+     * The label the model wrote on its proposal.
+     */
+    from: RuleType;
+
+    /**
+     * The type the rule text parses to, which the accepted outcome now carries.
+     */
+    to: RuleType;
+}
+
+/**
  * Safe outcome after deterministic candidate validation.
  */
 export interface CandidateSafetyDecision {
     /**
-     * Original safe outcome or an analysis-only downgrade.
+     * The safe outcome with its rule type taken from the rule text, or an analysis-only downgrade.
      */
     outcome: FixOutcome;
 
@@ -60,6 +80,11 @@ export interface CandidateSafetyDecision {
      * Explicit rejection reason, or null when no candidate was rejected.
      */
     rejectionReason: string | null;
+
+    /**
+     * The model's rule-type label the gate replaced, when it disagreed with the parsed rule.
+     */
+    ruleTypeCorrection?: RuleTypeCorrection;
 }
 
 /**
@@ -142,25 +167,54 @@ function hasExactDuplicate(checkoutPath: string, candidateCanonical: string): bo
 }
 
 /**
- * Reject a candidate and preserve its original reasoning for the report-only PR.
+ * Reject a candidate and keep both its reasoning and the rule itself for the report.
  *
- * @param outcome - Unsafe draft-PR outcome.
+ * The downgraded outcome carries the rule as its candidate for review, with the gate's reason as
+ * why it stays unverified: a rule the browser may well have verified must reach the maintainer as a
+ * rule, not as a sentence buried in the reasoning. A rule that is not one filter line cannot be
+ * carried that way — it would be a second, unreviewed rule — so it stays in the reasoning only.
+ *
+ * @param draftReasoning - Reasoning of the unsafe draft-PR outcome.
+ * @param proposal - Rule proposal of that draft.
  * @param reason - Deterministic rejection reason.
  * @returns Analysis-only safety decision.
  */
-function rejectCandidate(outcome: FixOutcome, reason: string): CandidateSafetyDecision {
+function rejectCandidate(
+    draftReasoning: string,
+    proposal: RuleProposal,
+    reason: string,
+): CandidateSafetyDecision {
     const reasoning =
-        'reasoning' in outcome && outcome.reasoning.length > 0
-            ? `${outcome.reasoning} Candidate rejected: ${reason}`
+        draftReasoning.length > 0
+            ? `${draftReasoning} Candidate rejected: ${reason}`
             : `Candidate rejected: ${reason}`;
+    const { rule, placement } = proposal;
+    const reviewable =
+        isSingleLineRule(rule) && rule.length <= MAX_CANDIDATE_FOR_REVIEW_RULE_CHARACTERS;
     return {
-        outcome: { outcome: FixOutcomeKind.AnalysisOnly, reasoning },
+        outcome: {
+            outcome: FixOutcomeKind.AnalysisOnly,
+            reasoning,
+            ...(reviewable
+                ? {
+                      candidateForReview: {
+                          rule,
+                          placement: { filePath: placement.filePath },
+                          unverifiedReason: reason.slice(0, MAX_UNVERIFIED_REASON_CHARACTERS),
+                      },
+                  }
+                : {}),
+        },
         rejectionReason: reason,
     };
 }
 
 /**
  * Enforce deterministic publication invariants before a runtime candidate reaches the publisher.
+ *
+ * The rule's type is a fact of its text, not a claim the model makes: the accepted outcome carries
+ * the type the rule parses to, whatever the proposal labelled it, so placement, patch and report
+ * all read the parsed type. A wrong label alone never costs a verified rule.
  *
  * Unsafe drafts are downgraded to analysis-only so the publisher can still create its single
  * report-only PR. The risk assessment is the agent's: what the rule may touch beyond the reported
@@ -207,9 +261,10 @@ export function enforceCandidateSafety(
                 'Candidate CSS injection is outside the validator-owned safe subset.',
             );
         }
-        if (generalRuleTypeForKind(normalized.kind) !== proposal.ruleType) {
+        const parsedRuleType = generalRuleTypeForKind(normalized.kind);
+        if (parsedRuleType === null) {
             throw new CandidateSafetyError(
-                `Candidate ruleType ${proposal.ruleType} does not match parsed kind ${normalized.kind}.`,
+                `Candidate is not an actionable rule: it parses as ${normalized.kind}.`,
             );
         }
         if (normalized.isException && !isIncorrectBlockingReport(options.problemType)) {
@@ -257,12 +312,50 @@ export function enforceCandidateSafety(
             throw new CandidateSafetyError('Candidate rule already exists in the checkout.');
         }
 
-        return { outcome, rejectionReason: null };
+        if (parsedRuleType === proposal.ruleType) {
+            return { outcome, rejectionReason: null };
+        }
+        return {
+            outcome: { ...outcome, ruleProposal: { ...proposal, ruleType: parsedRuleType } },
+            rejectionReason: null,
+            ruleTypeCorrection: { from: proposal.ruleType, to: parsedRuleType },
+        };
     } catch (error) {
         const reason =
             error instanceof CandidateSafetyError
                 ? error.message
                 : `Candidate safety validation failed: ${(error as Error).message}`;
-        return rejectCandidate(outcome, reason);
+        return rejectCandidate(outcome.reasoning, outcome.ruleProposal, reason);
+    }
+}
+
+/**
+ * Log what the gate changed about the accepted terminal: a corrected rule-type label, a downgrade.
+ *
+ * Both are silent to the model, so the run log is the one place a reader can learn that the gate
+ * relabelled a rule or why a draft the session accepted ended analysis-only.
+ *
+ * @param logger - Run logger.
+ * @param terminal - The terminal outcome the session accepted, before the gate.
+ * @param decision - The gate's decision on it.
+ */
+export function logCandidateSafetyDecision(
+    logger: Logger,
+    terminal: FixOutcome,
+    decision: CandidateSafetyDecision,
+): void {
+    const rule =
+        terminal.outcome === FixOutcomeKind.DraftPr ? terminal.ruleProposal.rule : undefined;
+    if (decision.ruleTypeCorrection !== undefined) {
+        logger.info(
+            { rule, ...decision.ruleTypeCorrection },
+            'candidate rule type label corrected to the type parsed from the rule',
+        );
+    }
+    if (decision.rejectionReason !== null) {
+        logger.warn(
+            { rule, rejectionReason: decision.rejectionReason },
+            'candidate safety gate downgraded the accepted draft to analysis-only',
+        );
     }
 }

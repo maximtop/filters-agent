@@ -44,7 +44,10 @@ import {
     summarizeReportOutcome,
 } from '../publisher/report-render';
 import { withReportFooter } from '../publisher/report-footer';
-import { renderHostedReportScreenshots } from '../publisher/report-screenshots';
+import {
+    publishedRuleScreenshots,
+    renderHostedReportScreenshots,
+} from '../publisher/report-screenshots';
 import { resolveReportTemplate } from '../publisher/report-template';
 import { decideVersionUpdate } from '../publisher/report-version-decision';
 import { writeRunReportArtifacts } from './single-issue-run-artifacts';
@@ -542,7 +545,7 @@ async function runInsideWorkspace(
                 token: request.token ?? '',
             });
         const reportAuthorLogin = await resolveReportAuthorLogin(client, logger);
-        const screenshots = runResult.artifactPaths.verifiedCandidateScreenshots;
+        const screenshots = publishedRuleScreenshots(runResult);
         const publication = await publishGuardedReport(
             client,
             {
