@@ -12,6 +12,7 @@ import { RuleType, type RuleProposal } from '../types/rule-proposal';
 import {
     MAX_CANDIDATE_FOR_REVIEW_RULE_CHARACTERS,
     MAX_UNVERIFIED_REASON_CHARACTERS,
+    type CandidateForReview,
 } from '../types/candidate-for-review';
 import { candidateScopeProblem, normalizeScopeDomain } from './candidate-scope';
 import type { DeclaredPlacementSet } from '../types/declared-placement';
@@ -188,24 +189,39 @@ function rejectCandidate(
         draftReasoning.length > 0
             ? `${draftReasoning} Candidate rejected: ${reason}`
             : `Candidate rejected: ${reason}`;
-    const { rule, placement } = proposal;
-    const reviewable =
-        isSingleLineRule(rule) && rule.length <= MAX_CANDIDATE_FOR_REVIEW_RULE_CHARACTERS;
+    const candidateForReview = candidateForReviewOf(proposal, reason);
     return {
         outcome: {
             outcome: FixOutcomeKind.AnalysisOnly,
             reasoning,
-            ...(reviewable
-                ? {
-                      candidateForReview: {
-                          rule,
-                          placement: { filePath: placement.filePath },
-                          unverifiedReason: reason.slice(0, MAX_UNVERIFIED_REASON_CHARACTERS),
-                      },
-                  }
-                : {}),
+            ...(candidateForReview === undefined ? {} : { candidateForReview }),
         },
         rejectionReason: reason,
+    };
+}
+
+/**
+ * Carry a draft's rule to the report as a candidate for review, with why it stays unverified.
+ *
+ * A rule that is not one filter line cannot be carried that way — it would be a second, unreviewed
+ * rule — so it stays in the reasoning only.
+ *
+ * @param proposal - Rule proposal of the draft that will not be published.
+ * @param reason - Why the run does not publish it.
+ * @returns The candidate for review, or undefined when the rule is not one filter line.
+ */
+export function candidateForReviewOf(
+    proposal: RuleProposal,
+    reason: string,
+): CandidateForReview | undefined {
+    const { rule, placement } = proposal;
+    if (!isSingleLineRule(rule) || rule.length > MAX_CANDIDATE_FOR_REVIEW_RULE_CHARACTERS) {
+        return undefined;
+    }
+    return {
+        rule,
+        placement: { filePath: placement.filePath },
+        unverifiedReason: reason.slice(0, MAX_UNVERIFIED_REASON_CHARACTERS),
     };
 }
 

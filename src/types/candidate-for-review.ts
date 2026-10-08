@@ -71,3 +71,8 @@ export const CandidateForReviewSchema = v.object({
         ),
     ),
 });
+
+/**
+ * An unverified rule an analysis-only run carries to the report for a maintainer to judge.
+ */
+export type CandidateForReview = v.InferOutput<typeof CandidateForReviewSchema>;

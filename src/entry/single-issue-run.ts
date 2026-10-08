@@ -489,7 +489,9 @@ async function runInsideWorkspace(
         runResult,
         {
             summary: agentArtifacts.artifacts?.decision?.summary,
-            reasoning: agentArtifacts.artifacts?.decision?.reasoning,
+            // A run the host ended itself (a sealed session) has no model decision; its result
+            // still carries the reasoning the host kept, which the rationale shows instead.
+            reasoning: agentArtifacts.artifacts?.decision?.reasoning ?? runResult.reasoning,
         },
         request.actionsRunUrl ?? '',
         reportedVersion,

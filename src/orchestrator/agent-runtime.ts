@@ -689,6 +689,15 @@ const WITHHELD_PAGE_REPORT: Readonly<Record<WithheldPageObstruction, WithheldPag
  */
 interface PendingCandidateAttempt {
     /**
+     * The model-proposed rule exactly as it would be published, outer whitespace trimmed.
+     *
+     * The experiment applies these bytes, not the normalized form: the verdict and the published
+     * evidence bind the validation to the rule text the run publishes, and the normalized form
+     * reorders and lowercases a network rule's modifiers.
+     */
+    rule: string;
+
+    /**
      * Shared normalized representation of the model-proposed rule.
      */
     normalized: NormalizedRule;
@@ -1018,6 +1027,15 @@ export class AgentRuntime {
      * Whether pinned rule guidance was consulted before a candidate.
      */
     private guidanceConsulted = false;
+
+    /**
+     * Pages a reported URL redirected to on another site, in the order the run reached them.
+     *
+     * A link shortener or a tracking redirect is the reported URL, yet the page the reporter saw is
+     * where it lands. Each landing becomes a target the model may launch a session on, and the
+     * domain a candidate may be scoped to.
+     */
+    private readonly redirectTargetUrls: string[] = [];
 
     /**
      * Canonical candidate rules and their stable attempt numbers.
@@ -1955,7 +1973,7 @@ export class AgentRuntime {
         return {
             issue: this.options.issue,
             issueAttachmentArtifactIds: this.options.issueAttachmentArtifactIds,
-            allowedTargetUrls: this.options.allowedTargetUrls,
+            allowedTargetUrls: this.targetUrls(),
             fetchedIssueNumber: this.fetchedIssueNumber,
             activeSessionId: this.activeSessionId,
             sessionStates: this.sessionStates,
@@ -2922,7 +2940,7 @@ export class AgentRuntime {
             };
         }
         const request = parsed.output;
-        const targetUrl = bindAllowedTargetUrl(request.targetUrl, this.options.allowedTargetUrls);
+        const targetUrl = bindAllowedTargetUrl(request.targetUrl, this.targetUrls());
         if (!targetUrl) {
             return {
                 error: 'targetUrl must exactly match one of the prompt-safe URLs in fetch_issue.',
@@ -3838,7 +3856,7 @@ export class AgentRuntime {
                 'in the browser-extension environment',
             );
         }
-        const candidateRule = candidate.normalized.canonical;
+        const candidateRule = candidate.rule;
         // The baseline is recomputed at the verdict, after the host has written the candidate into
         // the declared blocker-state file; that file lives in the run's host-state root, so both
         // computations see the same unchanged checkout.
@@ -4331,6 +4349,7 @@ export class AgentRuntime {
                             }
                             this.candidateAttemptSessionIds.set(canonical, attemptedSessionIds);
                             pendingCandidate = {
+                                rule: candidateRule.trim(),
                                 normalized,
                                 attemptNumber: existingAttempt,
                                 operation,
@@ -4353,6 +4372,7 @@ export class AgentRuntime {
                             }
                             this.candidateAttemptSessionIds.set(canonical, attemptedSessionIds);
                             pendingCandidate = {
+                                rule: candidateRule.trim(),
                                 normalized,
                                 attemptNumber,
                                 operation,
@@ -4426,12 +4446,63 @@ export class AgentRuntime {
                     // with its decision first and its bulk bounded, so the verdict is never the
                     // part the tool-result limit cuts away.
                     const forModel =
-                        name === 'apply_rule' ? applyRuleResultForModel(result) : result;
+                        name === 'apply_rule'
+                            ? applyRuleResultForModel(result)
+                            : name === 'open_page'
+                              ? this.withRedirectGuidance(result)
+                              : result;
                     return forModel;
                 },
             });
             this.activeBrowserToolNames.add(name);
         }
+    }
+
+    /**
+     * Every URL the model may launch a session on: the prompt-safe reported URLs, then the pages
+     * they redirected to on another site.
+     *
+     * @returns Target URLs in that order.
+     */
+    private targetUrls(): string[] {
+        return [...this.options.allowedTargetUrls, ...this.redirectTargetUrls];
+    }
+
+    /**
+     * Point the model at the redirect destination when open_page landed on another site.
+     *
+     * The session stays bound to the site it was launched on, so it can neither credit nor
+     * investigate the page it landed on; a session launched on that page can.
+     *
+     * @param result - The open_page result.
+     * @returns The result, with the destination and what to do about it when the page redirected.
+     */
+    private withRedirectGuidance(result: Record<string, unknown>): Record<string, unknown> {
+        const state = this.activeSessionId
+            ? this.sessionStates.get(this.activeSessionId)
+            : undefined;
+        const landedUrl =
+            result.error === undefined && typeof result.url === 'string'
+                ? canonicalTargetUrl(result.url)
+                : undefined;
+        if (
+            !state ||
+            !landedUrl ||
+            !this.redirectTargetUrls.includes(landedUrl) ||
+            registrableDomain(new URL(landedUrl).hostname) ===
+                registrableDomain(new URL(state.targetUrl).hostname)
+        ) {
+            return result;
+        }
+        return {
+            ...result,
+            redirectedTo: landedUrl,
+            guidance:
+                'The reported URL redirected to another site, so this session does not count as ' +
+                'reaching the reported page. Launch a new session with targetUrl set to ' +
+                'redirectedTo and investigate the page there; rules for that page are scoped ' +
+                'to its domain.',
+        };
     }
 
     /**
@@ -4460,6 +4531,10 @@ export class AgentRuntime {
             ) {
                 state.navigationVerified = true;
                 this.lastBrowserError = undefined;
+            } else if (navigatedUrl && !this.targetUrls().includes(navigatedUrl)) {
+                // open_page only opens the session's own site, so a landing on another site is
+                // where that site redirected the browser.
+                this.redirectTargetUrls.push(navigatedUrl);
             }
             // The main document's status is the browser's own fact about the page. What the page
             // shows in its place — a sign-in wall, a regional block, a bot check — is judged by

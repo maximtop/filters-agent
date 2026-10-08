@@ -48,6 +48,13 @@ const ESCAPED_CHARACTERS: Record<string, string> = {
 };
 
 /**
+ * A Markdown inline code span: a backtick run, content that neither starts nor ends with a
+ * backtick, and a closing run of the same length. The opening run is a whole run, and one after a
+ * backslash opens nothing, since Markdown reads that backtick literally.
+ */
+const CODE_SPAN_PATTERN = /(?<![\\`])(`+)(?!`)[^`]*?(?:`+[^`]+?)*?\1(?!`)/gu;
+
+/**
  * Escape one character of untrusted text for safe inclusion in the comment body.
  *
  * @param character - One Unicode character from the flattened source text.
@@ -92,20 +99,70 @@ export function renderUntrustedText(input: string): string {
     if (singleLine.length === 0) {
         return '';
     }
+    const budget = MAX_UNTRUSTED_TEXT_CHARACTERS - TRUNCATION_MARK.length;
     let escaped = '';
     let truncated = false;
-    for (const character of singleLine) {
-        const safeCharacter = escapeUntrustedCharacter(character);
-        if (
-            escaped.length + safeCharacter.length >
-            MAX_UNTRUSTED_TEXT_CHARACTERS - TRUNCATION_MARK.length
-        ) {
+    let index = 0;
+    for (const span of singleLine.matchAll(CODE_SPAN_PATTERN)) {
+        const plain = escapeWithin(singleLine.slice(index, span.index), budget - escaped.length);
+        escaped += plain.text;
+        if (plain.truncated) {
             truncated = true;
             break;
         }
-        escaped += safeCharacter;
+        // A code span shows its content literally, so an entity inside it would show as one: the
+        // span goes in unescaped, whole. One that does not fit is escaped like plain text instead,
+        // since a cut span would leave its tail outside the code.
+        if (escaped.length + span[0].length <= budget) {
+            escaped += span[0];
+        } else {
+            const cut = escapeWithin(span[0], budget - escaped.length);
+            escaped += cut.text;
+            truncated = cut.truncated;
+            break;
+        }
+        index = span.index + span[0].length;
+    }
+    if (!truncated) {
+        const rest = escapeWithin(singleLine.slice(index), budget - escaped.length);
+        escaped += rest.text;
+        truncated = rest.truncated;
     }
     return truncated ? `${escaped}${TRUNCATION_MARK}` : escaped;
+}
+
+/**
+ * Plain text escaped up to the room it was given.
+ */
+interface EscapedSlice {
+    /**
+     * The escaped text that fits.
+     */
+    text: string;
+
+    /**
+     * Whether escaping stopped before the end of the text.
+     */
+    truncated: boolean;
+}
+
+/**
+ * Escape plain untrusted text character by character until the next character would overflow.
+ *
+ * @param text - Flattened plain text outside any code span.
+ * @param room - Characters still available for the escaped output.
+ * @returns The escaped text, and whether escaping stopped before the end.
+ */
+function escapeWithin(text: string, room: number): EscapedSlice {
+    let escaped = '';
+    for (const character of text) {
+        const safeCharacter = escapeUntrustedCharacter(character);
+        if (escaped.length + safeCharacter.length > room) {
+            return { text: escaped, truncated: true };
+        }
+        escaped += safeCharacter;
+    }
+    return { text: escaped, truncated: false };
 }
 
 /**

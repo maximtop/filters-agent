@@ -19,7 +19,10 @@ Fill these report fields:
 
 - `siteUrls`: the target site URLs — required, at least one. Take the URL from
   the `### Issue URL` section, the issue title, or any site URL in the body or
-  the trusted comments.
+  the trusted comments. When a link's text is a URL and the link points to a
+  redirect or anonymizer page that only forwards to it (the text URL appears in
+  the target's query), take the URL in the link text: that is the reported site,
+  the target is only a wrapper around it.
 - `problemType`: one of `ads`, `anti-adblock`, `incorrect-blocking`,
   `annoyance`, `other`.
 - `declaredType`: the type the report form declared — the parenthetical in a

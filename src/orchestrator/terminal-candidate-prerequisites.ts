@@ -39,10 +39,16 @@ export function validateCandidateScope(
         return undefined;
     }
     const candidate = normalizeRule(outcome.ruleProposal.rule);
-    const problem = candidateScopeProblem(candidate, reportedDomain);
-    if (problem === undefined) {
+    // A reported URL that redirected to another site adds that site's page as a target: a rule
+    // scoped to any target's domain is scoped to the reported page.
+    const inScope = view.allowedTargetUrls.some((url) => {
+        const domain = reportedDomainFromAllowedTargets([url]);
+        return domain !== undefined && candidateScopeProblem(candidate, domain) === undefined;
+    });
+    if (inScope) {
         return undefined;
     }
+    const problem = candidateScopeProblem(candidate, reportedDomain)!;
     return {
         error:
             `${problem} When the fix extends an existing rule's domain list, the candidate is ` +

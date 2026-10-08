@@ -162,8 +162,11 @@ export interface SealContext {
 }
 
 /**
- * Reconstruct the analysis_only outcome for the rejected-terminal seal: the host summary plus the
- * last rejected payload's preserved reasoning, sliced to the shared bound.
+ * Reconstruct the analysis_only outcome for the rejected-terminal seal: the last rejected payload's
+ * preserved reasoning, sliced to the shared bound, then the host summary.
+ *
+ * The model's analysis leads because the report shows only the start of the reasoning, and what the
+ * run found matters to a maintainer more than why the host stopped it.
  *
  * @param hostSummary - Naming the exhausted rejection budget and the last rejection reason.
  * @param rejected - The last rejected payload.
@@ -176,10 +179,7 @@ function rejectedTerminalOutcome(
     const reasoning =
         rejected === undefined
             ? hostSummary
-            : `${hostSummary}\n\nPreserved model analysis:\n${rejected.reasoning.slice(
-                  0,
-                  MAX_PRESERVED_REJECTED_REASONING_LENGTH,
-              )}`;
+            : `${rejected.reasoning.slice(0, MAX_PRESERVED_REJECTED_REASONING_LENGTH)}\n\n${hostSummary}`;
     return { outcome: FixOutcomeKind.AnalysisOnly, reasoning };
 }
 

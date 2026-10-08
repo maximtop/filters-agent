@@ -37,7 +37,11 @@ import {
 import { AgentTerminationReason } from '../types/agent-termination-reason';
 import { InfrastructureFailureReason } from '../types/infrastructure-failure-reason';
 import { RunMode, TraceEventType } from '../types/trace';
-import { enforceCandidateSafety, logCandidateSafetyDecision } from './candidate-safety';
+import {
+    candidateForReviewOf,
+    enforceCandidateSafety,
+    logCandidateSafetyDecision,
+} from './candidate-safety';
 import { branchNameDomain, deriveBranchName } from './fix-branch-name';
 import {
     candidatePatchFromOutcome,
@@ -732,8 +736,19 @@ export async function runAgenticFixCore(
         // The analysis-only candidate travels only while the run publishes no patch, which is the
         // schema invariant too. `assembleFixRunResult` clears `candidatePatch` on every status but
         // patch_proposed, so the guard reads the assembled result rather than the verdict.
-        if (candidateForReview !== undefined && finalResult.candidatePatch === null) {
-            finalResult.candidateForReview = candidateForReview;
+        // A draft the verdict did not back is not published, yet the run proposed it as the fix:
+        // the maintainer still gets the rule, with the reason the run could not confirm it.
+        const reviewCandidate =
+            candidateForReview ??
+            (outcome.outcome === FixOutcomeKind.DraftPr
+                ? candidateForReviewOf(
+                      outcome.ruleProposal,
+                      'The run could not confirm the validation behind this rule: ' +
+                          `${semanticRefusal ?? 'its verification evidence is incomplete'}.`,
+                  )
+                : undefined);
+        if (reviewCandidate !== undefined && finalResult.candidatePatch === null) {
+            finalResult.candidateForReview = reviewCandidate;
         }
         if (preparedExtensionProvenance) {
             finalResult.extensionProvenance = serializeAgentExtensionProvenance(
