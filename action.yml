@@ -41,6 +41,20 @@ inputs:
             mode alike, and a report stays unposted when such a label is added during the run.
             Labels compare case-insensitively; unset excludes none.
         required: false
+    inProgressLabels:
+        description: >-
+            Comma-separated labels a maintainer applies when they pick an issue up, for example
+            'A: In progress'. An issue carrying one counts as a maintainer already on it: the run is
+            skipped, and a report stays unposted when such a label is added during the run, unless
+            the run is forced. Labels compare case-insensitively; unset names none.
+        required: false
+    reportBots:
+        description: >-
+            Comma-separated GitHub logins of bots that file issues or post reports for a reporting
+            tool, for example 'adguard-bot'. Their comments are kept out of the model's input and
+            never count as a maintainer on the issue, even when GitHub stamps them MEMBER. Accounts
+            GitHub marks as bots need no listing; unset names none.
+        required: false
     trustedRoles:
         description: >-
             Comma-separated GitHub author associations trusted to change a backlog issue's revision,
@@ -97,8 +111,8 @@ inputs:
     force:
         description: >-
             'true' for a run a maintainer triggered, by label or by a manual dispatch: a
-            maintainer's comment or an assignee on the issue no longer skips the run or keeps the
-            report silent. A closed issue, a fix referenced, an excluded label and a report already
+            maintainer's comment, an assignee or an in-progress label on the issue no longer skips the
+            run or keeps the report silent. A closed issue, a fix referenced, an excluded label and a report already
             posted for the issue's current text still do. The backlog mode ignores it.
         required: false
     screenshotsBranch:

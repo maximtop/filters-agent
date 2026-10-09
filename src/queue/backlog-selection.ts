@@ -1,4 +1,4 @@
-import { excludedIssueLabels } from '../github/issue-label-exclusion';
+import { matchingNames } from '../github/github-name-list';
 import { parseReportRevisionMarker } from '../publisher/report-publisher';
 import {
     BacklogIssueComment,
@@ -273,7 +273,7 @@ export async function selectBacklogIssues(
             if (taken.length >= inputs.maxIssuesPerRun) {
                 break;
             }
-            if (excludedIssueLabels(summary.labels, inputs.excludedLabels).length > 0) {
+            if (matchingNames(summary.labels, inputs.excludedLabels).length > 0) {
                 skipped[BacklogSkipKind.ExcludedLabel].push(summary.issueNumber);
                 continue;
             }

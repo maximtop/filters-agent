@@ -116,7 +116,7 @@ export function renderEnvironmentSelection(
         '### Declared and observed intent',
         '',
         `- Declared issue-form type: \`${selection.declared.issueFormType ?? 'n/a'}\``,
-        `- Declared type labels: ${renderInlineValues(selection.declared.typeLabels)}`,
+        `- Issue labels: ${renderInlineValues(selection.declared.labels)}`,
         `- Observed issue type: \`${selection.observed.issueType}\``,
         `- Classification rationale: ${selection.observed.rationale}`,
         `- Classification confidence: \`${selection.observed.confidence}\``,

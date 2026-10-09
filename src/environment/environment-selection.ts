@@ -14,6 +14,7 @@ import {
     type SelectionFilterBaseline,
 } from './declared-filter-baseline';
 import { NonExecutableFilterCode, decideExecutableFilters } from './official-filter-catalog';
+import { DeclaredIssueContextSchema, declaredIssueContext } from './declared-issue-context';
 
 /**
  * Capability supported by one filtering environment.
@@ -304,14 +305,6 @@ export const AgentEnvironmentSelectionRequestSchema = v.strictObject({
     intent: AgentIntentAssessmentSchema,
     rationale: BoundedModelTextSchema,
     confidence: v.pipe(v.number(), v.minValue(0), v.maxValue(1)),
-});
-
-export const DeclaredIssueContextSchema = v.strictObject({
-    issueFormType: v.nullable(v.pipe(v.string(), v.minLength(1), v.maxLength(100))),
-    typeLabels: v.pipe(
-        v.array(v.pipe(v.string(), v.minLength(1), v.maxLength(200))),
-        v.maxLength(20),
-    ),
 });
 
 export const ReportedExecutionContextSchema = v.strictObject({
@@ -818,13 +811,7 @@ export class EnvironmentSelectionHost {
             throw new Error(`Duplicate executor descriptor for "${duplicate?.kind}".`);
         }
         this.now = options.now ?? (() => new Date().toISOString());
-        this.declared = v.parse(DeclaredIssueContextSchema, {
-            issueFormType: facts.declaredIssueType ?? null,
-            typeLabels: facts.labels
-                .filter((label) => /^T:\s*/iu.test(label))
-                .slice(0, 20)
-                .map((label) => label.slice(0, 200)),
-        });
+        this.declared = declaredIssueContext(facts);
         this.reported = v.parse(ReportedExecutionContextSchema, {
             product: boundedContext(facts.product),
             os: boundedContext(facts.os),

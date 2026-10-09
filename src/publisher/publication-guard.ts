@@ -6,11 +6,11 @@
  * carries a label the run excludes gets no report either, even when the label came while the run
  * worked. A run a maintainer triggered may set the maintainer silence aside, never the others. It
  * is a pure decision over a snapshot `github/issue-publication-facts.ts` reads; the repository, the
- * trusted roles and both label sets come from the caller.
+ * trusted roles, both label sets and the reporting bots come from the caller.
  */
 
 import { isGithubBotAccount } from '../github/fetch-issue';
-import { excludedIssueLabels } from '../github/issue-label-exclusion';
+import { matchingNames } from '../github/github-name-list';
 import { IssueState } from '../types/issue-state';
 
 /**
@@ -59,7 +59,8 @@ export interface PublicationGuardPolicy {
     trustedRoles: readonly string[];
 
     /**
-     * Labels a maintainer applies when they pick an issue up; empty when the repository has none.
+     * Labels a maintainer applies when they pick an issue up, compared case-insensitively; empty
+     * when the repository has none.
      */
     inProgressLabels: readonly string[];
 
@@ -73,6 +74,12 @@ export interface PublicationGuardPolicy {
      * maintainer's own account rather than a bot.
      */
     ignoredAuthors: readonly string[];
+
+    /**
+     * Logins of the repository's reporting bots: automation whose comments never count as
+     * engagement, whatever association GitHub stamps on them.
+     */
+    reportBots: readonly string[];
 }
 
 /**
@@ -368,10 +375,11 @@ function fixSignals(facts: IssuePublicationFacts, repository: string): string[] 
  * an assignee, or an in-progress label.
  *
  * Bots are excluded before the association is consulted: a bot that files reports can carry
- * `MEMBER` (`adguard-bot` does), and otherwise every reported issue would count as engaged.
+ * `MEMBER`, and otherwise every reported issue would count as engaged. Such a bot posting as an
+ * ordinary user is recognized through the policy's reporting bots.
  *
  * @param facts - Issue snapshot.
- * @param policy - Trusted roles, ignored authors and in-progress labels.
+ * @param policy - Trusted roles, ignored authors, reporting bots and in-progress labels.
  * @returns One signal sentence per sign.
  */
 function engagementSignals(facts: IssuePublicationFacts, policy: PublicationGuardPolicy): string[] {
@@ -381,7 +389,10 @@ function engagementSignals(facts: IssuePublicationFacts, policy: PublicationGuar
     for (const event of facts.events) {
         if (
             event.kind === IssueEventKind.Commented &&
-            !isGithubBotAccount({ login: event.author, type: event.authorType }) &&
+            !isGithubBotAccount(
+                { login: event.author, type: event.authorType },
+                policy.reportBots,
+            ) &&
             !ignored.has(event.author.toLowerCase()) &&
             trusted.has(event.authorAssociation?.trim().toUpperCase() ?? '')
         ) {
@@ -393,10 +404,8 @@ function engagementSignals(facts: IssuePublicationFacts, policy: PublicationGuar
     if (facts.assignees.length > 0) {
         signals.push(`assigned to ${facts.assignees.join(', ')}`);
     }
-    for (const label of policy.inProgressLabels) {
-        if (facts.labels.includes(label)) {
-            signals.push(`labelled "${label}"`);
-        }
+    for (const label of matchingNames(facts.labels, policy.inProgressLabels)) {
+        signals.push(`labelled "${label}"`);
     }
     return signals;
 }
@@ -412,7 +421,7 @@ export function exclusionSignals(
     issueLabels: readonly string[],
     excludedLabels: readonly string[],
 ): string[] {
-    return excludedIssueLabels(issueLabels, excludedLabels).map(
+    return matchingNames(issueLabels, excludedLabels).map(
         (label) => `labelled "${label}", which the run excludes`,
     );
 }

@@ -121,6 +121,17 @@ export interface AgentRunInputSources {
     excludedLabels?: string | undefined;
 
     /**
+     * Comma-separated labels a maintainer applies when they pick an issue up; absent or blank names
+     * none.
+     */
+    inProgressLabels?: string | undefined;
+
+    /**
+     * Comma-separated logins of the repository's reporting bots; absent or blank names none.
+     */
+    reportBots?: string | undefined;
+
+    /**
      * Comma-separated GitHub author-association names trusted to change a backlog issue's revision
      * (e.g. `OWNER,MEMBER`); absent falls back to `QUEUE_DEFAULTS.trustedRoles` at dispatch.
      * Backlog mode only.
@@ -204,6 +215,11 @@ const QueueOverridesSchema = v.strictObject({
  * fields are genuine shapes (a discriminated run mode, the comment policy, the queue overrides),
  * not witnesses, so they stay real Valibot schemas.
  */
+/**
+ * A configured list of GitHub names: present only when it names at least one.
+ */
+const NameListSchema = v.pipe(v.array(v.pipe(v.string(), v.minLength(1))), v.minLength(1));
+
 export const AgentRunInputsSchema = v.strictObject({
     config: v.unknown(),
     slug: v.unknown(),
@@ -214,7 +230,9 @@ export const AgentRunInputsSchema = v.strictObject({
     instructionPath: v.optional(v.string()),
     artifactsDir: v.optional(v.string()),
     lintCommand: v.optional(v.pipe(v.string(), v.minLength(1))),
-    excludedLabels: v.optional(v.pipe(v.array(v.pipe(v.string(), v.minLength(1))), v.minLength(1))),
+    excludedLabels: v.optional(NameListSchema),
+    inProgressLabels: v.optional(NameListSchema),
+    reportBots: v.optional(NameListSchema),
     issueSnapshotPath: v.optional(v.string()),
     actionsRunUrl: v.optional(v.string()),
     comments: CommentPolicySchema,
@@ -368,6 +386,18 @@ export interface AgentRunInputs {
      * excludes none.
      */
     excludedLabels?: string[];
+
+    /**
+     * Labels a maintainer applies when they pick an issue up: the publication guard counts one as a
+     * maintainer on the issue. Absent names none.
+     */
+    inProgressLabels?: string[];
+
+    /**
+     * Logins of the repository's reporting bots: their comments are automation, kept out of the
+     * prompt and never counted as a maintainer on the issue. Absent names none.
+     */
+    reportBots?: string[];
 
     /**
      * Exported issue snapshot path; a snapshot-sourced issue needs no GitHub read.

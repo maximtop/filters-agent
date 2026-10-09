@@ -8,6 +8,7 @@ import {
     type PromptTextLimits,
 } from './prompt-safety';
 import { stripAgentControlMarkers } from './agent-control-markers';
+import { matchingNames } from './github-name-list';
 import { IssueState, ISSUE_STATE_VALUES } from '../types/issue-state';
 import { DEFAULT_TRUSTED_ROLES, type TrustedRole } from '../queue/queue-inputs';
 
@@ -25,9 +26,11 @@ const PROMPT_EXCLUDED_COMMENT_MARKERS = [
 ] as const;
 
 /**
- * Historical automation logins that may not carry GitHub's conventional bot suffix.
+ * Automation logins recognized in every repository although they carry neither GitHub's `Bot` type
+ * nor the `[bot]` suffix: GitHub Actions' own identity, which the action itself can post as, in the
+ * spelling without the suffix. A repository's reporting bots come from the `reportBots` input.
  */
-const DEFAULT_BOT_LOGINS = new Set(['adguard-bot', 'github-actions']);
+const BUILT_IN_BOT_LOGINS: readonly string[] = ['github-actions'];
 
 /**
  * Minimal GitHub comment identity needed to enforce the prompt-visibility policy.
@@ -72,12 +75,16 @@ interface GithubIssueCommentIdentity {
  * reporter-only policy subsequently excludes every generated marker and likely human solution.
  *
  * @param comment - GitHub comment identity and body.
+ * @param reportBots - The repository's reporting-bot logins, treated as automation.
  * @returns True when the comment may enter the agent prompt.
  */
-function isPromptSafeIssueComment(comment: GithubIssueCommentIdentity): boolean {
+function isPromptSafeIssueComment(
+    comment: GithubIssueCommentIdentity,
+    reportBots: readonly string[],
+): boolean {
     const body = comment.body ?? '';
     return (
-        !isGithubBotAccount(comment.user ?? {}) &&
+        !isGithubBotAccount(comment.user ?? {}, reportBots) &&
         !PROMPT_EXCLUDED_COMMENT_MARKERS.some((marker) => body.includes(marker))
     );
 }
@@ -98,18 +105,23 @@ export interface GithubAccountIdentity {
 }
 
 /**
- * Recognize an automation account: GitHub's `Bot` type, the conventional `[bot]` suffix, or one of
- * the historical automation logins that carry neither.
+ * Recognize an automation account: GitHub's `Bot` type, the conventional `[bot]` suffix, a built-in
+ * automation login, or one of the repository's reporting bots, which can post as ordinary users and
+ * even carry a maintainer's association.
  *
  * @param account - Login and account type as GitHub reports them.
+ * @param reportBots - The repository's reporting-bot logins; empty when it names none.
  * @returns True when the account is automation rather than a person.
  */
-export function isGithubBotAccount(account: GithubAccountIdentity): boolean {
-    const login = (account.login ?? '').trim().toLowerCase();
+export function isGithubBotAccount(
+    account: GithubAccountIdentity,
+    reportBots: readonly string[],
+): boolean {
+    const login = (account.login ?? '').trim();
     return (
         (account.type ?? '').toLowerCase() === 'bot' ||
-        login.endsWith('[bot]') ||
-        DEFAULT_BOT_LOGINS.has(login)
+        login.toLowerCase().endsWith('[bot]') ||
+        matchingNames([login], [...BUILT_IN_BOT_LOGINS, ...reportBots]).length > 0
     );
 }
 
@@ -166,7 +178,13 @@ export interface FetchIssueOptions {
      * override (e.g. `OWNER` alone) excludes the same associations from the fetched comments, the
      * extraction prompt, and the revision digest computed over them.
      */
-    trustedRoles?: readonly TrustedRole[];
+    trustedRoles?: readonly TrustedRole[] | undefined;
+
+    /**
+     * Logins of the repository's reporting bots (the `reportBots` input): their comments are
+     * withheld from the prompt like any automation's, even on an issue such a bot filed.
+     */
+    reportBots?: readonly string[] | undefined;
 }
 
 /**
@@ -323,12 +341,14 @@ export async function fetchIssue(
     const visibleComments = options.preserveGeneratedComments
         ? mappedComments
         : selectPromptSafeReporterComments(
-              comments.filter(isPromptSafeIssueComment).map((comment) => ({
-                  author: comment.user?.login ?? '',
-                  body: comment.body ?? '',
-                  createdAt: comment.created_at ?? '',
-                  authorAssociation: comment.author_association ?? undefined,
-              })),
+              comments
+                  .filter((comment) => isPromptSafeIssueComment(comment, options.reportBots ?? []))
+                  .map((comment) => ({
+                      author: comment.user?.login ?? '',
+                      body: comment.body ?? '',
+                      createdAt: comment.created_at ?? '',
+                      authorAssociation: comment.author_association ?? undefined,
+                  })),
               reporterAuthor,
               // The caller's own resolved trust policy, when threaded, so this fetch counts exactly
               // the associations backlog selection counts as a new revision; DEFAULT_TRUSTED_ROLES

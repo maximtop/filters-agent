@@ -40,6 +40,9 @@ jobs:
         # workflow owns.
         if: ${{ github.event.action != 'labeled' || github.event.label.name == 'filters-agent' }}
         runs-on: ubuntu-latest
+        # The investigation has a 60-minute budget and the action's image builds before it, so a
+        # job takes a little over an hour at most; GitHub's default of 6 hours is far more.
+        timeout-minutes: 90
         steps:
             - uses: actions/checkout@v6
               with:
@@ -101,6 +104,12 @@ jobs:
                   # Optional: issue labels the agent never processes. Such an issue is skipped before
                   # its page is opened, so no screenshot of it is ever committed.
                   # excludedLabels: NSFW
+                  # Optional: the label your maintainers put on an issue they picked up. An issue
+                  # carrying it gets no report, unless the run is forced.
+                  # inProgressLabels: 'A: In progress'
+                  # Optional: bot accounts that file issues for your reporting tool without GitHub's
+                  # bot marking. Their comments are not a maintainer's and stay out of the prompt.
+                  # reportBots: adguard-bot
                   # The label event carries the issue number directly; a manual dispatch carries it
                   # as the issueNumber input instead.
                   issueNumber: ${{ github.event.issue.number || inputs.issueNumber }}
@@ -120,7 +129,7 @@ jobs:
             # published an artifacts directory (missing inputs, missing browser).
             - name: Upload run artifacts
               if: ${{ !cancelled() && steps.agent.outputs.artifacts-dir != '' }}
-              uses: actions/upload-artifact@v4
+              uses: actions/upload-artifact@v5
               with:
                   name: filters-agent-artifacts-${{ github.run_number }}
                   path: ${{ steps.agent.outputs.artifacts-dir }}

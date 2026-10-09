@@ -185,10 +185,22 @@ export interface DefaultSingleIssueRequest {
     excludedLabels?: readonly string[] | undefined;
 
     /**
+     * Labels a maintainer applies when they pick an issue up; one on the issue silences the report
+     * like a maintainer's comment does, unless the run is forced. Absent names none.
+     */
+    inProgressLabels?: readonly string[] | undefined;
+
+    /**
+     * Logins of the repository's reporting bots: their comments are withheld from the prompt and
+     * never count as a maintainer on the issue. Absent names none.
+     */
+    reportBots?: readonly string[] | undefined;
+
+    /**
      * A maintainer triggered the run, by label or by a manual dispatch, and so asked for the
-     * report: an assignee or a maintainer's comment does not silence it, before the run or before
-     * posting. A closed issue, a fix referenced, an excluded label and a report already posted for
-     * this revision still do. Absent leaves every silence in place.
+     * report: an assignee, a maintainer's comment or an in-progress label does not silence it,
+     * before the run or before posting. A closed issue, a fix referenced, an excluded label and a
+     * report already posted for this revision still do. Absent leaves every silence in place.
      */
     force?: boolean | undefined;
 }

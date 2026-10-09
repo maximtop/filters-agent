@@ -53,9 +53,10 @@ export type MinimalOutcome = (typeof MinimalOutcome)[keyof typeof MinimalOutcome
  * so a new status is a compile error until it is decided here.
  *
  * A silent status is not a finding a maintainer can act on: the run could not investigate the
- * report at all (an unsupported product, a missing capability or browser) or broke down around it
- * (cleanup, an unrecoverable failure). Posted, such a report only tells the reporter the agent
- * failed. Every other status says something about the reported defect and is posted.
+ * report at all (an unsupported product, a missing capability or browser, a page it could not
+ * reach) or broke down around it (cleanup, an unrecoverable failure). Posted, such a report only
+ * tells the reporter the agent failed. Every other status says something about the reported defect
+ * and is posted.
  */
 const SILENT_RUN_STATUSES: Record<FixRunStatus, boolean> = {
     [FixRunStatus.AlreadyFixedCurrent]: false,
@@ -65,7 +66,7 @@ const SILENT_RUN_STATUSES: Record<FixRunStatus, boolean> = {
     [FixRunStatus.NotReproduced]: false,
     [FixRunStatus.ConfigurationSpecific]: false,
     [FixRunStatus.AnalysisOnly]: false,
-    [FixRunStatus.TargetUrlUnavailable]: false,
+    [FixRunStatus.TargetUrlUnavailable]: true,
     [FixRunStatus.UnsupportedProductCase]: true,
     [FixRunStatus.CapabilityLimited]: true,
     [FixRunStatus.BrowserUnavailable]: true,
@@ -77,8 +78,8 @@ const SILENT_RUN_STATUSES: Record<FixRunStatus, boolean> = {
  * Decide whether a sealed run keeps its report off the issue.
  *
  * A candidate for review outranks a silent status: the run reached the page and proposed a rule it
- * could not verify, which is a finding a maintainer can act on. A capability-limited run on
- * maximtop/AdguardFilters#252 kept such a candidate in the artifacts only.
+ * could not verify, which is a finding a maintainer can act on; kept silent, the candidate would
+ * stay in the artifacts only.
  *
  * @param runResult - The sealed run's status and its candidate for review, if any.
  * @returns True when the report goes to the artifacts only.
@@ -87,6 +88,24 @@ export function isSilentRun(
     runResult: Pick<FixRunResult, 'runStatus' | 'candidateForReview'>,
 ): boolean {
     return runResult.candidateForReview === undefined && SILENT_RUN_STATUSES[runResult.runStatus];
+}
+
+/**
+ * The status a sealed run's report is rendered under.
+ *
+ * A silent-status run is posted only for its candidate for review, so its report reads as the
+ * analysis-only candidate it is. Under its own status a rule the run found would sit below a line
+ * saying it could not investigate, with no reason beside it.
+ *
+ * @param runResult - The sealed run's status and its candidate for review, if any.
+ * @returns The run's own status, or analysis-only for a silent status carrying a candidate.
+ */
+export function reportedRunStatus(
+    runResult: Pick<FixRunResult, 'runStatus' | 'candidateForReview'>,
+): FixRunStatus {
+    return runResult.candidateForReview !== undefined && SILENT_RUN_STATUSES[runResult.runStatus]
+        ? FixRunStatus.AnalysisOnly
+        : runResult.runStatus;
 }
 
 /**

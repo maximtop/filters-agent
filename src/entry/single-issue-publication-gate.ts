@@ -6,7 +6,7 @@
  * (closed, a fix referenced, a maintainer on it), ends the run as a skip. Right before posting: the
  * guard runs again, since a maintainer can act during the run, an excluded label included. Both
  * read only GitHub; neither writes. A forced run — one a maintainer triggered — passes both checks
- * on an issue a maintainer is on, and only on that.
+ * on an issue a maintainer is on (a comment, an assignee, an in-progress label), and only on that.
  */
 
 import type { Octokit } from '@octokit/rest';
@@ -45,6 +45,18 @@ export interface PublicationGuardSettings {
     excludedLabels?: readonly string[] | undefined;
 
     /**
+     * Labels a maintainer applies when they pick an issue up, or undefined when the repository uses
+     * none.
+     */
+    inProgressLabels?: readonly string[] | undefined;
+
+    /**
+     * Logins of the repository's reporting bots, whose comments are not a maintainer's, or
+     * undefined when it names none.
+     */
+    reportBots?: readonly string[] | undefined;
+
+    /**
      * Whether a maintainer triggered the run, so a maintainer on the issue does not silence it.
      */
     force?: boolean | undefined;
@@ -53,12 +65,13 @@ export interface PublicationGuardSettings {
 /**
  * Build the guard policy for the repository the run reports to.
  *
- * The repository's own maintainers are the run's trusted roles; no in-progress label is assumed,
- * since that convention differs from one repository to the next. The run's own reports never count
- * as a maintainer's comment, even when they post from a maintainer's token.
+ * The repository's own maintainers are the run's trusted roles. In-progress labels and reporting
+ * bots differ from one repository to the next, so only the ones the run was configured with count;
+ * none is assumed. The run's own reports never count as a maintainer's comment, even when they post
+ * from a maintainer's token.
  *
  * @param slug - Repository the run reports to.
- * @param settings - The run's trusted roles and excluded labels.
+ * @param settings - The run's trusted roles, label sets and reporting bots.
  * @param reportAuthorLogin - The GitHub login the run's reports post as.
  * @returns The guard policy.
  */
@@ -70,9 +83,10 @@ export function publicationGuardPolicy(
     return {
         repository: `${slug.owner}/${slug.repo}`,
         trustedRoles: settings.trustedRoles ?? TRUSTED_ROLE_VALUES,
-        inProgressLabels: [],
+        inProgressLabels: settings.inProgressLabels ?? [],
         excludedLabels: settings.excludedLabels ?? [],
         ignoredAuthors: [reportAuthorLogin],
+        reportBots: settings.reportBots ?? [],
     };
 }
 
@@ -164,7 +178,7 @@ export interface PreRunCheckInput {
     token: string | undefined;
 
     /**
-     * The run's trusted roles, excluded labels and force.
+     * The run's trusted roles, label sets, reporting bots and force.
      */
     settings: PublicationGuardSettings;
 }
@@ -240,7 +254,7 @@ export async function checkIssueBeforeRun(
  *
  * @param client - Authenticated GitHub API client.
  * @param input - The report publication.
- * @param settings - The run's trusted roles, excluded labels and force.
+ * @param settings - The run's trusted roles, label sets, reporting bots and force.
  * @param logger - Run logger; the guard's signals are logged when it silences.
  * @returns The publication, or null when the guard kept the report silent.
  */

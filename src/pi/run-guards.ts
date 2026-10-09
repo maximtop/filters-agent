@@ -46,10 +46,10 @@ export interface RunGuardOptions {
  * How long before the wall-clock budget expires the wrap-up message is queued.
  *
  * Steering reaches the model only after the current turn's tool calls finish, and a reasoning turn
- * that submits a decision can itself take minutes. A run on maximtop/AdguardFilters#247 spent its
- * whole 60-minute budget across 74 turns and ended with no decision and no report; ten minutes
- * leaves room for one slow tool call and the decision turn after it. A budget shorter than twice
- * this reserve gets no wrap-up: most of such a run would be spent wrapping up.
+ * that submits a decision can itself take minutes. Without a reserve a long run can spend its whole
+ * 60-minute budget and end with no decision and no report; ten minutes leaves room for one slow
+ * tool call and the decision turn after it. A budget shorter than twice this reserve gets no
+ * wrap-up: most of such a run would be spent wrapping up.
  */
 export const WRAP_UP_RESERVE_MS = 10 * 60_000;
 

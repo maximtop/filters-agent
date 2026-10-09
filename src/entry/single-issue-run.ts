@@ -57,6 +57,7 @@ import {
     logUnpostedOutcome,
     MinimalOutcome,
     renderUnpostedOutcomeReport,
+    reportedRunStatus,
 } from './single-issue-run-outcome-report';
 import {
     checkIssueBeforeRun,
@@ -314,9 +315,8 @@ async function runInsideWorkspace(
                 request.issueNumber,
                 {
                     promptTextLimits: AUTOMATIC_UPSTREAM_PROMPT_TEXT_LIMITS,
-                    ...(request.trustedRoles !== undefined
-                        ? { trustedRoles: request.trustedRoles }
-                        : {}),
+                    trustedRoles: request.trustedRoles,
+                    reportBots: request.reportBots,
                 },
             );
             issue = fetched;
@@ -486,7 +486,7 @@ async function runInsideWorkspace(
     const template = resolveReportTemplate(instruction?.content).template;
     const reportedVersion = intake.report.environment.version;
     const summary = summarizeReportOutcome(
-        runResult,
+        { ...runResult, runStatus: reportedRunStatus(runResult) },
         {
             summary: agentArtifacts.artifacts?.decision?.summary,
             // A run the host ended itself (a sealed session) has no model decision; its result

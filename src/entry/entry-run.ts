@@ -18,6 +18,7 @@ import {
     type DefaultSingleIssueResult,
 } from './single-issue-run-types';
 import { runDefaultSingleIssue } from './single-issue-run';
+import { perIssueRequest } from './per-issue-request';
 import type { BacklogIssueReader } from '../queue/backlog-reader';
 import { createGitHubBacklogIssueReader } from '../queue/backlog-reader';
 import type { BacklogSelectionOutcome } from '../queue/backlog-selection';
@@ -244,53 +245,6 @@ function resolveRunArtifactsDir(
     }
     const workspaceRoot = dependencies.workspaceRoot ?? process.cwd();
     return resolveLocalRunOutputDir(workspaceRoot, issueNumber, ExtensionEnvironmentKind.Current);
-}
-
-/**
- * Build one per-issue request from the validated inputs, spreading only set optional fields so the
- * request carries exactly what the caller configured.
- *
- * @param inputs - Validated run inputs.
- * @param issueNumber - Issue the request processes.
- * @param artifactsDir - Directory the per-issue run writes into.
- * @returns The per-issue request.
- */
-function perIssueRequest(
-    inputs: AgentRunInputs,
-    issueNumber: number,
-    artifactsDir: string,
-): DefaultSingleIssueRequest {
-    return {
-        config: inputs.config,
-        slug: inputs.slug,
-        ...(inputs.checkoutPath !== undefined ? { checkoutPath: inputs.checkoutPath } : {}),
-        issueNumber,
-        ...(inputs.issueSnapshotPath !== undefined
-            ? { issueSnapshotPath: inputs.issueSnapshotPath }
-            : {}),
-        token: inputs.comments.token,
-        commentsEnabled: inputs.comments.enabled,
-        screenshotsBranch: inputs.comments.screenshotsBranch,
-        ...(inputs.model !== undefined ? { model: inputs.model } : {}),
-        ...(inputs.executors !== undefined ? { executors: inputs.executors } : {}),
-        ...(inputs.instructionPath !== undefined
-            ? { instructionPath: inputs.instructionPath }
-            : {}),
-        ...(inputs.actionsRunUrl !== undefined ? { actionsRunUrl: inputs.actionsRunUrl } : {}),
-        ...(inputs.lintCommand !== undefined ? { lintCommand: inputs.lintCommand } : {}),
-        ...(inputs.excludedLabels !== undefined ? { excludedLabels: inputs.excludedLabels } : {}),
-        // Only a single-issue run is forced: the backlog mode has no maintainer behind each issue.
-        ...(inputs.mode.kind === AgentRunMode.SingleIssue && inputs.mode.force === true
-            ? { force: true }
-            : {}),
-        // Threaded so the fetch, the extraction, and the revision digest computed over the fetch's
-        // own comments all apply the one policy backlog selection resolved (see entry-run.ts's own
-        // cast rationale below, next to the identical trustedRoles threading for selection).
-        ...(inputs.queue?.trustedRoles !== undefined
-            ? { trustedRoles: inputs.queue.trustedRoles as TrustedRole[] }
-            : {}),
-        artifactsDir,
-    };
 }
 
 /**

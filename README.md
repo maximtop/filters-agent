@@ -51,12 +51,16 @@ When it runs against an issue, `filters-agent`:
    [An instruction that only adds guidance](#an-instruction-that-only-adds-guidance).
 4. Optional: list the labels of issues the agent must never open, such as reports about adult
    sites, in the `excludedLabels` input. Such an issue is skipped before the run opens its page
-   or commits a screenshot.
+   or commits a screenshot. If your maintainers label an issue they pick up, name that label in
+   `inProgressLabels`; if a reporting tool files your issues through a bot account that GitHub does
+   not mark as a bot, name its login in `reportBots`.
 5. Open an issue: the example workflow runs on every new issue. Each run is a paid LLM call; to
    run only on issues a maintainer picks, switch the workflow's trigger from `opened` to `labeled`
    as its comment describes, and label an issue `filters-agent` to start a run. Either way, you can
    run the workflow manually with an issue number. A label or manual run should pass `force`, as the
-   example workflow does, so an issue a maintainer is already on still gets the report.
+   example workflow does, so an issue a maintainer is already on still gets the report. The
+   trigger label is the workflow's own choice: `filters-agent` is only what the example's `if:`
+   names, and any label works.
 6. The report appears as a comment on the issue, unless the issue no longer needs one: it is
    closed, a commit or pull request of your repository references it, a maintainer (see
    `trustedRoles`) commented or is assigned (unless the run is forced), or the report for its
@@ -64,7 +68,8 @@ When it runs against an issue, `filters-agent`:
    The run checks this before it spends anything, and again right before it posts. An issue the
    run skips because it is not a filter report, or names no page, gets no comment either, and
    neither does a run that fails or cannot investigate the report (an unsupported product, no
-   usable browser); the reason is in the run log and the uploaded artifact. For a verified
+   usable browser, a page it cannot reach) unless it still found a rule to review; the reason is
+   in the run log and the uploaded artifact. For a verified
    rule the report shows the page without and with the rule. GitHub has no API to attach an image
    to a comment, so the run commits the images to a branch of your repository, named by the
    `screenshotsBranch` input (`filters-agent-screenshots` by default), which is why the example
@@ -430,13 +435,13 @@ template can carry a heading for a case that rarely happens.
 
 | Placeholder | What it carries |
 | --- | --- |
-| `{{outcome}}` | One line: a rule was proposed, the run ended analysis-only, the report was answered without a patch, or the run failed. |
+| `{{outcome}}` | One line: a rule was proposed, the run ended analysis-only, or the report was answered without a patch. |
 | `{{outcomeReason}}` | Why it ended that way, when the reason is not the outcome itself. |
 | `{{versionUpdateHint}}` | That the reporter's blocker version is behind and the defect does not reproduce on the current one. |
 | `{{symptom}}` | Whether the reported defect reproduced, and what the run saw. |
 | `{{rule}}` | The verified rule, as a code span. |
 | `{{repositoryLint}}` | What the repository's `lintCommand` said about that rule — its exit code and output — when it flagged the rule or could not run. Empty when it passed or no `lintCommand` is set. |
-| `{{candidateForReview}}` | The rule an analysis-only run found and could not verify, with why. |
+| `{{candidateForReview}}` | A rule the run found and could not verify, with why. |
 | `{{stillVisible}}` | What the vision review still saw on the page after that rule — the locations the reporter named that it did not fix. Empty for a verified rule, since one leftover instance is what rejects a candidate. |
 | `{{executor}}`, `{{executorVersion}}` | The blocker the run actually drove, and its version. |
 | `{{policyRationale}}` | Why the rule is allowed under the policy documents your instruction links. |
@@ -461,6 +466,8 @@ so it is worth re-reading this table after an upgrade.
 | `backlog` | No | `'true'` analyzes the repository's open-issue backlog instead of a single issue. |
 | `limit` | No | Maximum number of backlog issues analyzed per run; unset means up to 50 issues in one job, each a paid LLM run; the loop also stops at its wall-clock budget (default 5h 30m, overridable by an input) so one job stays under GitHub's 6-hour cap. |
 | `excludedLabels` | No | Comma-separated issue labels the action never processes, for example `NSFW`. An issue carrying one is skipped before its page is opened, in the single-issue and the backlog mode alike, and a report stays unposted when such a label is added during the run. Labels compare case-insensitively; unset excludes none. |
+| `inProgressLabels` | No | Comma-separated labels a maintainer applies when they pick an issue up, for example `A: In progress`. An issue carrying one counts as a maintainer already on it: the run is skipped, and a report stays unposted when such a label is added during the run, unless the run is forced. Labels compare case-insensitively; unset names none. |
+| `reportBots` | No | Comma-separated GitHub logins of bots that file issues or post reports for a reporting tool, for example `adguard-bot`. Their comments are kept out of the model's input and never count as a maintainer on the issue, even when GitHub stamps them `MEMBER`. Accounts GitHub marks as bots need no listing; unset names none. |
 | `trustedRoles` | No | Comma-separated GitHub author associations trusted to change a backlog issue's revision, and whose comment on an issue means a maintainer is already on it; defaults to `OWNER,MEMBER,COLLABORATOR`. |
 | `maxRevisionsPerWindow` | No | Maximum revision-marked reports one backlog issue may receive inside the rolling `revisionWindowMs` window; defaults to the queue's revision budget. |
 | `revisionWindowMs` | No | Length of the rolling window the revision budget counts against, in milliseconds; defaults to the queue's revision window (24 hours). |
@@ -471,7 +478,7 @@ so it is worth re-reading this table after an upgrade.
 | `artifactsDir` | No | Directory the run writes its artifacts to; defaults to `filters-agent-artifacts/artifacts` under the checkout. |
 | `model` | No | Reasoning-model slug overriding the LLM runtime's configured model. |
 | `noComment` | No | `'true'` skips posting the report as an issue comment; the report is still written to the artifacts directory. |
-| `force` | No | `'true'` for a run a maintainer triggered, by label or by a manual dispatch: a maintainer's comment or an assignee on the issue no longer skips the run or keeps the report silent. A closed issue, a fix referenced, an excluded label and a report already posted for the issue's current text still do. The backlog mode ignores it. |
+| `force` | No | `'true'` for a run a maintainer triggered, by label or by a manual dispatch: a maintainer's comment, an assignee or an in-progress label on the issue no longer skips the run or keeps the report silent. A closed issue, a fix referenced, an excluded label and a report already posted for the issue's current text still do. The backlog mode ignores it. |
 | `screenshotsBranch` | No | Branch the before and after screenshots of a verified rule are committed to, so the report comment can show them; defaults to `filters-agent-screenshots`. Needs the `contents: write` permission; without it the report posts without screenshots. |
 | `lintCommand` | No | Your repository's own lint command line, for example `npx aglint`. Each candidate rule is linted with it in the checkout; a failure adds a note to the report and never stops the rule. Unset runs no lint. See [Lint with your repository's linter](#lint-with-your-repositorys-linter). |
 | `checkoutPath` | No | Path of the analyzed checkout; defaults to the runner's `GITHUB_WORKSPACE`. |

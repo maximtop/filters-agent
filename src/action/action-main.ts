@@ -313,9 +313,9 @@ function fullErrorDetail(error: unknown): string {
  *
  * Deep layers record the native cause behind a finite refusal code — a blocker that would not apply
  * a candidate, a baseline it rejected — through the process-wide diagnostic sink. Without a sink
- * those records are dropped, and an action run kept only the code: the cause of
- * `candidate_application_failed` on maximtop/AdguardFilters#252 was not recoverable. The artifacts
- * tree is uploaded with the run, so the file travels with the rest of its evidence.
+ * those records are dropped, and an action run keeps only the code, so the cause of a
+ * `candidate_application_failed` cannot be recovered. The artifacts tree is uploaded with the run,
+ * so the file travels with the rest of its evidence.
  *
  * @param artifactsDir - The run's artifacts directory.
  * @returns The opened log, or null when the directory cannot hold it; diagnostics never fail a run.
