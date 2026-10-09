@@ -7,6 +7,10 @@
  * browsing with the Base filter alone.
  */
 
+import { decideExecutableFilters } from '../environment/official-filter-catalog';
+import { expandCombinedOfficialFilterIds } from '../environment/official-filter-table';
+import type { IssueFacts } from '../types/issue-facts';
+
 /**
  * Report hosts whose settings import URLs are trusted enough to read filter IDs from.
  */
@@ -108,4 +112,29 @@ export function readReporterFilterSelection(
         filterIds: [...filterIds].sort((left, right) => left - right),
         schemeVersion,
     };
+}
+
+/**
+ * The official filters the reporter had enabled, from the best source the report carries.
+ *
+ * A trusted settings link lists exact ids, so it wins. A report without one — AdGuard for iOS sends
+ * none — still names its filters in the body, and the extraction resolved those names to official
+ * ids; the environment baseline already runs on them, so an evidence route that ran AdGuard Base
+ * alone would test a candidate against different filtering than the rest of the run. Deprecated
+ * combined filters come back as the lists they are built from.
+ *
+ * @param facts - The parsed issue facts.
+ * @returns Ascending unique official filter ids, empty when the report names none.
+ */
+export function readReporterOfficialFilterIds(
+    facts: Pick<IssueFacts, 'settingsImportUrl' | 'enabledFilters'>,
+): number[] {
+    const linked = readReporterFilterSelection(facts.settingsImportUrl);
+    if (linked !== null) {
+        return expandCombinedOfficialFilterIds(linked.filterIds);
+    }
+    const decision = decideExecutableFilters(facts.enabledFilters);
+    return decision.status === 'executable'
+        ? decision.officialFilters.map((filter) => filter.filterId)
+        : [];
 }

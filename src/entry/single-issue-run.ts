@@ -52,7 +52,7 @@ import { resolveReportTemplate } from '../publisher/report-template';
 import { decideVersionUpdate } from '../publisher/report-version-decision';
 import { writeRunReportArtifacts } from './single-issue-run-artifacts';
 import {
-    isSilentRunStatus,
+    isSilentRun,
     logCaughtError,
     logUnpostedOutcome,
     MinimalOutcome,
@@ -524,7 +524,7 @@ async function runInsideWorkspace(
         usageSummary: usageCollector.summary(),
     });
 
-    const silent = isSilentRunStatus(runResult.runStatus);
+    const silent = isSilentRun(runResult);
     if (silent) {
         logUnpostedOutcome(logger, request.issueNumber, summary.outcome, summary.outcomeReason);
     }

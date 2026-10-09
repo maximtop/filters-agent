@@ -26,6 +26,11 @@ export const PromptDocumentName = {
     Nudge: 'nudge',
 
     /**
+     * The single steering message sent when the run's wall-clock budget is about to expire.
+     */
+    WrapUp: 'wrap-up',
+
+    /**
      * Fix-mode user task.
      */
     FixTask: 'tasks/fix',

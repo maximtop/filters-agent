@@ -51,6 +51,11 @@ export interface SessionPrompts {
      * The re-prompt sent once when a turn ends without the terminal call.
      */
     nudge: string;
+
+    /**
+     * The steering message sent once when the wall-clock budget is about to expire.
+     */
+    wrapUp: string;
 }
 
 /**
@@ -63,12 +68,12 @@ export type TaskRenderer = (prompts: PromptDocumentLoader, terminalToolName: Too
 /**
  * Render the prompt trio of one mode session from a single loader.
  *
- * The terminal tool name is spelled once and filled into both the task document and the nudge, so
- * the two can never name different tools to the model.
+ * The terminal tool name is spelled once and filled into the task document, the nudge and the
+ * wrap-up, so they can never name different tools to the model.
  *
  * @param terminalToolName - The mode's terminal tool name.
  * @param renderTask - Renders the mode's own task document from the session's loader.
- * @returns The three rendered documents.
+ * @returns The rendered documents.
  */
 export function renderSessionPrompts(
     terminalToolName: ToolName,
@@ -79,6 +84,7 @@ export function renderSessionPrompts(
         systemPrompt: prompts.render(PromptDocumentName.System),
         userTask: renderTask(prompts, terminalToolName),
         nudge: prompts.render(PromptDocumentName.Nudge, { terminalToolName }),
+        wrapUp: prompts.render(PromptDocumentName.WrapUp, { terminalToolName }),
     };
 }
 
@@ -189,7 +195,7 @@ export async function launchModeSession<T>(
     const compaction = recordSessionCompaction(recorder);
     const recordTurn = recordSessionTurn(recorder);
     const extraTurnSink = request.onTurnEnd;
-    const { systemPrompt, userTask, nudge } = renderSessionPrompts(
+    const { systemPrompt, userTask, nudge, wrapUp } = renderSessionPrompts(
         request.terminalToolName,
         request.renderTask,
     );
@@ -198,6 +204,7 @@ export async function launchModeSession<T>(
         systemPrompt,
         userTask,
         nudge,
+        wrapUp,
         terminal: request.terminal,
         tools: request.tools,
         budgets: {

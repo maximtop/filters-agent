@@ -56,7 +56,7 @@ import {
     type EnvironmentSelectionSnapshot,
 } from '../environment/environment-selection';
 import type { EvidenceRouteHost } from '../local/evidence-route-contract';
-import { readReporterFilterSelection } from '../local/reporter-filters';
+import { readReporterOfficialFilterIds } from '../local/reporter-filters';
 import { BrowserExtensionExecutorName } from '../environment/executor-name';
 import { ExtensionLaunchFamily } from '../environment/extension-launch';
 import {
@@ -1462,8 +1462,7 @@ export class AgentRuntime {
             environmentHost: this.environmentHost,
             issueFacts: facts,
             targetUrl: this.options.allowedTargetUrls[0]!,
-            reporterFilterIds:
-                readReporterFilterSelection(facts.settingsImportUrl)?.filterIds ?? [],
+            reporterFilterIds: readReporterOfficialFilterIds(facts),
             runtime,
             executorDependencies: this.options.executorDependencies,
         });

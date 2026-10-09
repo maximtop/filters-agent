@@ -34,6 +34,11 @@ import { DefaultSingleIssueResultKind } from '../entry/single-issue-run-types';
 import { filteringExecutors } from '../orchestrator/filtering-executors';
 import type { LoadedBlockerModule } from '../proxy-blocker/blocker-module-manifest';
 import { createLogger } from '../logger/logger';
+import {
+    installPreflightDiagnosticLog,
+    openPreflightDiagnosticLog,
+    type PreflightDiagnosticLog,
+} from '../local/preflight-diagnostic-log';
 import { blockerModuleEntryDependencies, loadActionBlockerModules } from './action-blocker-modules';
 import { mapAgentRunSources } from './action-input-binding';
 import {
@@ -105,6 +110,12 @@ export interface AgentActionDependencies {
      * never a download fallback.
      */
     probeBrowserBinary?: () => BrowserBinaryPresence;
+
+    /**
+     * Diagnostic log seam; production opens a log file in the run's artifacts directory, and a null
+     * log records nothing.
+     */
+    openDiagnosticLog?: (artifactsDir: string) => PreflightDiagnosticLog | null;
 
     /**
      * Ownership seam: resolve the uid:gid owning the runner's workspace directory. Production stats
@@ -298,6 +309,30 @@ function fullErrorDetail(error: unknown): string {
 }
 
 /**
+ * Open the run's diagnostic log inside its artifacts tree.
+ *
+ * Deep layers record the native cause behind a finite refusal code — a blocker that would not apply
+ * a candidate, a baseline it rejected — through the process-wide diagnostic sink. Without a sink
+ * those records are dropped, and an action run kept only the code: the cause of
+ * `candidate_application_failed` on maximtop/AdguardFilters#252 was not recoverable. The artifacts
+ * tree is uploaded with the run, so the file travels with the rest of its evidence.
+ *
+ * @param artifactsDir - The run's artifacts directory.
+ * @returns The opened log, or null when the directory cannot hold it; diagnostics never fail a run.
+ */
+function openRunDiagnosticLog(artifactsDir: string): PreflightDiagnosticLog | null {
+    try {
+        return openPreflightDiagnosticLog(artifactsDir);
+    } catch (error) {
+        console.warn(
+            `diagnostic log not opened in ${artifactsDir}: ` +
+                `${error instanceof Error ? error.message : String(error)}`,
+        );
+        return null;
+    }
+}
+
+/**
  * Run one action step end to end: binding, env additions, then resolution, then the browser
  * presence check, then the entry run, then the artifacts handover, then the outputs. A binding
  * (missing runner workspace), resolution, or presence failure reports its combined detail on stderr
@@ -358,6 +393,10 @@ export async function runFiltersAgentAction(
     let entryError: unknown;
     let entryThrew = false;
     let handoverFailed = false;
+    const diagnosticLog = (dependencies.openDiagnosticLog ?? openRunDiagnosticLog)(
+        inputArtifactsDir,
+    );
+    installPreflightDiagnosticLog(diagnosticLog);
     try {
         result = await (
             dependencies.runEntry ??
@@ -379,6 +418,9 @@ export async function runFiltersAgentAction(
         entryThrew = true;
         entryError = error;
     } finally {
+        // Closed before the handover, so the file is complete when ownership moves to the uploader.
+        diagnosticLog?.close({ entryThrew });
+        installPreflightDiagnosticLog(null);
         // The container runs as root while the host-side upload step runs as the runner user, so
         // the finished tree is handed over before the outputs publish it. A tree the runner cannot
         // read is a failed run, not a success whose artifact silently uploads nothing — and on the

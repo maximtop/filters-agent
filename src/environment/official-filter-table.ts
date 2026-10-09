@@ -54,6 +54,32 @@ export const OFFICIAL_ADGUARD_FILTERS = Object.freeze([
 ]);
 
 /**
+ * Deprecated combined official filters and the lists each one is built from.
+ *
+ * The AdGuard Annoyances filter (14) is the concatenation of Cookie Notices, Popups, Mobile App
+ * Banners, Other Annoyances and Widgets, as its own header says. The registry marks it deprecated,
+ * the MV3 extension build no longer ships it, yet older products such as AdGuard for iOS still
+ * report it. A run reproduces the reporter's filtering through the component lists instead: the
+ * rules are the same, every build carries them, and a rule's source file names its component list.
+ */
+export const COMBINED_OFFICIAL_FILTER_COMPONENTS: ReadonlyMap<number, readonly number[]> = new Map([
+    [14, Object.freeze([18, 19, 20, 21, 22])],
+]);
+
+/**
+ * Replace every deprecated combined official filter with the lists it is built from.
+ *
+ * @param filterIds - Official filter ids as the reporter named them.
+ * @returns The ids with each combined filter expanded, ascending and without repeats.
+ */
+export function expandCombinedOfficialFilterIds(filterIds: readonly number[]): number[] {
+    const expanded = filterIds.flatMap(
+        (filterId) => COMBINED_OFFICIAL_FILTER_COMPONENTS.get(filterId) ?? [filterId],
+    );
+    return [...new Set(expanded)].sort((left, right) => left - right);
+}
+
+/**
  * Endpoint template for the published official lists, instantiated per registry id.
  *
  * The single owner of the AdGuard published-list URL shape: the downloader fetches from it and the

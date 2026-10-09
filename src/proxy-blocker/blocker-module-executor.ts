@@ -23,7 +23,6 @@ import {
 } from '../environment/environment-selection';
 import type { ExecutorName } from '../environment/executor-name';
 import type { ExecutorPreparationOutcome } from '../environment/executor-preparation';
-import { readReporterFilterSelection } from '../local/reporter-filters';
 import type {
     ExecutorActivationContext,
     ExecutorAdapterContext,
@@ -220,8 +219,7 @@ export function createBlockerModuleExecutor(
             await stopQuietly(blocker);
             return description;
         }
-        const reporterFilterIds =
-            readReporterFilterSelection(context.issueFacts.settingsImportUrl)?.filterIds ?? [];
+        const reporterFilterIds = context.reporterFilterIds;
         const route = createProxyBlockerEvidenceRoute({
             cycleId: randomUUID(),
             blocker,

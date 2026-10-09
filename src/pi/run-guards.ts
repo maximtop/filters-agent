@@ -25,6 +25,11 @@ export interface RunGuardOptions {
     signal?: AbortSignal;
 
     /**
+     * Steering message queued once, `WRAP_UP_RESERVE_MS` before the wall-clock budget expires.
+     */
+    wrapUp?: string;
+
+    /**
      * Diagnostics sink. A guard that trips and then fails to stop the run is the one failure this
      * layer cannot recover from — the run keeps issuing paid requests — so it is logged loudly.
      */
@@ -38,11 +43,23 @@ export interface RunGuardOptions {
 }
 
 /**
+ * How long before the wall-clock budget expires the wrap-up message is queued.
+ *
+ * Steering reaches the model only after the current turn's tool calls finish, and a reasoning turn
+ * that submits a decision can itself take minutes. A run on maximtop/AdguardFilters#247 spent its
+ * whole 60-minute budget across 74 turns and ended with no decision and no report; ten minutes
+ * leaves room for one slow tool call and the decision turn after it. A budget shorter than twice
+ * this reserve gets no wrap-up: most of such a run would be spent wrapping up.
+ */
+export const WRAP_UP_RESERVE_MS = 10 * 60_000;
+
+/**
  * Attach the run guards to a session, before prompting: the wall-clock budget, the iteration
  * backstop, the per-request provider deadline, and caller cancellation of one agent session. Guards
  * watch the session from outside the pi agent loop and abort it when their bound trips; the session
  * runner reads the recorded cause to seal the run with the matching typed outcome. Guards never
- * change the advertised tool list or any prompt — they only stop the run.
+ * change the advertised tool list or any prompt; beyond stopping the run, the only thing they add
+ * is the one wrap-up message queued shortly before the wall-clock budget expires.
  *
  * The per-request deadline is an INACTIVITY deadline over exactly the half of `requestTimeoutMs` pi
  * leaves unenforced. It is armed on the assistant's `message_start`, which pi emits once the
@@ -65,7 +82,8 @@ export interface RunGuardOptions {
  * starts; a guard tripping mid-request cancels that request instead.
  *
  * @param session - The pi agent session to watch.
- * @param options - Bounds, caller cancellation, diagnostics sink, and the first-trip callback.
+ * @param options - Bounds, caller cancellation, the wrap-up message, diagnostics sink, and the
+ *   first-trip callback.
  * @returns The guard handle the runner seals from.
  */
 export function attachRunGuards(session: AgentSession, options: RunGuardOptions): RunGuards {
@@ -144,6 +162,24 @@ export function attachRunGuards(session: AgentSession, options: RunGuardOptions)
             ? undefined
             : setTimeout(() => fire(GuardCause.WallClock), budgets.wallClockMs);
     timer?.unref();
+    const wrapUpTimer =
+        options.wrapUp === undefined ||
+        budgets.wallClockMs === undefined ||
+        budgets.wallClockMs < 2 * WRAP_UP_RESERVE_MS
+            ? undefined
+            : setTimeout(() => {
+                  if (cause !== undefined) {
+                      return;
+                  }
+                  logger.info(
+                      { turns, wallClockMs: budgets.wallClockMs, reserveMs: WRAP_UP_RESERVE_MS },
+                      'wall-clock budget nearly spent; asking the model for its decision',
+                  );
+                  session.steer(options.wrapUp!).catch((error: unknown) => {
+                      logger.warn({ err: error }, 'queueing the wrap-up message failed');
+                  });
+              }, budgets.wallClockMs - WRAP_UP_RESERVE_MS);
+    wrapUpTimer?.unref();
     const onCallerAbort = (): void => fire(GuardCause.Caller);
     signal?.addEventListener('abort', onCallerAbort, { once: true });
     return {
@@ -151,6 +187,9 @@ export function attachRunGuards(session: AgentSession, options: RunGuardOptions)
         dispose: () => {
             if (timer !== undefined) {
                 clearTimeout(timer);
+            }
+            if (wrapUpTimer !== undefined) {
+                clearTimeout(wrapUpTimer);
             }
             clearRequestTimer();
             unsubscribe();

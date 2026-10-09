@@ -63,7 +63,8 @@ export interface ExecutorActivationContext {
     targetUrl: string;
 
     /**
-     * Official filter identifiers the reporter had enabled, possibly empty.
+     * Official filter identifiers the reporter had enabled — from the settings link, or the filters
+     * the report names when it has none — possibly empty.
      */
     reporterFilterIds: readonly number[];
 

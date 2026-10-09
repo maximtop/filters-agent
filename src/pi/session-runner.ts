@@ -140,6 +140,12 @@ export interface RunAgentSessionOptions<T> {
     nudge: string;
 
     /**
+     * The steering message sent once when the wall-clock budget is about to expire, so the model
+     * can still submit its decision; without it the run ends with no message of its own.
+     */
+    wrapUp?: string;
+
+    /**
      * The mode's terminal tool controller (built by `buildTerminalTool`).
      */
     terminal: TerminalToolController<T>;
@@ -380,6 +386,7 @@ export async function runAgentSession<T>(
     const guards = attachRunGuards(session, {
         budgets: options.budgets,
         ...(options.signal === undefined ? {} : { signal: options.signal }),
+        ...(options.wrapUp === undefined ? {} : { wrapUp: options.wrapUp }),
         logger,
         onFired: endCompaction,
     });

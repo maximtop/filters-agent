@@ -5,11 +5,11 @@
  *
  * Only a finding a maintainer can act on is posted. A skip, an intake or investigation failure
  * (whose reason is the raw provider or runtime error, not anything about the issue), and a sealed
- * run that could not investigate the report post nothing: their report lands in the artifacts and
- * the log names the outcome. Without a posted comment such an issue carries no revision marker, so
- * in backlog mode the next backlog run retakes it. Also carries the shared "log the caught error in
- * full before mapping or swallowing it" helper every catch in the default single-issue engine
- * uses.
+ * run that could not investigate the report, unless it still proposed a candidate, post nothing:
+ * their report lands in the artifacts and the log names the outcome. Without a posted comment such
+ * an issue carries no revision marker, so in backlog mode the next backlog run retakes it. Also
+ * carries the shared "log the caught error in full before mapping or swallowing it" helper every
+ * catch in the default single-issue engine uses.
  */
 
 import type { Logger } from '../logger/logger';
@@ -20,7 +20,7 @@ import {
 } from '../publisher/report-render';
 import { withReportFooter } from '../publisher/report-footer';
 import { resolveReportTemplate } from '../publisher/report-template';
-import { FixRunStatus } from '../types/fix-run-result';
+import { FixRunStatus, type FixRunResult } from '../types/fix-run-result';
 import type { DefaultSingleIssueRequest } from './single-issue-run-types';
 
 /**
@@ -76,11 +76,17 @@ const SILENT_RUN_STATUSES: Record<FixRunStatus, boolean> = {
 /**
  * Decide whether a sealed run keeps its report off the issue.
  *
- * @param runStatus - The status the run sealed with.
+ * A candidate for review outranks a silent status: the run reached the page and proposed a rule it
+ * could not verify, which is a finding a maintainer can act on. A capability-limited run on
+ * maximtop/AdguardFilters#252 kept such a candidate in the artifacts only.
+ *
+ * @param runResult - The sealed run's status and its candidate for review, if any.
  * @returns True when the report goes to the artifacts only.
  */
-export function isSilentRunStatus(runStatus: FixRunStatus): boolean {
-    return SILENT_RUN_STATUSES[runStatus];
+export function isSilentRun(
+    runResult: Pick<FixRunResult, 'runStatus' | 'candidateForReview'>,
+): boolean {
+    return runResult.candidateForReview === undefined && SILENT_RUN_STATUSES[runResult.runStatus];
 }
 
 /**

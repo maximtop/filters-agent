@@ -1,6 +1,7 @@
 import * as v from 'valibot';
 import { adguardListKey, FilterListKeySchema } from './filter-list-ref';
 import {
+    expandCombinedOfficialFilterIds,
     OFFICIAL_ADGUARD_FILTERS,
     OFFICIAL_FILTER_PUBLISHED_URL_TEMPLATE,
 } from './official-filter-table';
@@ -264,12 +265,13 @@ const LEGACY_ALIAS_KEYS: ReadonlySet<string> = new Set(
  * Decide, offline and without inventing defaults, which reported filters this run may reproduce.
  *
  * Classification is single-pass: an entry the extraction recognised as an official list carries its
- * catalog id and becomes that official identity; every other entry is recorded as a skipped source
- * — a known third-party name, a subscription URL, or a name neither catalog knows — and never
- * fetched or applied. Which reported name is which official list is the extraction model's reading,
- * checked against the catalog at that boundary; nothing here matches names to official lists. The
- * run executes the official identities that resolved and the report names every source it left out,
- * so a narrower baseline is stated rather than silent. Only a selection with nothing official in it
+ * catalog id and becomes that official identity, or the identities of its component lists when it
+ * is a deprecated combined filter; every other entry is recorded as a skipped source — a known
+ * third-party name, a subscription URL, or a name neither catalog knows — and never fetched or
+ * applied. Which reported name is which official list is the extraction model's reading, checked
+ * against the catalog at that boundary; nothing here matches names to official lists. The run
+ * executes the official identities that resolved and the report names every source it left out, so
+ * a narrower baseline is stated rather than silent. Only a selection with nothing official in it
  * yields no baseline at all.
  *
  * The verdict is decided over the whole selection, but the recorded evidence list is truncated to
@@ -302,13 +304,15 @@ export function decideExecutableFilters(
                         'extraction boundary admits only catalog ids.',
                 );
             }
-            if (!officialByFilterId.has(official.filterId)) {
-                officialByFilterId.set(official.filterId, {
-                    filterId: official.filterId,
-                    listKey: adguardListKey(official.filterId),
-                    name: official.name,
-                    reportedName,
-                });
+            for (const filterId of expandCombinedOfficialFilterIds([official.filterId])) {
+                if (!officialByFilterId.has(filterId)) {
+                    officialByFilterId.set(filterId, {
+                        filterId,
+                        listKey: adguardListKey(filterId),
+                        name: OFFICIAL_FILTERS_BY_ID.get(filterId)!.name,
+                        reportedName,
+                    });
+                }
             }
             continue;
         }
