@@ -51,6 +51,15 @@ const MAX_SCHEMA_CHARS = 16_000;
 const MAX_INVALID_RESPONSE_CHARS = 8_000;
 
 /**
+ * Maximum invalid model reply written to the run log.
+ *
+ * The log is the only place a rejected reply survives, and the repair prompt's tighter bound would
+ * cut away exactly the tail that broke the parse. A structured reply is a few kilobytes; this bound
+ * only stops a runaway generation from flooding the log.
+ */
+const MAX_LOGGED_INVALID_RESPONSE_CHARS = 64_000;
+
+/**
  * Maximum validation diagnostic carried by the repair prompt and the typed failure.
  */
 const MAX_VALIDATION_DETAIL_CHARS = 1_000;
@@ -119,13 +128,55 @@ function parseJsonResponse(content: string): unknown {
     try {
         return JSON.parse(trimmed);
     } catch {
-        const firstBrace = trimmed.indexOf('{');
-        const lastBrace = trimmed.lastIndexOf('}');
-        if (firstBrace >= 0 && lastBrace > firstBrace) {
-            return JSON.parse(trimmed.slice(firstBrace, lastBrace + 1));
+        const object = firstJsonObjectText(trimmed);
+        if (object === undefined) {
+            throw new Error('response did not contain a JSON object');
         }
-        throw new Error('response did not contain a JSON object');
+        return JSON.parse(object);
     }
+}
+
+/**
+ * Cut the first complete JSON object out of a reply that carries text before or after it.
+ *
+ * Braces are counted outside string literals only, so a brace inside a value does not end the
+ * object early, and text after the object — prose, a second object — is never pulled into it. A
+ * reply that ends inside the object yields what follows its first brace, and the parse names the
+ * truncation.
+ *
+ * @param text - The trimmed reply.
+ * @returns The object's text, or `undefined` when the reply has no opening brace.
+ */
+function firstJsonObjectText(text: string): string | undefined {
+    const start = text.indexOf('{');
+    if (start < 0) {
+        return undefined;
+    }
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    for (let index = start; index < text.length; index += 1) {
+        const character = text[index];
+        if (inString) {
+            if (escaped) {
+                escaped = false;
+            } else if (character === '\\') {
+                escaped = true;
+            } else if (character === '"') {
+                inString = false;
+            }
+        } else if (character === '"') {
+            inString = true;
+        } else if (character === '{') {
+            depth += 1;
+        } else if (character === '}') {
+            depth -= 1;
+            if (depth === 0) {
+                return text.slice(start, index + 1);
+            }
+        }
+    }
+    return text.slice(start);
 }
 
 /**
@@ -251,6 +302,15 @@ export async function runStructuredSingleShot<T>(
             };
         } catch (error) {
             lastFailure = validationDetail(error);
+            options.logger?.warn(
+                {
+                    attempt,
+                    model: model.id,
+                    detail: lastFailure,
+                    reply: contentText(message.content).slice(0, MAX_LOGGED_INVALID_RESPONSE_CHARS),
+                },
+                'single-shot LLM call: the reply did not match the schema',
+            );
             if (attempt === maxAttempts) {
                 break;
             }

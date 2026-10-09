@@ -34,6 +34,11 @@ const TRUNCATION_MARK = '…';
  * own Markdown needs to turn untrusted text into an active mention, link, image, cross-reference or
  * heading; escaping them here is defense in depth beside the template's plain-text placeholder
  * slots.
+ *
+ * `\` and `` ` `` are escaped because Markdown would otherwise reread text this module already
+ * decided on: a backslash before an entity's `&` makes GitHub show the entity as text (a model's
+ * `\"` read as `\&quot;`), and a backtick left outside every complete span could pair with another
+ * one and open a code span that shows the entities inside it literally.
  */
 const ESCAPED_CHARACTERS: Record<string, string> = {
     '&': '&amp;',
@@ -45,6 +50,8 @@ const ESCAPED_CHARACTERS: Record<string, string> = {
     '[': '&#91;',
     ']': '&#93;',
     '#': '&#35;',
+    '\\': '&#92;',
+    '`': '&#96;',
 };
 
 /**

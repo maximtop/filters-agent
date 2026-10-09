@@ -2,6 +2,7 @@ import type { Api, AssistantMessage, Message, Model } from '@earendil-works/pi-a
 import { ReasoningEffort, type ActiveReasoningEffort } from '../config/reasoning-effort';
 import type { SingleShotCallOptions } from './single-shot-types';
 import type { PiRuntime } from './runtime';
+import { TurnStopReason } from './stop-reason';
 import { isTransientGatewayFailure } from './transient-gateway-retry';
 
 /**
@@ -39,6 +40,23 @@ const DEFAULT_TEMPERATURE = 0;
  * ordinal, so the second retry waits twice as long.
  */
 const TRANSIENT_RETRY_DELAY_MS = 1_000;
+
+/**
+ * Longest provider-requested pause one single-shot call waits out before its retry.
+ *
+ * Pi's transport retry refuses a `retry-after` above its own 60-second cap and fails the request at
+ * once, naming the delay, so the caller can decide. A gateway behind Cloudflare answered three
+ * intake calls in a row with 524 and a 120-second `retry-after`; each run ended without a report
+ * although the provider had only asked for a pause. Five minutes covers such a pause and stays well
+ * inside a run's wall-clock budget; a provider asking for longer is down, and the call fails.
+ */
+const MAX_PROVIDER_REQUESTED_RETRY_DELAY_MS = 5 * 60_000;
+
+/**
+ * Pi's message for a request it refused because the provider asked for a longer pause than its cap;
+ * the capture is the requested delay in whole seconds.
+ */
+const PROVIDER_REQUESTED_DELAY_PATTERN = /^Server requested (\d+)s retry delay\b/u;
 
 /**
  * Hard bound on one single-shot call's total duration, streamed progress or not.
@@ -149,8 +167,10 @@ export type SingleShotCompletionOptions = Omit<SingleShotCallOptions, 'messages'
  *   (`isTransientGatewayFailure`) — is retried here up to `options.maxRetries` times with a short
  *   growing delay: pi's own transport retry (`maxRetries` on the request) decides on the HTTP
  *   status of the request phase alone, so a fault after the headers surfaces as an error message it
- *   never retries, and one such fault would leave a candidate visual review "unavailable". A caller
- *   abort and every deterministic failure return at once.
+ *   never retries, and one such fault would leave a candidate visual review "unavailable". A
+ *   request pi refused because the provider asked for a pause above pi's own cap is retried the
+ *   same way after that pause, up to `MAX_PROVIDER_REQUESTED_RETRY_DELAY_MS`. A caller abort and
+ *   every deterministic failure return at once.
  */
 export async function completeOnce(
     runtime: PiRuntime,
@@ -162,22 +182,83 @@ export async function completeOnce(
     const maxRetries = options.maxRetries ?? 0;
     for (let retry = 0; ; retry += 1) {
         const message = await completeUnretried(runtime, model, systemPrompt, messages, options);
-        if (
-            retry >= maxRetries ||
-            options.signal?.aborted === true ||
-            !isTransientGatewayFailure(message)
-        ) {
+        if (retry >= maxRetries || options.signal?.aborted === true) {
             return message;
         }
-        options.logger?.warn(
-            { message: message.errorMessage, retry: retry + 1, maxRetries, model: model.id },
-            'single-shot LLM call met a transient gateway failure mid-stream; retrying',
-        );
-        await new Promise<void>((resolve) => {
-            const timer = setTimeout(resolve, TRANSIENT_RETRY_DELAY_MS * (retry + 1));
-            timer.unref();
-        });
+        const requestedDelayMs = providerRequestedRetryDelayMs(message);
+        let delayMs: number;
+        if (requestedDelayMs !== undefined) {
+            if (requestedDelayMs > MAX_PROVIDER_REQUESTED_RETRY_DELAY_MS) {
+                return message;
+            }
+            options.logger?.warn(
+                {
+                    message: message.errorMessage,
+                    requestedDelayMs,
+                    retry: retry + 1,
+                    maxRetries,
+                    model: model.id,
+                },
+                'single-shot LLM call: the provider asked for a pause; waiting it out, then retrying',
+            );
+            delayMs = requestedDelayMs;
+        } else if (isTransientGatewayFailure(message)) {
+            options.logger?.warn(
+                { message: message.errorMessage, retry: retry + 1, maxRetries, model: model.id },
+                'single-shot LLM call met a transient gateway failure mid-stream; retrying',
+            );
+            delayMs = TRANSIENT_RETRY_DELAY_MS * (retry + 1);
+        } else {
+            return message;
+        }
+        if (!(await sleepUnlessAborted(delayMs, options.signal))) {
+            return message;
+        }
     }
+}
+
+/**
+ * Read the pause a provider asked for from a request pi refused because the pause exceeded pi's own
+ * cap.
+ *
+ * @param message - The assistant message a completion returned.
+ * @returns The requested pause in milliseconds, or `undefined` when the message is not that
+ *   refusal.
+ */
+function providerRequestedRetryDelayMs(message: AssistantMessage): number | undefined {
+    if (message.stopReason !== TurnStopReason.Error) {
+        return undefined;
+    }
+    const seconds = message.errorMessage?.match(PROVIDER_REQUESTED_DELAY_PATTERN)?.[1];
+    return seconds === undefined ? undefined : Number(seconds) * 1_000;
+}
+
+/**
+ * Wait before a retry, ending early when the caller aborts.
+ *
+ * @param delayMs - How long to wait.
+ * @param signal - The caller's abort signal, if any.
+ * @returns `true` when the full delay passed, `false` when the caller aborted.
+ */
+async function sleepUnlessAborted(
+    delayMs: number,
+    signal: AbortSignal | undefined,
+): Promise<boolean> {
+    if (signal?.aborted === true) {
+        return false;
+    }
+    return new Promise<boolean>((resolve) => {
+        const onAbort = (): void => {
+            clearTimeout(timer);
+            resolve(false);
+        };
+        const timer = setTimeout(() => {
+            signal?.removeEventListener('abort', onAbort);
+            resolve(true);
+        }, delayMs);
+        timer.unref();
+        signal?.addEventListener('abort', onAbort, { once: true });
+    });
 }
 
 /**
