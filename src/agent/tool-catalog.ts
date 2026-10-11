@@ -8,11 +8,11 @@
 import * as v from 'valibot';
 import { ConsoleCoverage } from '../browser/browser-interfaces';
 import { CANDIDATE_OPERATION_VALUES } from '../environment/filtering-environment';
+import { EnvironmentSelectionKindSchema } from '../environment/environment-vocabulary';
 import {
     AgentEnvironmentSelectionRequestSchema,
     AgentIntentAssessmentSchema,
-    EnvironmentSelectionKindSchema,
-} from '../environment/environment-selection';
+} from '../environment/environment-selection-contract';
 import {
     DEFAULT_SAFE_INTERACTION_BOUNDS,
     SafeInteractionKindSchema,

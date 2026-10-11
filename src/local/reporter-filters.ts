@@ -8,6 +8,7 @@
  */
 
 import { decideExecutableFilters } from '../environment/official-filter-catalog';
+import { FilterBaselineStatus } from '../environment/filter-baseline-status';
 import { expandCombinedOfficialFilterIds } from '../environment/official-filter-table';
 import type { IssueFacts } from '../types/issue-facts';
 
@@ -134,7 +135,7 @@ export function readReporterOfficialFilterIds(
         return expandCombinedOfficialFilterIds(linked.filterIds);
     }
     const decision = decideExecutableFilters(facts.enabledFilters);
-    return decision.status === 'executable'
+    return decision.status === FilterBaselineStatus.Executable
         ? decision.officialFilters.map((filter) => filter.filterId)
         : [];
 }

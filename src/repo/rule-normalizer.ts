@@ -429,8 +429,15 @@ export function normalizeRule(line: string): NormalizedRule {
         .map(normalizeModifier)
         .filter((m) => m.length > 0)
         .sort();
-    const domainMod = modifiers.find((m) => m.startsWith('domain='));
-    const domains = domainMod ? normalizeDomainList(domainMod.slice('domain='.length), '|') : [];
+    // Every `domain=` modifier counts: the blocker applies the rule on the union of them, so
+    // reading only the first would let `$domain=a,domain=a|b` pass a scope check for `a` alone.
+    const domains = normalizeDomainList(
+        modifiers
+            .filter((m) => m.startsWith('domain='))
+            .map((m) => m.slice('domain='.length))
+            .join('|'),
+        '|',
+    );
     const canonical =
         (isException ? '@@' : '') +
         urlPattern +
@@ -438,7 +445,7 @@ export function normalizeRule(line: string): NormalizedRule {
     return {
         canonical,
         kind: RuleKind.Network,
-        syntaxKind: 'network',
+        syntaxKind: RuleSyntaxKind.Network,
         isException,
         urlPattern,
         modifiers,

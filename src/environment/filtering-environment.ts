@@ -7,7 +7,8 @@ import {
 import { ReporterSymptomPresenceSchema } from '../types/reporter-symptom-presence';
 import { ReproProfileSchema } from '../types/repro-profile';
 import { ExecutorNameSchema } from './executor-name';
-import { ActualExecutionContextSchema, EnvironmentCapabilitySchema } from './environment-selection';
+import { EnvironmentCapabilitySchema } from './environment-vocabulary';
+import { ActualExecutionContextSchema } from './environment-selection-contract';
 import {
     BoundedIdSchema,
     DigestSchema,

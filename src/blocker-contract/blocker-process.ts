@@ -241,20 +241,24 @@ export function spawnBlockerProcess(input: BlockerProcessInput): BlockerContract
             if (running === null || exited) {
                 return { licenceReleased: false };
             }
-            const stopped = await call(BlockerMethod.Stop, null);
-            if (exited) {
-                return stopped;
+            // The process ends whether or not the module could stop cleanly: a Stop that fails
+            // in the module's own cleanup must not leave it running after the run moved on.
+            try {
+                return await call(BlockerMethod.Stop, null);
+            } finally {
+                if (!exited) {
+                    // A module stops itself once its stdin closes; the kill is only for one that
+                    // hangs.
+                    await new Promise<void>((resolve) => {
+                        const killTimer = setTimeout(() => running.kill('SIGKILL'), EXIT_GRACE_MS);
+                        running.once('exit', () => {
+                            clearTimeout(killTimer);
+                            resolve();
+                        });
+                        running.stdin!.end();
+                    });
+                }
             }
-            // A module stops itself once its stdin closes; the kill is only for one that hangs.
-            await new Promise<void>((resolve) => {
-                const killTimer = setTimeout(() => running.kill('SIGKILL'), EXIT_GRACE_MS);
-                running.once('exit', () => {
-                    clearTimeout(killTimer);
-                    resolve();
-                });
-                running.stdin!.end();
-            });
-            return stopped;
         },
     };
 }

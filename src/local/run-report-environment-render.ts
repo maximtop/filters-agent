@@ -7,10 +7,9 @@
  * A pure `EnvironmentSelectionSnapshot -> string[]` projection, called by `run-report-render` and
  * calling nothing back.
  */
-import {
-    EnvironmentPreparationState,
-    type EnvironmentSelectionSnapshot,
-} from '../environment/environment-selection';
+import { FilterBaselineStatus } from '../environment/filter-baseline-status';
+import { EnvironmentPreparationState } from '../environment/environment-vocabulary';
+import { type EnvironmentSelectionSnapshot } from '../environment/environment-selection-contract';
 import { ExecutorPreparationState } from '../environment/executor-preparation';
 import { renderInlineValues, renderItemsOrFallback } from './run-report-values';
 
@@ -72,7 +71,7 @@ export function renderCliInstallationPreparation(
  */
 function renderDeclaredFilterBaseline(selection: EnvironmentSelectionSnapshot): string[] {
     const baseline = selection.filterBaseline;
-    if (baseline?.status !== 'declared') {
+    if (baseline?.status !== FilterBaselineStatus.Declared) {
         return [];
     }
     return [

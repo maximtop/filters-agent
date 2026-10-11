@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync, realpathSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { FixOutcomeKind, type FixOutcome } from '../pr/fix-outcome';
-import { isIncorrectBlockingReport, type ProblemType } from '../types/issue-facts';
+import { isIncorrectBlockingReport, ProblemType } from '../types/issue-facts';
 import {
     RuleKind,
     SINGLE_LINE_RULE_MESSAGE,
@@ -37,8 +37,9 @@ export interface CandidateSafetyOptions {
     /**
      * Parsed problem class of the report driving this run.
      *
-     * Exception rules are eligible only for incorrect-blocking reports, where a domain-scoped
-     * exception is the dominant human remedy; for every other class they stay rejected.
+     * Exception rules are eligible only for incorrect-blocking and anti-adblock reports, where a
+     * domain-scoped exception is a common human remedy; for every other class they stay rejected.
+     * Either way the exception must be scoped to the reported site.
      */
     problemType?: ProblemType;
 
@@ -226,6 +227,21 @@ export function candidateForReviewOf(
 }
 
 /**
+ * Whether a report class may be fixed with an exception rule.
+ *
+ * Incorrect blocking is fixed by unblocking what a list blocked. An anti-adblock wall is often
+ * fixed the same way: the detector probes an ad resource, and a domain-scoped exception lets that
+ * probe succeed so the wall never shows, as on maximtop/AdguardFilters#415. The scope gate below
+ * still requires that exception to name the reported site.
+ *
+ * @param problemType - The report's problem class.
+ * @returns Whether an exception rule may be the candidate.
+ */
+function isExceptionEligibleReport(problemType: ProblemType | undefined): boolean {
+    return isIncorrectBlockingReport(problemType) || problemType === ProblemType.AntiAdblock;
+}
+
+/**
  * Enforce deterministic publication invariants before a runtime candidate reaches the publisher.
  *
  * The rule's type is a fact of its text, not a claim the model makes: the accepted outcome carries
@@ -283,9 +299,9 @@ export function enforceCandidateSafety(
                 `Candidate is not an actionable rule: it parses as ${normalized.kind}.`,
             );
         }
-        if (normalized.isException && !isIncorrectBlockingReport(options.problemType)) {
+        if (normalized.isException && !isExceptionEligibleReport(options.problemType)) {
             throw new CandidateSafetyError(
-                'Exception rules are only eligible for incorrect-blocking reports.',
+                'Exception rules are only eligible for incorrect-blocking and anti-adblock reports.',
             );
         }
         // The scope gate below carries the rest of the exception policy: effectiveRuleScopes

@@ -21,9 +21,9 @@ import {
 import { FilteringEnvironmentExecutionSchema } from '../environment/filtering-environment';
 import {
     EnvironmentSelectionReservedCase,
-    EnvironmentSelectionSnapshotSchema,
     EnvironmentSelectionState,
-} from '../environment/environment-selection';
+} from '../environment/environment-vocabulary';
+import { EnvironmentSelectionSnapshotSchema } from '../environment/environment-selection-contract';
 import { projectEnvironmentResult } from '../environment/environment-result-projection';
 import {
     CANDIDATE_VALIDATION_ARTIFACT_ID_PATTERN,

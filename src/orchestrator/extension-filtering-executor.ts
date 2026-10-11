@@ -4,7 +4,7 @@ import {
     EnvironmentSelectionState,
     FilteringEnvironmentAvailability,
     type FilteringEnvironmentDescriptor,
-} from '../environment/environment-selection';
+} from '../environment/environment-vocabulary';
 import { BrowserExtensionExecutorName, type ExecutorName } from '../environment/executor-name';
 import { BrowserExtensionEnvironmentAdapter } from '../environment/browser-extension-environment';
 import { FirefoxExtensionEnvironmentAdapter } from '../environment/firefox-extension-environment';

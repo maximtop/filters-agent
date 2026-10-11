@@ -19,7 +19,7 @@ import {
     type PolicySessionRelaunchRequest,
     type PreparedExtensionLaunchChannel,
 } from '../browser/prepared-extension-launch';
-import type { ActualExecutionContextInput } from '../environment/environment-selection';
+import type { ActualExecutionContextInput } from '../environment/environment-selection-contract';
 import { ExtensionLaunchFamily } from '../environment/extension-launch';
 import type { LoadedInstruction } from '../knowledge/instruction-loader';
 import { readPreparedExtensionManifest, type PreparedExtension } from '../local/prepared-extension';

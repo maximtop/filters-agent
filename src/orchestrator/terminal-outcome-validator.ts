@@ -13,7 +13,7 @@
  * configuration-diagnostic pair in `terminal-configuration-evidence.ts`.
  */
 import { CandidateOperation } from '../environment/filtering-environment';
-import { EnvironmentSelectionState } from '../environment/environment-selection';
+import { EnvironmentSelectionState } from '../environment/environment-vocabulary';
 import { classifyObservedPageAccess } from '../environment/target-access';
 import { FixOutcomeKind, type FixOutcome } from '../pr/fix-outcome';
 import { normalizeRule } from '../repo/rule-normalizer';

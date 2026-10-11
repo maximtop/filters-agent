@@ -12,7 +12,7 @@ import {
     FilterListKeySchema,
 } from './filter-list-ref';
 import { ExecutorNameSchema } from './executor-name';
-import { ActualExecutionContextSchema } from './environment-selection';
+import { ActualExecutionContextSchema } from './environment-selection-contract';
 import { normalizeRulesContent, sha256OfContent } from './rules-content';
 
 /**

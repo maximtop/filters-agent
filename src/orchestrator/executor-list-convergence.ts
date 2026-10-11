@@ -1,7 +1,5 @@
-import {
-    EnvironmentSelectionHost,
-    EnvironmentSelectionReservedCase,
-} from '../environment/environment-selection';
+import { EnvironmentSelectionReservedCase } from '../environment/environment-vocabulary';
+import { EnvironmentSelectionHost } from '../environment/environment-selection';
 import type { FilterListRef } from '../environment/filter-list-ref';
 import {
     EnvironmentAdapterLimitationCode,

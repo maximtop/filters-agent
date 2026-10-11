@@ -27,7 +27,7 @@ import {
     type EnvironmentPhase,
     type PublishedBaselineProvenance,
 } from '../environment/environment-proofs';
-import { EnvironmentCapability } from '../environment/environment-selection';
+import { EnvironmentCapability } from '../environment/environment-vocabulary';
 import {
     adguardListKey,
     parseAdguardListKey,

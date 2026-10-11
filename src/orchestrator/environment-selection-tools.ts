@@ -22,8 +22,8 @@ import {
     EnvironmentSelectionReservedCase,
     EnvironmentSelectionState,
     FilteringEnvironmentAvailability,
-    type EnvironmentSelectionHost,
-} from '../environment/environment-selection';
+} from '../environment/environment-vocabulary';
+import { type EnvironmentSelectionHost } from '../environment/environment-selection';
 import { ExecutorPreparationState } from '../environment/executor-preparation';
 import type { EvidenceRouteHost } from '../local/evidence-route-contract';
 import { registeredParameters } from '../agent/registered-parameters';

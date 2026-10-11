@@ -7,7 +7,7 @@
  * another. The runtime implements it by delegation, so every rejection can be exercised against a
  * constructed view without launching a browser.
  */
-import { type EnvironmentSelectionSnapshot } from '../environment/environment-selection';
+import { type EnvironmentSelectionSnapshot } from '../environment/environment-selection-contract';
 import type { RawIssue } from '../github/fetch-issue';
 import type { EvidenceRouteHost } from '../local/evidence-route-contract';
 import type { CandidatePlacementContext } from '../repo/candidate-placement-check';

@@ -1,4 +1,5 @@
 import * as v from 'valibot';
+import { FilterBaselineStatus } from './filter-baseline-status';
 import { adguardListKey, FilterListKeySchema } from './filter-list-ref';
 import {
     expandCombinedOfficialFilterIds,
@@ -143,7 +144,7 @@ export const NonExecutableFilterCodeSchema = v.picklist(NON_EXECUTABLE_FILTER_CO
 export const ExecutableFilterDecisionSchema = v.pipe(
     v.variant('status', [
         v.strictObject({
-            status: v.literal('executable'),
+            status: v.literal(FilterBaselineStatus.Executable),
             officialFilters: v.pipe(
                 v.array(OfficialFilterIdentitySchema),
                 v.minLength(1),
@@ -155,7 +156,7 @@ export const ExecutableFilterDecisionSchema = v.pipe(
             ),
         }),
         v.strictObject({
-            status: v.literal('not_executable'),
+            status: v.literal(FilterBaselineStatus.NotExecutable),
             code: NonExecutableFilterCodeSchema,
             skippedSources: v.pipe(
                 v.array(SkippedFilterSourceSchema),
@@ -165,7 +166,7 @@ export const ExecutableFilterDecisionSchema = v.pipe(
     ]),
     v.check(
         (decision) =>
-            decision.status !== 'executable' ||
+            decision.status !== FilterBaselineStatus.Executable ||
             (decision.officialFilters.every(
                 (filter, index) =>
                     index === 0 || decision.officialFilters[index - 1]!.filterId < filter.filterId,
@@ -343,18 +344,18 @@ export function decideExecutableFilters(
     const decision: ExecutableFilterDecision =
         namedEntries === 0
             ? {
-                  status: 'not_executable',
+                  status: FilterBaselineStatus.NotExecutable,
                   code: NonExecutableFilterCode.FilterSelectionMissing,
                   skippedSources,
               }
             : officialByFilterId.size === 0
               ? {
-                    status: 'not_executable',
+                    status: FilterBaselineStatus.NotExecutable,
                     code: NonExecutableFilterCode.NoOfficialFilterBaseline,
                     skippedSources,
                 }
               : {
-                    status: 'executable',
+                    status: FilterBaselineStatus.Executable,
                     officialFilters: OFFICIAL_ADGUARD_FILTERS.map((filter) =>
                         officialByFilterId.get(filter.filterId),
                     ).filter((identity) => identity !== undefined),

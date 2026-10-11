@@ -7,8 +7,8 @@
  * engine's own; only the investigation seam is wrapped. The action and any other caller build their
  * `runIssue` seam here, so they never drift.
  */
-import { mkdirSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import type { BlockerContract } from '../blocker-contract/blocker-contract';
 import { runDefaultSingleIssue } from '../entry/single-issue-run';
 import type {
@@ -19,12 +19,58 @@ import type { ExecutorName } from '../environment/executor-name';
 import { extractReport } from '../intake/extract-report';
 import { runFixCore } from '../orchestrator/fix-core';
 import type { BlockerModuleRunDependencies } from './blocker-module-executor';
+import { redactText } from '../tracer/redact-text';
 import { reservePrivateWorkspace } from './private-workspace';
 
 /**
  * Directory below the agent workspace the official filter lists are cached in across runs.
  */
 const FILTER_CACHE_DIRECTORY = join('tmp', 'filter-cache');
+
+/**
+ * Directory under the issue's artifacts the modules' own logs are copied to.
+ */
+const BLOCKER_LOGS_DIRECTORY = 'blocker-logs';
+
+/**
+ * Extension of the files a module's workspace keeps its logs in.
+ */
+const LOG_FILE_EXTENSION = '.log';
+
+/**
+ * Copy every log a module left in its workspace into the issue's artifacts before the workspace is
+ * removed.
+ *
+ * A module's own logs say what the blocker did with each request: whether it filtered a page or let
+ * it through. Without them a page the blocker never filtered looked the same as a rule that did not
+ * work, as on maximtop/AdguardFilters#419. The copy is redacted the way every persisted log is.
+ * Diagnostics never fail a run, so a copy that fails is only reported.
+ *
+ * @param moduleWorkspace - The module's workspace.
+ * @param destination - Directory under the artifacts the logs go to.
+ */
+function copyModuleLogs(moduleWorkspace: string, destination: string): void {
+    if (!existsSync(moduleWorkspace)) {
+        return;
+    }
+    try {
+        const logs = readdirSync(moduleWorkspace, { recursive: true, encoding: 'utf8' }).filter(
+            (path) => path.endsWith(LOG_FILE_EXTENSION),
+        );
+        for (const path of logs) {
+            const target = join(destination, path);
+            mkdirSync(dirname(target), { recursive: true });
+            // The artifacts are published with the run, and a blocker logs every URL it saw, query
+            // and referrer included: a session token in a page's request must not travel with it.
+            writeFileSync(target, redactText(readFileSync(join(moduleWorkspace, path), 'utf8')));
+        }
+    } catch (error) {
+        console.warn(
+            `blocker module logs not copied from ${moduleWorkspace}: ` +
+                `${error instanceof Error ? error.message : String(error)}`,
+        );
+    }
+}
 
 /**
  * One blocker module a run enables.
@@ -121,6 +167,12 @@ export function createBlockerModuleRunIssue(
                     ),
             });
         } finally {
+            for (const module of modules) {
+                copyModuleLogs(
+                    join(workspaceDir, module.executor),
+                    join(request.artifactsDir, BLOCKER_LOGS_DIRECTORY, module.executor),
+                );
+            }
             // The route stopped every module it started when the run ended; what is left is files.
             rmSync(workspaceDir, { recursive: true, force: true });
         }

@@ -24,7 +24,11 @@ import type {
     EvidenceRouteSnapshot,
     EvidenceSessionRequest,
 } from '../local/evidence-route-contract';
-import { EvidenceRouteError } from '../local/evidence-route-contract';
+import {
+    EvidenceRouteError,
+    EvidenceRouteFailureCode,
+    EvidenceRouteState,
+} from '../local/evidence-route-contract';
 import { probeTlsInterception } from '../local/tls-interception-diagnostic';
 import {
     createProxyBlockerBaselineHost,
@@ -156,8 +160,8 @@ export function createProxyBlockerEvidenceRoute(
     const downloadFilters = input.dependencies?.downloadFilters ?? downloadOfficialFilters;
     const createSession = input.dependencies?.createBrowserSession ?? BrowserSession.create;
 
-    let state: EvidenceRouteSnapshot['state'] = 'new';
-    let failureCode: EvidenceRouteSnapshot['failureCode'] = null;
+    let state: EvidenceRouteState = EvidenceRouteState.New;
+    let failureCode: EvidenceRouteFailureCode | null = null;
     let description: BlockerDescription | null = null;
     let filters: readonly DownloadedOfficialFilter[] = [];
     let unavailableFilterIds: readonly number[] = [];
@@ -179,11 +183,8 @@ export function createProxyBlockerEvidenceRoute(
     // phases enable lists from, and it must not mix with anything the blocker writes.
     const baselineDataRoot = join(input.workspaceDir, 'baseline');
 
-    const fail = (
-        code: NonNullable<EvidenceRouteSnapshot['failureCode']>,
-        cause?: unknown,
-    ): EvidenceRouteError => {
-        state = 'failed';
+    const fail = (code: EvidenceRouteFailureCode, cause?: unknown): EvidenceRouteError => {
+        state = EvidenceRouteState.Failed;
         failureCode ??= code;
         return new EvidenceRouteError(code, cause === undefined ? undefined : { cause });
     };
@@ -210,7 +211,7 @@ export function createProxyBlockerEvidenceRoute(
             route = started.route;
             revision = started.revision;
             port = (await input.blocker.state()).port;
-            state = 'foreground_running';
+            state = EvidenceRouteState.ForegroundRunning;
             return false;
         }
         const applied = await input.blocker.apply({
@@ -313,20 +314,20 @@ export function createProxyBlockerEvidenceRoute(
                 filters = downloaded.filters;
                 unavailableFilterIds = downloaded.unavailableFilterIds;
                 if (filters.length === 0) {
-                    throw fail('configuration_failed');
+                    throw fail(EvidenceRouteFailureCode.ConfigurationFailed);
                 }
-                state = 'configured';
+                state = EvidenceRouteState.Configured;
             } catch (error) {
                 if (error instanceof EvidenceRouteError) {
                     throw error;
                 }
-                throw fail('configuration_failed', error);
+                throw fail(EvidenceRouteFailureCode.ConfigurationFailed, error);
             }
         },
 
         async launchEvidenceSession(request: EvidenceSessionRequest) {
             if (!description) {
-                throw fail('route_unavailable');
+                throw fail(EvidenceRouteFailureCode.RouteUnavailable);
             }
             try {
                 // The session must ride a proxy executing exactly the filters the current phase
@@ -354,7 +355,7 @@ export function createProxyBlockerEvidenceRoute(
                     },
                     'blocker evidence route foreground start failed',
                 );
-                throw fail('foreground_failed', error);
+                throw fail(EvidenceRouteFailureCode.ForegroundFailed, error);
             }
             const certificate = route!;
             if (!interception) {
@@ -438,14 +439,14 @@ export function createProxyBlockerEvidenceRoute(
                     },
                     'blocker evidence session launch failed',
                 );
-                throw fail('browser_launch_failed', error);
+                throw fail(EvidenceRouteFailureCode.BrowserLaunchFailed, error);
             }
         },
 
         environmentPorts(): EvidenceRoutePorts {
             const blockerDescription = description;
             if (!blockerDescription) {
-                throw fail('route_unavailable');
+                throw fail(EvidenceRouteFailureCode.RouteUnavailable);
             }
             baselineHost ??= createProxyBlockerBaselineHost({
                 dataRoot: baselineDataRoot,
@@ -529,8 +530,8 @@ export function createProxyBlockerEvidenceRoute(
             await input.blocker.stop();
             route = null;
             port = null;
-            if (state !== 'failed') {
-                state = 'stopped';
+            if (state !== EvidenceRouteState.Failed) {
+                state = EvidenceRouteState.Stopped;
             }
         },
 
@@ -538,10 +539,12 @@ export function createProxyBlockerEvidenceRoute(
             return {
                 state,
                 port,
-                baseFilterEnabled: filters.some((filter) => filter.filterId === 2),
+                baseFilterEnabled: filters.some(
+                    (filter) => filter.filterId === ADGUARD_BASE_FILTER_ID,
+                ),
                 reproducedFilterIds: filters
                     .map((filter) => filter.filterId)
-                    .filter((filterId) => filterId !== 2),
+                    .filter((filterId) => filterId !== ADGUARD_BASE_FILTER_ID),
                 unavailableFilterIds: [...unavailableFilterIds],
                 failureCode,
             };

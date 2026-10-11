@@ -4,11 +4,9 @@
  * configuration was executed when the extension build's catalog, or the CLI's, could not offer
  * every filter the reporter had enabled.
  */
-import {
-    EnvironmentSelectionReservedCase,
-    FidelityLimitationCode,
-    type EnvironmentSelectionHost,
-} from '../environment/environment-selection';
+import { EnvironmentSelectionReservedCase } from '../environment/environment-vocabulary';
+import { FidelityLimitationCode } from '../environment/environment-selection-contract';
+import { type EnvironmentSelectionHost } from '../environment/environment-selection';
 import { BrowserExtensionExecutorName } from '../environment/executor-name';
 import type { MissingCatalogFilterClassification } from '../environment/third-party-filter-catalog';
 import type { EvidenceRouteSnapshot } from '../local/evidence-route-contract';

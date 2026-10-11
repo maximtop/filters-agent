@@ -1,11 +1,11 @@
 import * as v from 'valibot';
+import { EnvironmentCapabilitySchema } from '../environment/environment-vocabulary';
 import {
     ActualExecutionContextSchema,
     AgentIntentAssessmentSchema,
-    EnvironmentCapabilitySchema,
     EnvironmentSelectionSnapshotSchema,
     ReportedExecutionContextSchema,
-} from '../environment/environment-selection';
+} from '../environment/environment-selection-contract';
 import { DeclaredIssueContextSchema } from '../environment/declared-issue-context';
 import {
     EnvironmentCleanupReceiptSchema,

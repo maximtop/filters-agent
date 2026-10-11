@@ -1,744 +1,59 @@
 import * as v from 'valibot';
 import { BrowserDisplayName } from '../types/browser-display-name';
 import type { IssueFacts } from '../types/issue-facts';
-import { BoundedIdentifierSchema, ExecutorNameSchema, type ExecutorName } from './executor-name';
+import { type ExecutorName } from './executor-name';
 import {
     ExecutorPreparationState,
-    ExecutorPreparedProvenanceSchema,
     ExecutorPreparationOutcomeSchema,
-    ExecutorPreparationSchema,
     type ExecutorPreparationOutcome,
 } from './executor-preparation';
+import { type SelectionFilterBaseline } from './declared-filter-baseline';
+import { decideExecutableFilters } from './official-filter-catalog';
+import { declaredIssueContext } from './declared-issue-context';
+import { FilterBaselineStatus } from './filter-baseline-status';
 import {
-    SelectionFilterBaselineSchema,
-    type SelectionFilterBaseline,
-} from './declared-filter-baseline';
-import { NonExecutableFilterCode, decideExecutableFilters } from './official-filter-catalog';
-import { DeclaredIssueContextSchema, declaredIssueContext } from './declared-issue-context';
-
-/**
- * Capability supported by one filtering environment.
- */
-export const EnvironmentCapability = {
-    /**
-     * The environment can drive a controlled browser to the reported page.
-     */
-    BrowserNavigation: 'browser_navigation',
-
-    /**
-     * The environment can enable, disable, or otherwise steer what filtering runs.
-     */
-    FilteringControl: 'filtering_control',
-
-    /**
-     * Filtering is enforced by the AdGuard browser extension under test.
-     */
-    ExtensionFiltering: 'extension_filtering',
-
-    /**
-     * Filtering is enforced by a command-line filtering proxy instead of the extension.
-     */
-    CliFiltering: 'cli_filtering',
-
-    /**
-     * The environment can apply a proposed candidate rule for verification.
-     */
-    CandidateApplication: 'candidate_application',
-
-    /**
-     * The environment can verify the published filter baseline it started from.
-     */
-    BaselineIntegrity: 'baseline_integrity',
-
-    /**
-     * The environment can produce the three-phase A/B/C validation proof.
-     */
-    PhaseProof: 'phase_proof',
-
-    /**
-     * The environment can install the filtering proxy CLI.
-     */
-    CliInstallation: 'cli_installation',
-
-    /**
-     * The environment can activate an installed filtering proxy CLI.
-     */
-    CliActivation: 'cli_activation',
-} as const;
-
-/**
- * Every EnvironmentCapability value, for schemas and exhaustive listings.
- */
-export const ENVIRONMENT_CAPABILITY_VALUES = Object.values(EnvironmentCapability);
-
-export const EnvironmentCapabilitySchema = v.picklist(ENVIRONMENT_CAPABILITY_VALUES);
-
-/**
- * Preparation model of one filtering environment descriptor: how the executor behind the descriptor
- * becomes ready, or why it cannot.
- */
-export const EnvironmentPreparationState = {
-    /**
-     * The executor needs no preparation pass: a locked selection can execute immediately.
-     */
-    NotStarted: 'not_started',
-
-    /**
-     * The executor runs a preparation pass after the lock and before execution.
-     */
-    Preparable: 'preparable',
-
-    /**
-     * The executor adapter cannot be prepared in this delivery slice.
-     */
-    AdapterUnavailable: 'adapter_unavailable',
-} as const;
-
-/**
- * Every EnvironmentPreparationState value, for schemas and exhaustive listings.
- */
-export const ENVIRONMENT_PREPARATION_STATE_VALUES = Object.values(EnvironmentPreparationState);
-
-export const EnvironmentPreparationStateSchema = v.picklist(ENVIRONMENT_PREPARATION_STATE_VALUES);
-
-/**
- * EnvironmentPreparationState value.
- */
-export type EnvironmentPreparationState =
-    (typeof EnvironmentPreparationState)[keyof typeof EnvironmentPreparationState];
-
-/**
- * Whether a filtering environment adapter can currently be selected.
- */
-export const FilteringEnvironmentAvailability = {
-    /**
-     * The adapter can be selected and prepared for this run.
-     */
-    Available: 'available',
-
-    /**
-     * The adapter cannot be selected in this delivery slice.
-     */
-    Unavailable: 'unavailable',
-} as const;
-
-/**
- * Every FilteringEnvironmentAvailability value, for schemas and exhaustive listings.
- */
-export const FILTERING_ENVIRONMENT_AVAILABILITY_VALUES = Object.values(
-    FilteringEnvironmentAvailability,
-);
-
-/**
- * Stable reason the locked environment selection could not fully execute.
- */
-export const EnvironmentLimitationCode = {
-    /**
-     * The executor adapter is not available in this delivery slice. Reachable only for descriptors
-     * shipped `unavailable` — the defaults carry no limitation.
-     */
-    ExecutorUnavailable: 'executor_unavailable',
-
-    /**
-     * The locked environment does not advertise a capability the request required.
-     */
-    RequiredCapabilityUnavailable: 'required_capability_unavailable',
-
-    /**
-     * Automatic executor preparation did not become ready.
-     */
-    EnvironmentPreparationFailed: 'environment_preparation_failed',
-
-    /**
-     * The prepared environment failed to activate for the run.
-     */
-    EnvironmentActivationFailed: 'environment_activation_failed',
-
-    /**
-     * The reported filter selection resolved to no executable official filter baseline.
-     */
-    FilterSelectionNotExecutable: 'filter_selection_not_executable',
-} as const;
-
-/**
- * Every EnvironmentLimitationCode value, for schemas and exhaustive listings.
- */
-export const ENVIRONMENT_LIMITATION_CODE_VALUES = Object.values(EnvironmentLimitationCode);
-
-/**
- * Durable limitation-code acceptance: the finite codes this generation writes first, plus the
- * bounded identifier shape that admits the renamed codes persisted by pre-registry artifacts — the
- * persisted run-result read-back must keep parsing what earlier runs wrote, while fresh writes
- * always come from {@link EnvironmentLimitationCode}.
- */
-export const EnvironmentLimitationCodeSchema = v.union([
-    v.picklist(ENVIRONMENT_LIMITATION_CODE_VALUES),
-    BoundedIdentifierSchema,
-]);
-
-/**
- * EnvironmentLimitationCode value.
- */
-export type EnvironmentLimitationCode =
-    (typeof EnvironmentLimitationCode)[keyof typeof EnvironmentLimitationCode];
-
-/**
- * Reserved outcome the model may ask for instead of one executor: the run reproduces no filtering
- * at all and records the unsupported-product verdict.
- */
-export const EnvironmentSelectionReservedCase = {
-    /**
-     * The agent declares the reported product unsupported, locking no environment.
-     */
-    UnsupportedProductCase: 'unsupported_product_case',
-} as const;
-
-/**
- * EnvironmentSelectionReservedCase value.
- */
-export type EnvironmentSelectionReservedCase =
-    (typeof EnvironmentSelectionReservedCase)[keyof typeof EnvironmentSelectionReservedCase];
-
-/**
- * EnvironmentSelectionKind schema: the reserved unsupported-product case, or an executor name. The
- * kind stays open because the executor set is a run input, not a closed list; the reserved case
- * keeps its own literal inside the same schema.
- */
-export const EnvironmentSelectionKindSchema = v.union([
-    v.literal(EnvironmentSelectionReservedCase.UnsupportedProductCase),
-    ExecutorNameSchema,
-]);
-
-/**
- * EnvironmentSelectionKind value: the reserved unsupported-product case, or an executor name.
- */
-export type EnvironmentSelectionKind =
-    | (typeof EnvironmentSelectionReservedCase)[keyof typeof EnvironmentSelectionReservedCase]
-    | ExecutorName;
-
-/**
- * Readiness state of the one locked environment selection.
- */
-export const EnvironmentSelectionState = {
-    /**
-     * The preparable executor was selected but its preparation has not finished yet.
-     */
-    Preparing: 'preparing',
-
-    /**
-     * The locked environment advertises every required capability and can execute.
-     */
-    Ready: 'ready',
-
-    /**
-     * The locked environment is missing a required capability or cannot fully execute.
-     */
-    CapabilityLimited: 'capability_limited',
-
-    /**
-     * The agent declared the reported product unsupported; no environment is locked.
-     */
-    Unsupported: 'unsupported',
-} as const;
-
-/**
- * Every EnvironmentSelectionState value, for schemas and exhaustive listings.
- */
-export const ENVIRONMENT_SELECTION_STATE_VALUES = Object.values(EnvironmentSelectionState);
-
-export const EnvironmentSelectionStateSchema = v.picklist(ENVIRONMENT_SELECTION_STATE_VALUES);
-
-/**
- * EnvironmentSelectionState value.
- */
-export type EnvironmentSelectionState =
-    (typeof EnvironmentSelectionState)[keyof typeof EnvironmentSelectionState];
-
-/**
- * FilteringEnvironmentAvailability value.
- */
-export type FilteringEnvironmentAvailability =
-    (typeof FilteringEnvironmentAvailability)[keyof typeof FilteringEnvironmentAvailability];
-
-/**
- * Immutable host capability descriptor shown to the model. The `kind` is the executor name the
- * descriptor belongs to — an executor registration spells its own descriptor, so the accepted
- * identifier set is the open executor-name vocabulary rather than a closed picklist.
- */
-export const FilteringEnvironmentDescriptorSchema = v.strictObject({
-    kind: ExecutorNameSchema,
-    availability: v.picklist(FILTERING_ENVIRONMENT_AVAILABILITY_VALUES),
-    preparationState: EnvironmentPreparationStateSchema,
-    limitationCode: v.nullable(EnvironmentLimitationCodeSchema),
-    capabilities: v.pipe(v.array(EnvironmentCapabilitySchema), v.maxLength(16)),
-});
-
-const BoundedModelTextSchema = v.pipe(v.string(), v.minLength(1), v.maxLength(2_000));
-const BoundedContextTextSchema = v.pipe(v.string(), v.minLength(1), v.maxLength(200));
-
-export const AgentIntentEvidenceSchema = v.strictObject({
-    source: v.picklist(['issue_body', 'label', 'screenshot', 'browser', 'tool']),
-    observation: v.pipe(v.string(), v.minLength(1), v.maxLength(1_000)),
-});
-
-export const AgentIntentAssessmentSchema = v.strictObject({
-    issueType: v.picklist([
-        'ads',
-        'annoyance',
-        'incorrect_blocking',
-        'anti_adblock',
-        'product_specific',
-        'unknown',
-    ]),
-    rationale: BoundedModelTextSchema,
-    confidence: v.pipe(v.number(), v.minValue(0), v.maxValue(1)),
-    evidence: v.pipe(v.array(AgentIntentEvidenceSchema), v.maxLength(12)),
-    conflicts: v.pipe(
-        v.array(v.pipe(v.string(), v.minLength(1), v.maxLength(1_000))),
-        v.maxLength(8),
-    ),
-});
-
-export const AgentEnvironmentSelectionRequestSchema = v.strictObject({
-    kind: EnvironmentSelectionKindSchema,
-    requiredCapabilities: v.pipe(v.array(EnvironmentCapabilitySchema), v.maxLength(16)),
-    intent: AgentIntentAssessmentSchema,
-    rationale: BoundedModelTextSchema,
-    confidence: v.pipe(v.number(), v.minValue(0), v.maxValue(1)),
-});
-
-export const ReportedExecutionContextSchema = v.strictObject({
-    product: v.nullable(BoundedContextTextSchema),
-    os: v.nullable(BoundedContextTextSchema),
-    browser: v.nullable(BoundedContextTextSchema),
-});
-
-export const ActualExecutionContextSchema = v.strictObject({
-    kind: ExecutorNameSchema,
-    product: BoundedContextTextSchema,
-    browser: BoundedContextTextSchema,
-    productVersion: v.nullable(BoundedContextTextSchema),
-});
-
-const ActualExecutionContextInputSchema = v.strictObject({
-    product: BoundedContextTextSchema,
-    browser: BoundedContextTextSchema,
-    productVersion: v.optional(BoundedContextTextSchema),
-});
-
-export const CapabilityLimitSchema = v.strictObject({
-    kind: ExecutorNameSchema,
-    code: EnvironmentLimitationCodeSchema,
-    capability: v.nullable(EnvironmentCapabilitySchema),
-    detail: v.pipe(v.string(), v.minLength(1), v.maxLength(1_000)),
-});
-
-const CapabilityLimitInputSchema = v.strictObject({
-    code: EnvironmentLimitationCodeSchema,
-    capability: v.optional(EnvironmentCapabilitySchema),
-    detail: v.pipe(v.string(), v.minLength(1), v.maxLength(1_000)),
-});
-
-/**
- * How a locked filtering environment approximates the reporter's exact configuration.
- */
-export const FidelityLimitationCode = {
-    /**
-     * The executing product differs from the product named in the report.
-     */
-    ProductApproximation: 'product_approximation',
-
-    /**
-     * The executing controlled browser differs from the browser named in the report.
-     */
-    BrowserApproximation: 'browser_approximation',
-
-    /**
-     * The reported filter selection could not be reproduced exactly.
-     */
-    FilterSelectionApproximation: 'filter_selection_approximation',
-
-    /**
-     * The reported filter selection exceeds the executing browser's MV3 limits, so the run could
-     * execute it only in part and the terminal evidence comes from a session that selects fewer
-     * filters (a request can name 52 filters while Chrome allows 50 static rulesets).
-     */
-    Mv3LimitsApproximation: 'mv3_limits_approximation',
-} as const;
-
-/**
- * Every FidelityLimitationCode value, for schemas and exhaustive listings.
- */
-export const FIDELITY_LIMITATION_CODE_VALUES = Object.values(FidelityLimitationCode);
-
-/**
- * FidelityLimitationCode value.
- */
-export type FidelityLimitationCode =
-    (typeof FidelityLimitationCode)[keyof typeof FidelityLimitationCode];
-
-/**
- * The fidelity codes an executor route reports about what it actually executed; the product and
- * browser approximations are derived from the reported-versus-actual comparison instead.
- */
-export type RouteFidelityLimitationCode =
-    | typeof FidelityLimitationCode.FilterSelectionApproximation
-    | typeof FidelityLimitationCode.Mv3LimitsApproximation;
-
-export const FidelityLimitationSchema = v.strictObject({
-    code: v.picklist(FIDELITY_LIMITATION_CODE_VALUES),
-    detail: v.pipe(v.string(), v.minLength(1), v.maxLength(1_000)),
-});
-
-/**
- * Stable reason a selection request was rejected outright.
- */
-export const EnvironmentSelectionRejectionReason = {
-    /**
-     * The model's request failed schema validation.
-     */
-    InvalidEnvironmentSelection: 'invalid_environment_selection',
-
-    /**
-     * An environment was already locked by an earlier accepted request.
-     */
-    EnvironmentLocked: 'environment_locked',
-} as const;
-
-/**
- * EnvironmentSelectionRejectionReason value.
- */
-export type EnvironmentSelectionRejectionReason =
-    (typeof EnvironmentSelectionRejectionReason)[keyof typeof EnvironmentSelectionRejectionReason];
-
-/**
- * Stable reason an observed-intent update was rejected.
- */
-export const IntentUpdateRejectionReason = {
-    /**
-     * No environment has been locked yet, so there is nothing to update.
-     */
-    EnvironmentSelectionRequired: 'environment_selection_required',
-
-    /**
-     * The model's intent assessment failed schema validation.
-     */
-    InvalidIntentAssessment: 'invalid_intent_assessment',
-} as const;
-
-/**
- * IntentUpdateRejectionReason value.
- */
-export type IntentUpdateRejectionReason =
-    (typeof IntentUpdateRejectionReason)[keyof typeof IntentUpdateRejectionReason];
-
-export const RejectedEnvironmentSelectionSchema = v.strictObject({
-    requestedKind: EnvironmentSelectionKindSchema,
-    rationale: BoundedModelTextSchema,
-    confidence: v.pipe(v.number(), v.minValue(0), v.maxValue(1)),
-    rejectedAt: v.pipe(v.string(), v.isoTimestamp()),
-    errorKind: v.literal(EnvironmentSelectionRejectionReason.EnvironmentLocked),
-});
-
-export const EnvironmentSelectionSnapshotSchema = v.pipe(
-    v.strictObject({
-        selectedKind: EnvironmentSelectionKindSchema,
-        state: EnvironmentSelectionStateSchema,
-        rationale: BoundedModelTextSchema,
-        confidence: v.pipe(v.number(), v.minValue(0), v.maxValue(1)),
-        requiredCapabilities: v.pipe(v.array(EnvironmentCapabilitySchema), v.maxLength(16)),
-        advertisedCapabilities: v.pipe(v.array(EnvironmentCapabilitySchema), v.maxLength(16)),
-        missingCapabilities: v.pipe(v.array(EnvironmentCapabilitySchema), v.maxLength(16)),
-        descriptor: v.nullable(FilteringEnvironmentDescriptorSchema),
-        lockedAt: v.pipe(v.string(), v.isoTimestamp()),
-        declared: DeclaredIssueContextSchema,
-        reported: ReportedExecutionContextSchema,
-        observed: AgentIntentAssessmentSchema,
-        intentHistory: v.pipe(v.array(AgentIntentAssessmentSchema), v.minLength(1), v.maxLength(4)),
-        rejectedRequests: v.pipe(v.array(RejectedEnvironmentSelectionSchema), v.maxLength(4)),
-        actual: v.nullable(ActualExecutionContextSchema),
-        fidelityLimitations: v.pipe(v.array(FidelityLimitationSchema), v.maxLength(4)),
-        capabilityLimits: v.pipe(v.array(CapabilityLimitSchema), v.maxLength(8)),
-        filterBaseline: v.optional(v.nullable(SelectionFilterBaselineSchema)),
-        cliPreparation: v.optional(v.nullable(ExecutorPreparationSchema)),
-    }),
-    // The locked snapshot is correlated against its own descriptor rather than against any
-    // particular executor name: the run's executor set is an input, so no executor kind may be
-    // spelled here. Preparable executors carry the additional preparation correlations that
-    // non-preparable executors must not.
-    v.check((snapshot) => {
-        if (snapshot.selectedKind === EnvironmentSelectionReservedCase.UnsupportedProductCase) {
-            return (
-                snapshot.state === EnvironmentSelectionState.Unsupported &&
-                snapshot.descriptor === null &&
-                snapshot.actual === null &&
-                snapshot.filterBaseline == null
-            );
-        }
-        if (
-            snapshot.descriptor === null ||
-            snapshot.descriptor.kind !== snapshot.selectedKind ||
-            (snapshot.actual !== null && snapshot.actual.kind !== snapshot.selectedKind) ||
-            !snapshot.capabilityLimits.every((limit) => limit.kind === snapshot.selectedKind)
-        ) {
-            return false;
-        }
-        if (snapshot.descriptor.preparationState !== EnvironmentPreparationState.Preparable) {
-            return snapshot.cliPreparation == null;
-        }
-        if (snapshot.filterBaseline?.status === 'not_executable') {
-            return (
-                snapshot.state === EnvironmentSelectionState.CapabilityLimited &&
-                snapshot.cliPreparation == null &&
-                snapshot.actual === null
-            );
-        }
-        if (snapshot.state === EnvironmentSelectionState.Preparing) {
-            return snapshot.cliPreparation === null;
-        }
-        if (snapshot.cliPreparation?.state === ExecutorPreparationState.Limited) {
-            return (
-                snapshot.state === EnvironmentSelectionState.CapabilityLimited &&
-                snapshot.actual === null
-            );
-        }
-        if (snapshot.cliPreparation?.state === ExecutorPreparationState.Ready) {
-            return (
-                (snapshot.state === EnvironmentSelectionState.Ready ||
-                    snapshot.state === EnvironmentSelectionState.CapabilityLimited) &&
-                snapshot.actual !== null &&
-                // The actual context is bound from the same prepared provenance, so the version
-                // it claims must equal the provenance version byte for byte.
-                snapshot.actual.productVersion === snapshot.cliPreparation.provenance.version
-            );
-        }
-        return false;
-    }, 'Selection provenance must remain bound to the locked environment.'),
-    v.check(
-        (snapshot) =>
-            snapshot.state !== 'ready' ||
-            snapshot.filterBaseline?.status === 'executable' ||
-            snapshot.filterBaseline?.status === 'declared',
-        'A ready environment requires an executable official or declared filter baseline.',
-    ),
-);
-
-/**
- * EnvironmentCapability value.
- */
-export type EnvironmentCapability =
-    (typeof EnvironmentCapability)[keyof typeof EnvironmentCapability];
-
-/**
- * Immutable host capability descriptor shown to the model.
- */
-export type FilteringEnvironmentDescriptor = v.InferOutput<
-    typeof FilteringEnvironmentDescriptorSchema
->;
-
-/**
- * Typed model request that chooses one environment.
- */
-export type AgentEnvironmentSelectionRequest = v.InferOutput<
-    typeof AgentEnvironmentSelectionRequestSchema
->;
-
-/**
- * Host-bound actual execution context for the locked filtering environment.
- */
-export type ActualExecutionContextInput = v.InferOutput<typeof ActualExecutionContextInputSchema>;
-
-/**
- * Host-authored capability limitation recorded after selection.
- */
-export type CapabilityLimitInput = v.InferOutput<typeof CapabilityLimitInputSchema>;
-
-/**
- * Durable audit snapshot of the one locked environment decision.
- */
-export type EnvironmentSelectionSnapshot = v.InferOutput<typeof EnvironmentSelectionSnapshotSchema>;
-
-/**
- * Accepted selection response returned to the model.
- */
-export interface AcceptedEnvironmentSelectionResponse {
-    /**
-     * Indicates that this request locked the host.
-     */
-    accepted: true;
-
-    /**
-     * Environment kind locked by this request.
-     */
-    kind: EnvironmentSelectionKind;
-
-    /**
-     * Indicates that later selection requests will be rejected.
-     */
-    locked: true;
-
-    /**
-     * Readiness state derived from immutable host capability data.
-     */
-    state: EnvironmentSelectionSnapshot['state'];
-
-    /**
-     * Stable host limitation code, when the choice cannot execute.
-     */
-    limitationCode: EnvironmentLimitationCode | null;
-
-    /**
-     * Official identities the reported selection resolved to, the selection the run's own
-     * instruction declared, or the finite reason the reported selection resolved to none. Null only
-     * for an unsupported product case, which reproduces no filtering at all.
-     */
-    filterBaseline: SelectionFilterBaseline | null;
-}
-
-/**
- * Rejected selection response returned for invalid input or a locked host.
- */
-export interface RejectedEnvironmentSelectionResponse {
-    /**
-     * Indicates that the request did not change the locked selection.
-     */
-    accepted: false;
-
-    /**
-     * Stable reason for rejecting the request.
-     */
-    errorKind: EnvironmentSelectionRejectionReason;
-
-    /**
-     * Existing locked environment when one has already been chosen.
-     */
-    selectedKind?: EnvironmentSelectionKind;
-
-    /**
-     * Bounded validation explanation for malformed model input.
-     */
-    error?: string;
-}
-
-/**
- * Public response from the model-facing environment selection boundary.
- */
-export type EnvironmentSelectionResponse =
-    | AcceptedEnvironmentSelectionResponse
-    | RejectedEnvironmentSelectionResponse;
-
-/**
- * Response from the observed-intent refinement boundary.
- */
-export interface IntentUpdateResponse {
-    /**
-     * Whether the assessment replaced the current observed intent.
-     */
-    accepted: boolean;
-
-    /**
-     * Locked environment retained by the update.
-     */
-    selectedKind?: EnvironmentSelectionKind;
-
-    /**
-     * Stable rejection reason when selection or input is missing.
-     */
-    errorKind?: IntentUpdateRejectionReason;
-
-    /**
-     * Bounded validation detail for invalid model input.
-     */
-    error?: string;
-}
-
-/**
- * Deterministic dependencies for the selection host.
- */
-export interface EnvironmentSelectionHostOptions {
-    /**
-     * Clock used for lock and rejected-request audit timestamps.
-     */
-    now?: () => string;
-
-    /**
-     * The executable baseline the run supplies instead of resolving the reported names against
-     * AdGuard's official catalog.
-     *
-     * A run whose blocker declares its own list selection resolves nothing — the declaration is the
-     * baseline, and the reporter's names are only compared against it. When the run supplies none,
-     * the reported selection is resolved against the official catalog.
-     */
-    filterBaseline?: SelectionFilterBaseline;
-}
-
-/**
- * Rationale recorded when the host locks the run's sole executor without a model turn.
- */
-const SOLE_EXECUTOR_RATIONALE = 'Sole executor available for this run';
-
-/**
- * Observed-intent rationale recorded alongside the deterministic sole-executor lock.
- */
-const SOLE_EXECUTOR_INTENT_RATIONALE = 'No executor choice was offered for this run.';
-
-/**
- * Detail recorded when a descriptor ships its adapter as unavailable.
- */
-const UNAVAILABLE_EXECUTOR_DETAIL = 'The executor adapter is not available in this delivery slice.';
-
-/**
- * Truncate one host-owned context value to its durable schema bound.
- *
- * @param value - Optional issue-derived context value.
- * @returns Trimmed bounded text or null when no text remains.
- */
-function boundedContext(value: string | undefined): string | null {
-    const trimmed = value?.trim();
-    return trimmed ? trimmed.slice(0, 200) : null;
-}
-
-/**
- * Format a bounded Valibot failure without retaining arbitrary input values.
- *
- * @param issues - Validation issues returned by Valibot.
- * @returns Stable bounded field-path summary.
- */
-function validationDetail(issues: readonly v.BaseIssue<unknown>[]): string {
-    const paths = issues
-        .map((issue) => issue.path?.map((item) => String(item.key)).join('.'))
-        .filter((path): path is string => Boolean(path));
-    return `Invalid fields: ${[...new Set(paths)].slice(0, 8).join(', ') || 'request'}`;
-}
-
-/**
- * Explain why a reported filter selection yields no executable official baseline.
- *
- * The sentence carries no reporter text: the bounded reporter echo already lives in the durable
- * `filterBaseline` field, and this detail is only the finite classification of the failure.
- *
- * @param code - The finite reason the reported filter selection resolved to no official baseline.
- * @returns One fixed host-authored sentence for the recorded capability limit.
- */
-function filterBaselineLimitDetail(code: NonExecutableFilterCode): string {
-    if (code === NonExecutableFilterCode.FilterSelectionMissing) {
-        return 'The report names no filter selection, and no default filter baseline is invented.';
-    }
-    return (
-        'Only third-party, custom or unrecognized filter sources were reported, which this run ' +
-        'never executes.'
-    );
-}
-
-/**
- * Clone and validate a durable snapshot so callers cannot mutate host state by reference.
- *
- * @param snapshot - Internal snapshot to expose.
- * @returns Independent schema-validated snapshot.
- */
-function cloneSnapshot(snapshot: EnvironmentSelectionSnapshot): EnvironmentSelectionSnapshot {
-    return v.parse(EnvironmentSelectionSnapshotSchema, structuredClone(snapshot));
-}
+    EnvironmentCapability,
+    EnvironmentLimitationCode,
+    EnvironmentPreparationState,
+    EnvironmentSelectionReservedCase,
+    EnvironmentSelectionState,
+    FilteringEnvironmentDescriptor,
+    FilteringEnvironmentDescriptorSchema,
+} from './environment-vocabulary';
+import {
+    ActualExecutionContextInput,
+    ActualExecutionContextInputSchema,
+    AgentEnvironmentSelectionRequest,
+    AgentEnvironmentSelectionRequestSchema,
+    AgentIntentAssessmentSchema,
+    CapabilityLimitInput,
+    CapabilityLimitInputSchema,
+    EnvironmentSelectionRejectionReason,
+    EnvironmentSelectionResponse,
+    EnvironmentSelectionSnapshot,
+    EnvironmentSelectionSnapshotSchema,
+    FidelityLimitationCode,
+    FidelityLimitationSchema,
+    IntentIssueType,
+    IntentUpdateRejectionReason,
+    IntentUpdateResponse,
+    MAX_CAPABILITY_LIMITS,
+    MAX_SELECTION_HISTORY,
+    ReportedExecutionContextSchema,
+    RouteFidelityLimitationCode,
+    type EnvironmentSelectionHostOptions,
+} from './environment-selection-contract';
+import {
+    EVIDENCE_ROUTE_CAPABILITIES,
+    SOLE_EXECUTOR_INTENT_RATIONALE,
+    SOLE_EXECUTOR_RATIONALE,
+    boundedContext,
+    cloneSnapshot,
+    fidelityLimitationsFor,
+    filterBaselineLimitDetail,
+    lockedStateFor,
+    validationDetail,
+} from './environment-selection-support';
 
 /**
  * Own the agent's first environment choice and all provenance attached to that immutable lock.
@@ -857,7 +172,7 @@ export class EnvironmentSelectionHost {
             };
         }
         if (this.selected) {
-            if (this.selected.rejectedRequests.length < 4) {
+            if (this.selected.rejectedRequests.length < MAX_SELECTION_HISTORY) {
                 this.selected.rejectedRequests.push({
                     requestedKind: parsed.output.kind,
                     rationale: parsed.output.rationale,
@@ -920,7 +235,7 @@ export class EnvironmentSelectionHost {
             kind: name,
             requiredCapabilities: [],
             intent: {
-                issueType: 'unknown',
+                issueType: IntentIssueType.Unknown,
                 rationale: SOLE_EXECUTOR_INTENT_RATIONALE,
                 confidence: 1,
                 evidence: [],
@@ -945,50 +260,21 @@ export class EnvironmentSelectionHost {
             request.kind === EnvironmentSelectionReservedCase.UnsupportedProductCase
                 ? null
                 : (this.descriptors.get(request.kind) ?? null);
-        const advertisedCapabilities = descriptor ? [...descriptor.capabilities] : [];
-        const missingCapabilities = request.requiredCapabilities.filter(
-            (capability) => !advertisedCapabilities.includes(capability),
-        );
-        const capabilityLimits: EnvironmentSelectionSnapshot['capabilityLimits'] = [];
-        let state: EnvironmentSelectionSnapshot['state'];
-        let limitationCode: EnvironmentLimitationCode | null = null;
-        if (request.kind === EnvironmentSelectionReservedCase.UnsupportedProductCase) {
-            state = EnvironmentSelectionState.Unsupported;
-        } else if (descriptor?.preparationState === EnvironmentPreparationState.Preparable) {
-            state = EnvironmentSelectionState.Preparing;
-        } else if (descriptor?.availability === FilteringEnvironmentAvailability.Unavailable) {
-            state = EnvironmentSelectionState.CapabilityLimited;
-            // Fresh descriptors write enum members; the widened code schema exists only so the
-            // persisted run-result read-back keeps parsing renamed historical codes.
-            limitationCode = descriptor.limitationCode as EnvironmentLimitationCode;
-            capabilityLimits.push({
-                kind: request.kind,
-                code: descriptor.limitationCode ?? EnvironmentLimitationCode.ExecutorUnavailable,
-                capability: null,
-                detail: UNAVAILABLE_EXECUTOR_DETAIL,
-            });
-        } else if (missingCapabilities.length > 0) {
-            state = EnvironmentSelectionState.CapabilityLimited;
-            limitationCode = EnvironmentLimitationCode.RequiredCapabilityUnavailable;
-            // Deduped like the snapshot's own capability lists below, so a model that repeats one
-            // unadvertised capability still fits the bounded limit list instead of throwing.
-            for (const capability of new Set(missingCapabilities)) {
-                capabilityLimits.push({
-                    kind: request.kind,
-                    code: EnvironmentLimitationCode.RequiredCapabilityUnavailable,
-                    capability,
-                    detail: 'The locked environment does not advertise a required capability.',
-                });
-            }
-        } else {
-            state = EnvironmentSelectionState.Ready;
-        }
+        const {
+            advertisedCapabilities,
+            missingCapabilities,
+            capabilityLimits,
+            state: lockedState,
+            limitationCode: lockedLimitationCode,
+        } = lockedStateFor(request, descriptor);
+        let state = lockedState;
+        let limitationCode = lockedLimitationCode;
 
         const filterBaseline =
             request.kind === EnvironmentSelectionReservedCase.UnsupportedProductCase
                 ? null
                 : this.filterBaseline;
-        if (filterBaseline?.status === 'not_executable') {
+        if (filterBaseline?.status === FilterBaselineStatus.NotExecutable) {
             state = EnvironmentSelectionState.CapabilityLimited;
             limitationCode = EnvironmentLimitationCode.FilterSelectionNotExecutable;
             capabilityLimits.push({
@@ -1064,10 +350,8 @@ export class EnvironmentSelectionHost {
         }
         const parsed = v.parse(ExecutorPreparationOutcomeSchema, structuredClone(outcome));
         if (parsed.ready) {
-            const provenance = v.parse(
-                ExecutorPreparedProvenanceSchema,
-                structuredClone(parsed.provenance),
-            );
+            // The outcome schema already parsed and cloned the provenance it embeds.
+            const provenance = parsed.provenance;
             this.selected.cliPreparation = { state: ExecutorPreparationState.Ready, provenance };
             this.selected.actual = {
                 kind: this.selected.selectedKind,
@@ -1075,12 +359,19 @@ export class EnvironmentSelectionHost {
                 browser: BrowserDisplayName.CloakBrowserChromium,
                 productVersion: provenance.version,
             };
+            // What the evidence route grants is pending, not missing: the route's first session
+            // grants it (`attachCliEvidenceRouteReady`). Counting it as missing told the model the
+            // prepared CLI could not navigate or apply a candidate, and the model repeated that in
+            // its reports although the route then worked.
+            this.selected.missingCapabilities = this.selected.missingCapabilities.filter(
+                (capability) => !EVIDENCE_ROUTE_CAPABILITIES.includes(capability),
+            );
             if (this.selected.missingCapabilities.length === 0) {
                 this.selected.state = EnvironmentSelectionState.Ready;
             } else {
                 this.selected.state = EnvironmentSelectionState.CapabilityLimited;
                 for (const capability of this.selected.missingCapabilities) {
-                    if (this.selected.capabilityLimits.length >= 8) {
+                    if (this.selected.capabilityLimits.length >= MAX_CAPABILITY_LIMITS) {
                         break;
                     }
                     this.selected.capabilityLimits.push({
@@ -1133,9 +424,9 @@ export class EnvironmentSelectionHost {
         const history = this.selected.intentHistory;
         this.selected.observed = parsed.output;
         this.selected.intentHistory =
-            history.length < 4
+            history.length < MAX_SELECTION_HISTORY
                 ? [...history, parsed.output]
-                : [history[0], ...history.slice(-2), parsed.output];
+                : [history[0], ...history.slice(2 - MAX_SELECTION_HISTORY), parsed.output];
         this.selected = v.parse(EnvironmentSelectionSnapshotSchema, this.selected);
         return { accepted: true, selectedKind: this.selected.selectedKind };
     }
@@ -1212,20 +503,25 @@ export class EnvironmentSelectionHost {
         if (this.selected.state === EnvironmentSelectionState.Unsupported) {
             return;
         }
-        this.selected.state = EnvironmentSelectionState.Ready;
         this.selected.advertisedCapabilities = [
-            ...new Set([
-                ...this.selected.advertisedCapabilities,
-                EnvironmentCapability.BrowserNavigation,
-                EnvironmentCapability.FilteringControl,
-                EnvironmentCapability.CliFiltering,
-                EnvironmentCapability.BaselineIntegrity,
-                EnvironmentCapability.PhaseProof,
-                EnvironmentCapability.CandidateApplication,
-            ]),
+            ...new Set([...this.selected.advertisedCapabilities, ...EVIDENCE_ROUTE_CAPABILITIES]),
         ];
+        const advertised = this.selected.advertisedCapabilities;
         this.selected.missingCapabilities = this.selected.requiredCapabilities.filter(
-            (capability) => !this.selected!.advertisedCapabilities.includes(capability),
+            (capability) => !advertised.includes(capability),
+        );
+        // The route grants only its own capabilities: a requirement it cannot supply keeps the
+        // selection limited.
+        this.selected.state =
+            this.selected.missingCapabilities.length === 0
+                ? EnvironmentSelectionState.Ready
+                : EnvironmentSelectionState.CapabilityLimited;
+        // A limit recorded for a capability the route now grants no longer holds.
+        this.selected.capabilityLimits = this.selected.capabilityLimits.filter(
+            (limit) =>
+                limit.code !== EnvironmentLimitationCode.RequiredCapabilityUnavailable ||
+                limit.capability === null ||
+                !advertised.includes(limit.capability),
         );
         this.selected = v.parse(EnvironmentSelectionSnapshotSchema, this.selected);
     }
@@ -1276,7 +572,7 @@ export class EnvironmentSelectionHost {
             );
         }
         const parsed = v.parse(CapabilityLimitInputSchema, limitation);
-        if (this.selected.capabilityLimits.length < 8) {
+        if (this.selected.capabilityLimits.length < MAX_CAPABILITY_LIMITS) {
             this.selected.capabilityLimits.push({
                 kind,
                 code: parsed.code,
@@ -1304,29 +600,10 @@ export class EnvironmentSelectionHost {
         if (!this.selected?.actual) {
             return;
         }
-        // Route-reported approximations survive this recomputation: they describe what the run
-        // actually executed, which the reported-versus-actual comparison below cannot re-derive.
-        const limitations: EnvironmentSelectionSnapshot['fidelityLimitations'] = [
-            ...this.routeFidelityLimitations,
-        ];
-        if (
-            this.reported.product !== null &&
-            this.reported.product.toLowerCase() !== this.selected.actual.product.toLowerCase()
-        ) {
-            limitations.push({
-                code: FidelityLimitationCode.ProductApproximation,
-                detail: 'The actual filtering product differs from the product named in the report.',
-            });
-        }
-        if (
-            this.reported.browser !== null &&
-            this.reported.browser.toLowerCase() !== this.selected.actual.browser.toLowerCase()
-        ) {
-            limitations.push({
-                code: FidelityLimitationCode.BrowserApproximation,
-                detail: 'The actual controlled browser differs from the browser named in the report.',
-            });
-        }
-        this.selected.fidelityLimitations = limitations;
+        this.selected.fidelityLimitations = fidelityLimitationsFor(
+            this.routeFidelityLimitations,
+            this.reported,
+            this.selected.actual,
+        );
     }
 }

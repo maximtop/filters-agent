@@ -51,10 +51,10 @@ import {
 import {
     EnvironmentCapability,
     EnvironmentLimitationCode,
-    EnvironmentSelectionHost,
     EnvironmentSelectionReservedCase,
-    type EnvironmentSelectionSnapshot,
-} from '../environment/environment-selection';
+} from '../environment/environment-vocabulary';
+import { type EnvironmentSelectionSnapshot } from '../environment/environment-selection-contract';
+import { EnvironmentSelectionHost } from '../environment/environment-selection';
 import type { EvidenceRouteHost } from '../local/evidence-route-contract';
 import { readReporterOfficialFilterIds } from '../local/reporter-filters';
 import { BrowserExtensionExecutorName } from '../environment/executor-name';
@@ -2225,7 +2225,14 @@ export class AgentRuntime {
      * Stop whatever the evidence route owns, on every terminal path.
      */
     async stopEvidenceRoute(): Promise<void> {
-        await this.cliEvidenceRoute?.stop?.().catch(() => undefined);
+        await this.cliEvidenceRoute?.stop?.().catch((error: unknown) => {
+            // Shutdown stays non-fatal, but a module that failed to stop is the first thing to
+            // check when its logs or its process outlive the run.
+            createLogger({ verbose: this.options.verbose ?? false }).warn(
+                { err: error },
+                'the evidence route did not stop cleanly',
+            );
+        });
     }
 
     /**

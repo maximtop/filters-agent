@@ -105,11 +105,68 @@ export interface BaselineEditReceipt {
 /**
  * Stable path-free failure classifications for the CLI evidence route.
  */
+export const EvidenceRouteFailureCode = {
+    /**
+     * The route could not describe the blocker or download the filters it runs.
+     */
+    ConfigurationFailed: 'configuration_failed',
+
+    /**
+     * The blocker's filtering foreground did not start.
+     */
+    ForegroundFailed: 'foreground_failed',
+
+    /**
+     * The route was asked for a session before it was configured, or after it stopped.
+     */
+    RouteUnavailable: 'route_unavailable',
+
+    /**
+     * The proxied browser session could not be launched.
+     */
+    BrowserLaunchFailed: 'browser_launch_failed',
+} as const;
+
+/**
+ * EvidenceRouteFailureCode value.
+ */
 export type EvidenceRouteFailureCode =
-    | 'configuration_failed'
-    | 'foreground_failed'
-    | 'route_unavailable'
-    | 'browser_launch_failed';
+    (typeof EvidenceRouteFailureCode)[keyof typeof EvidenceRouteFailureCode];
+
+/**
+ * Lifecycle states of the CLI evidence route host.
+ */
+export const EvidenceRouteState = {
+    /**
+     * Created, nothing prepared yet.
+     */
+    New: 'new',
+
+    /**
+     * The blocker is described and the filters are downloaded.
+     */
+    Configured: 'configured',
+
+    /**
+     * The blocker's filtering foreground is running.
+     */
+    ForegroundRunning: 'foreground_running',
+
+    /**
+     * Stopped on the run's terminal path.
+     */
+    Stopped: 'stopped',
+
+    /**
+     * A step failed; the snapshot carries the first failure code.
+     */
+    Failed: 'failed',
+} as const;
+
+/**
+ * EvidenceRouteState value.
+ */
+export type EvidenceRouteState = (typeof EvidenceRouteState)[keyof typeof EvidenceRouteState];
 
 /**
  * Optional cause carrier for an evidence route failure.
@@ -151,7 +208,7 @@ export interface EvidenceRouteSnapshot {
     /**
      * Current host state.
      */
-    state: 'new' | 'configured' | 'foreground_running' | 'stopped' | 'failed';
+    state: EvidenceRouteState;
     /**
      * Loopback proxy port after the foreground started, or null.
      */

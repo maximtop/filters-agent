@@ -20,9 +20,10 @@ import {
     EnvironmentPreparationState,
     FilteringEnvironmentAvailability,
     type FilteringEnvironmentDescriptor,
-} from '../environment/environment-selection';
+} from '../environment/environment-vocabulary';
 import type { ExecutorName } from '../environment/executor-name';
 import type { ExecutorPreparationOutcome } from '../environment/executor-preparation';
+import { FilterBaselineStatus } from '../environment/filter-baseline-status';
 import type {
     ExecutorActivationContext,
     ExecutorAdapterContext,
@@ -266,7 +267,7 @@ export function createBlockerModuleExecutor(
             if (
                 snapshot === null ||
                 snapshot.selectedKind !== definition.executor ||
-                snapshot.filterBaseline?.status !== 'executable'
+                snapshot.filterBaseline?.status !== FilterBaselineStatus.Executable
             ) {
                 return;
             }

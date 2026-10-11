@@ -13,6 +13,7 @@
  * `adminSettings`, so an instruction that nests its settings elsewhere still resolves.
  */
 import * as v from 'valibot';
+import { FilterBaselineStatus } from './filter-baseline-status';
 import type { FirefoxExtensionLaunch } from './extension-launch';
 import {
     FilterListKeySchema,
@@ -72,7 +73,7 @@ const SKIPPED_SOURCES_MAX_COUNT = 128;
 const DECLARED_SLUG_MAX_LENGTH = LIST_KEY_MAX_LENGTH - DECLARED_LIST_KEY_PREFIX.length;
 
 export const DeclaredFilterBaselineSchema = v.strictObject({
-    status: v.literal('declared'),
+    status: v.literal(FilterBaselineStatus.Declared),
     listKeys: v.pipe(
         v.array(FilterListKeySchema),
         v.minLength(1),
@@ -247,7 +248,7 @@ export function decideDeclaredFilters(input: {
         }
     }
     return v.parse(DeclaredFilterBaselineSchema, {
-        status: 'declared',
+        status: FilterBaselineStatus.Declared,
         listKeys,
         unmatchedReportedNames: unmatchedReportedNames.slice(0, UNMATCHED_REPORTED_NAMES_MAX_COUNT),
         skippedSources: skippedSources.slice(0, SKIPPED_SOURCES_MAX_COUNT),

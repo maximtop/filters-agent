@@ -3,27 +3,44 @@ import * as v from 'valibot';
 /**
  * Canonical problem-type vocabulary shared by the parser, intake scope, and agent tool schemas.
  */
-export const PROBLEM_TYPE_VALUES = [
-    'ads',
-    'anti-adblock',
-    'annoyance',
-    'incorrect-blocking',
-    'unknown',
-] as const;
+export const ProblemType = {
+    /**
+     * Ads the filters miss.
+     */
+    Ads: 'ads',
 
-export const ProblemTypeSchema = v.picklist(PROBLEM_TYPE_VALUES);
-export type ProblemType = v.InferOutput<typeof ProblemTypeSchema>;
+    /**
+     * An anti-adblock wall or detector.
+     */
+    AntiAdblock: 'anti-adblock',
+
+    /**
+     * An annoyance: cookie notices, popups, app banners, widgets.
+     */
+    Annoyance: 'annoyance',
+
+    /**
+     * Filtering breaks the site (a false positive).
+     */
+    IncorrectBlocking: 'incorrect-blocking',
+
+    /**
+     * The report names no recognised class.
+     */
+    Unknown: 'unknown',
+} as const;
 
 /**
- * Named problem types, so behaviour that branches on a report class never spells one inline.
+ * ProblemType value.
  */
-export const ProblemType = {
-    Ads: 'ads',
-    AntiAdblock: 'anti-adblock',
-    Annoyance: 'annoyance',
-    IncorrectBlocking: 'incorrect-blocking',
-    Unknown: 'unknown',
-} as const satisfies Record<string, ProblemType>;
+export type ProblemType = (typeof ProblemType)[keyof typeof ProblemType];
+
+/**
+ * Every ProblemType value, for the schema.
+ */
+export const PROBLEM_TYPE_VALUES = Object.values(ProblemType);
+
+export const ProblemTypeSchema = v.picklist(PROBLEM_TYPE_VALUES);
 
 /**
  * Whether a report describes filtering breaking a site rather than failing to block ads.

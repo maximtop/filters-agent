@@ -24,7 +24,7 @@ import { toAdvertisedSchema } from '../pi/tool-schema';
 import { ToolName } from '../agent/tool-names';
 import { ToolRegistry } from '../agent/tool-registry';
 import { registerReporterScreenshotTool } from '../agent/reporter-screenshot-tool';
-import type { FilteringEnvironmentDescriptor } from '../environment/environment-selection';
+import type { FilteringEnvironmentDescriptor } from '../environment/environment-vocabulary';
 import type { RawIssue } from '../github/fetch-issue';
 import { withToolDeadline } from '../pi/session-tools';
 import type { AgentRuntimeSessionState } from './agent-runtime-session-evidence';

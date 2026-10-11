@@ -1,7 +1,9 @@
 /**
  * The private directory one run of a blocker module works in: below the operating-system temp
  * directory, readable only by this user, and apart from every checkout and output the run already
- * holds, so nothing the blocker or the browser writes there can land in a published artifact.
+ * holds, so nothing the blocker or the browser writes there lands in a published artifact on its
+ * own. The one exception is explicit: when the issue ends, the module's `.log` files are copied,
+ * redacted, into the issue's artifacts (`blocker-module-run-issue.ts`).
  */
 import { chmodSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';

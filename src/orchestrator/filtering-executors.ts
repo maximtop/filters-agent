@@ -1,9 +1,7 @@
 import type { IssueFacts } from '../types/issue-facts';
 import type { ExecutorName } from '../environment/executor-name';
-import type {
-    EnvironmentSelectionHost,
-    FilteringEnvironmentDescriptor,
-} from '../environment/environment-selection';
+import type { FilteringEnvironmentDescriptor } from '../environment/environment-vocabulary';
+import type { EnvironmentSelectionHost } from '../environment/environment-selection';
 import type { BrowserExtensionEnvironmentOptions } from '../environment/browser-extension-environment';
 import type { FirefoxExtensionEnvironmentOptions } from '../environment/firefox-extension-environment';
 import type { FilteringEnvironmentAdapter } from '../environment/filtering-environment';
